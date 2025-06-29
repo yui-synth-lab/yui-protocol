@@ -570,7 +570,7 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
                 <button
                   onClick={() => handleSendPrompt('Continue Process')}
                   disabled={isProcessing}
-                  className="w-full bg-blue-700 text-white py-2 px-4 hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full bg-blue-700 text-white py-3 px-4 hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed rounded"
                 >
                   {isProcessing ? 'Processing...' : 'Continue Process'}
                 </button>
@@ -594,7 +594,7 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
                       }
                     }}
                     placeholder="Enter your prompt... (Enter to send, Shift+Enter for new line)"
-                    className="w-full px-3 py-2 border border-gray-700 bg-gray-800 text-gray-100 resize-none focus:outline-none focus:ring-2 focus:ring-blue-700 focus:border-transparent"
+                    className="w-full px-3 py-3 border border-gray-700 bg-gray-800 text-gray-100 resize-none focus:outline-none focus:ring-2 focus:ring-blue-700 focus:border-transparent rounded"
                     rows={1}
                     disabled={isProcessing || isCreatingSession || !realtimeSessionId}
                   />
@@ -602,7 +602,7 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
                 <button
                   type="submit"
                   disabled={!userPrompt.trim() || isProcessing || isCreatingSession || !realtimeSessionId}
-                  className="px-4 py-2 bg-blue-700 text-white hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-6 py-3 bg-blue-700 text-white hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed rounded"
                 >
                   Send
                 </button>
@@ -629,10 +629,10 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
       {!shouldAutoScroll && messages.length > 0 && (
         <button
           onClick={() => setShouldAutoScroll(true)}
-          className="absolute bottom-20 right-4 bg-blue-700 text-white p-2 shadow-lg hover:bg-blue-800"
+          className="absolute bottom-20 right-4 bg-blue-700 text-white p-3 shadow-lg hover:bg-blue-800 rounded"
           title="Scroll to latest message"
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
           </svg>
         </button>

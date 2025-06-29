@@ -9,6 +9,7 @@ function App() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [availableAgents, setAvailableAgents] = useState<Agent[]>([]);
   const [showProcessInfo, setShowProcessInfo] = useState(false);
+  const [showSidebar, setShowSidebar] = useState(false);
 
   useEffect(() => {
     // Load available agents and sessions on component mount
@@ -17,7 +18,9 @@ function App() {
     
     // Check screen size and set default visibility
     const checkScreenSize = () => {
+      const isMobile = window.innerWidth < 1024; // lg breakpoint
       setShowProcessInfo(window.innerWidth >= 768); // md breakpoint
+      setShowSidebar(!isMobile); // Hide sidebar by default on mobile
     };
     
     checkScreenSize();
@@ -113,9 +116,20 @@ function App() {
       <div className="h-full flex flex-col">
         <div className="container mx-auto px-4 py-4 h-full flex flex-col">
           <header className="flex-shrink-0 mb-4">
-            <h1 className="text-3xl font-bold text-gray-100 mb-1">
-              ⛩️ Yui Protocol
-            </h1>
+            <div className="flex items-center justify-between mb-3">
+              <h1 className="text-3xl font-bold text-gray-100">
+                ⛩️ Yui Protocol
+              </h1>
+              {/* Mobile sidebar toggle */}
+              <button
+                onClick={() => setShowSidebar(!showSidebar)}
+                className="lg:hidden p-2 text-gray-300 hover:text-white hover:bg-gray-800 rounded"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+            </div>
             <p className="text-gray-400 mb-3 text-sm">
               Multi-AI Collaborative Reasoning through Structured Dialogue
             </p>
@@ -171,28 +185,52 @@ function App() {
             </div>
           </header>
 
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 flex-1 min-h-0">
-            {/* Sidebar */}
-            <div className="lg:col-span-1 flex flex-col min-h-0">
-              <div className="flex-1 min-h-0 overflow-y-auto space-y-3">
-                <SessionManager
-                  sessions={sessions}
-                  currentSession={currentSession}
-                  onSelectSession={selectSession}
-                  onCreateSession={createNewSession}
-                  availableAgents={availableAgents}
+          <div className="flex-1 min-h-0 flex">
+            {/* Sidebar - Mobile overlay or desktop sidebar */}
+            <div className={`
+              ${showSidebar ? 'fixed lg:relative inset-0 z-50 lg:z-auto' : 'hidden lg:block'}
+              lg:w-1/4 lg:max-w-xs
+            `}>
+              {/* Mobile overlay background */}
+              {showSidebar && (
+                <div 
+                  className="lg:hidden fixed inset-0 bg-black bg-opacity-50 z-40"
+                  onClick={() => setShowSidebar(false)}
                 />
-                {currentSession && (
-                  <AgentSelector
-                    agents={currentSession.agents}
+              )}
+              
+              {/* Sidebar content */}
+              <div className={`
+                ${showSidebar ? 'fixed lg:relative left-0 top-0' : ''}
+                h-full lg:h-auto w-80 lg:w-full max-w-sm lg:max-w-none
+                bg-gray-800 lg:bg-transparent
+                border-r border-gray-700 lg:border-none
+                z-50 lg:z-auto
+                overflow-y-auto
+              `}>
+                <div className="p-4 lg:p-0 space-y-3">
+                  <SessionManager
+                    sessions={sessions}
+                    currentSession={currentSession}
+                    onSelectSession={(session) => {
+                      selectSession(session);
+                      setShowSidebar(false); // Close sidebar on mobile after selection
+                    }}
+                    onCreateSession={createNewSession}
                     availableAgents={availableAgents}
                   />
-                )}
+                  {currentSession && (
+                    <AgentSelector
+                      agents={currentSession.agents}
+                      availableAgents={availableAgents}
+                    />
+                  )}
+                </div>
               </div>
             </div>
 
             {/* Main Content */}
-            <div className="lg:col-span-3 flex flex-col min-h-0">
+            <div className="flex-1 min-h-0 flex flex-col">
               <div className="flex-1 min-h-0 overflow-y-auto">
                 {currentSession ? (
                   <ThreadView session={currentSession} onSessionUpdate={handleSessionUpdate} />

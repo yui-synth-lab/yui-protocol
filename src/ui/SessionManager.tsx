@@ -66,7 +66,7 @@ const SessionManager: React.FC<SessionManagerProps> = ({
               setSelectedAgentIds(availableAgents.map(agent => agent.id));
             }
           }}
-          className="text-xs bg-blue-800 text-white px-2 py-1 hover:bg-blue-900"
+          className="text-xs bg-blue-800 text-white px-3 py-2 hover:bg-blue-900 rounded"
         >
           {showCreateForm ? 'Cancel' : 'New'}
         </button>
@@ -82,7 +82,7 @@ const SessionManager: React.FC<SessionManagerProps> = ({
               type="text"
               value={newSessionTitle}
               onChange={(e) => setNewSessionTitle(e.target.value)}
-              className="w-full px-2 py-1 text-sm border border-gray-700 bg-gray-800 text-gray-100 focus:ring-2 focus:ring-blue-800 focus:border-transparent"
+              className="w-full px-3 py-2 text-sm border border-gray-700 bg-gray-800 text-gray-100 focus:ring-2 focus:ring-blue-800 focus:border-transparent rounded"
               placeholder="Enter session title..."
             />
           </div>
@@ -91,16 +91,16 @@ const SessionManager: React.FC<SessionManagerProps> = ({
             <label className="block text-xs font-medium text-gray-300 mb-1">
               Select Agents
             </label>
-            <div className="space-y-1">
+            <div className="space-y-2 max-h-32 overflow-y-auto">
               {availableAgents.map((agent) => (
-                <label key={agent.id} className="flex items-center">
+                <label key={agent.id} className="flex items-center p-2 hover:bg-gray-800 rounded">
                   <input
                     type="checkbox"
                     checked={selectedAgentIds.includes(agent.id)}
                     onChange={() => toggleAgentSelection(agent.id)}
-                    className="mr-2 accent-blue-800"
+                    className="mr-3 accent-blue-800 w-4 h-4"
                   />
-                  <span className="text-xs text-gray-100">
+                  <span className="text-sm text-gray-100">
                     {agent.avatar} {agent.name}
                   </span>
                 </label>
@@ -111,7 +111,7 @@ const SessionManager: React.FC<SessionManagerProps> = ({
           <button
             type="submit"
             disabled={!newSessionTitle.trim() || selectedAgentIds.length === 0}
-            className="w-full bg-blue-800 text-white py-1 text-sm hover:bg-blue-900 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-blue-800 text-white py-2 text-sm hover:bg-blue-900 disabled:opacity-50 disabled:cursor-not-allowed rounded"
           >
             Create Session
           </button>
@@ -119,28 +119,28 @@ const SessionManager: React.FC<SessionManagerProps> = ({
       )}
 
       <div className="flex-1 overflow-y-auto">
-        <div className="space-y-1">
+        <div className="space-y-2">
           {sessions.length === 0 ? (
-            <p className="text-xs text-gray-400">No sessions yet.</p>
+            <p className="text-xs text-gray-400 text-center py-4">No sessions yet.</p>
           ) : (
             sessions.map((session) => (
               <button
                 key={session.id}
                 onClick={() => onSelectSession(session)}
-                className={`w-full text-left p-2 transition-colors ${
+                className={`w-full text-left p-3 transition-colors rounded ${
                   currentSession?.id === session.id
                     ? 'bg-blue-950 border border-blue-800'
                     : 'hover:bg-gray-800'
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-medium text-gray-100 text-sm">{session.title}</h4>
-                    <p className="text-xs text-gray-400">
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-medium text-gray-100 text-sm truncate">{session.title}</h4>
+                    <p className="text-xs text-gray-400 mt-1">
                       {session.agents.length} agents • {session.messages.length} messages
                     </p>
                   </div>
-                  <span className="text-xs text-gray-500">
+                  <span className="text-xs text-gray-500 ml-2 flex-shrink-0">
                     {new Date(session.updatedAt).toLocaleDateString()}
                   </span>
                 </div>

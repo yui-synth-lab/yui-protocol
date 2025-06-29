@@ -43,39 +43,39 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({ agents, availableAgents }
       <h3 className="text-base font-semibold text-gray-100 mb-3 flex-shrink-0">Active Agents</h3>
       
       <div className="flex-1 overflow-y-auto">
-        <div className="space-y-2">
+        <div className="space-y-3">
           {agents.map((agent) => (
-            <div key={agent.id} className="flex items-start p-2 bg-gray-800">
-              <span className="text-xl mr-2 mt-0.5">{agent.avatar}</span>
-              <div className="flex-1">
-                <h4 className="font-medium text-gray-100 text-sm">{agent.name}</h4>
-                <div className="flex flex-wrap gap-1 mt-1">
-                  <span className="text-xs bg-blue-950 text-blue-200 px-1 py-0.5">
+            <div key={agent.id} className="flex items-start p-3 bg-gray-800 rounded">
+              <span className="text-xl mr-3 mt-0.5 flex-shrink-0">{agent.avatar}</span>
+              <div className="flex-1 min-w-0">
+                <h4 className="font-medium text-gray-100 text-sm truncate">{agent.name}</h4>
+                <div className="flex flex-wrap gap-1 mt-2">
+                  <span className="text-xs bg-blue-950 text-blue-200 px-2 py-1 rounded">
                     {getStyleLabel(agent.style)}
                   </span>
-                  <span className="text-xs bg-green-950 text-green-200 px-1 py-0.5">
+                  <span className="text-xs bg-green-950 text-green-200 px-2 py-1 rounded">
                     {getPriorityLabel(agent.priority)}
                   </span>
-                  <span className="text-xs bg-purple-950 text-purple-200 px-1 py-0.5">
+                  <span className="text-xs bg-purple-950 text-purple-200 px-2 py-1 rounded">
                     {getMemoryScopeLabel(agent.memoryScope)}
                   </span>
                 </div>
-                <p className="text-xs text-gray-400 mt-1">{agent.personality.substring(0, 60)}...</p>
+                <p className="text-xs text-gray-400 mt-2 line-clamp-2">{agent.personality}</p>
               </div>
             </div>
           ))}
         </div>
 
         {agents.length === 0 && (
-          <p className="text-xs text-gray-400 text-center py-2">
+          <p className="text-xs text-gray-400 text-center py-4">
             No agents selected for this session.
           </p>
         )}
       </div>
 
       <div className="mt-3 pt-3 border-t border-gray-700 flex-shrink-0">
-        <h4 className="text-xs font-medium text-gray-300 mb-1">Yui Protocol Agent Types</h4>
-        <div className="text-xs text-gray-500 space-y-0.5">
+        <h4 className="text-xs font-medium text-gray-300 mb-2">Yui Protocol Agent Types</h4>
+        <div className="text-xs text-gray-500 space-y-1">
           <p><strong>Styles:</strong> Logical, Critical, Intuitive, Meta, Emotive, Analytical</p>
           <p><strong>Priorities:</strong> Precision, Breadth, Depth, Balance</p>
           <p><strong>Memory:</strong> Local, Session, Cross-Session</p>

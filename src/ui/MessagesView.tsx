@@ -237,7 +237,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
         messageGroups.map((group, groupIndex) => (
           <div key={groupIndex} className="space-y-3">
             {group.stage && (
-              <div className={`p-3 ${getStageColor(group.stage)}`}>
+              <div className={`p-3 ${getStageColor(group.stage)} rounded`}>
                 <h3 className="font-medium text-gray-200">{getStageLabel(group.stage)}</h3>
               </div>
             )}
@@ -250,28 +250,28 @@ const MessagesView: React.FC<MessagesViewProps> = ({
               >
                 {message.role !== 'user' && (
                   <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-gray-800 flex items-center justify-center text-sm">
+                    <div className="w-10 h-10 bg-gray-800 flex items-center justify-center text-sm rounded">
                       {getAgentAvatar(message.agentId)}
                     </div>
                   </div>
                 )}
                 {message.role === 'user' && (
                   <div className="flex-shrink-0 ml-2">
-                    <div className="w-8 h-8 bg-blue-800 flex items-center justify-center text-sm">
+                    <div className="w-10 h-10 bg-blue-800 flex items-center justify-center text-sm rounded">
                       {getUserAvatar()}
                     </div>
                   </div>
                 )}
                 <div
-                  className={`w-full mx-2 md:mx-16 lg:mx-32 px-4 py-2 
-                    bg-gray-800 text-gray-100
+                  className={`w-full mx-2 md:mx-16 lg:mx-32 px-4 py-3 
+                    bg-gray-800 text-gray-100 rounded
                     ${message.role === 'user' ? 'border border-blue-700' : ''}
                     ${message.agentId === 'yuishin-001' ? 'border border-yellow-600' : (message.role !== 'user' ? 'border border-gray-700' : '')}
                   `}
                 >
                   <div className="text-sm">
                     {message.role !== 'user' && (
-                      <div className="font-medium text-gray-300 mb-1">
+                      <div className="font-medium text-gray-300 mb-2">
                         {getAgentName(message.agentId)}
                       </div>
                     )}
@@ -289,7 +289,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                         {message.content}
                       </ReactMarkdown>
                     </div>
-                    <div className="text-xs text-gray-500 mt-2">
+                    <div className="text-xs text-gray-500 mt-3">
                       {formatTimestamp(message.timestamp)}
                     </div>
                   </div>
