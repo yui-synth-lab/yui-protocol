@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "useDefineForClassFields": true,
+    "lib": ["ESNext"],
+    "allowJs": false,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "module": "ESNext",
+    "moduleResolution": "Node",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": false,
+    "outDir": "dist",
+    "declaration": false,
+    "types": ["node", "express"]
+  },
+  "include": ["src/server", "src/kernel", "src/agents", "src/templates", "src/types"],
+  "exclude": ["src/ui", "src/main.tsx", "src/index.css", "node_modules/@types/babel__traverse"]
+} 
