@@ -13,22 +13,21 @@ const ThreadHeader: React.FC<ThreadHeaderProps> = ({ session, currentStage }) =>
   };
 
   return (
-    <div className="bg-gray-900 border-b border-gray-700 p-4">
-      <div className="flex justify-between items-start">
-        <div>
-          <h2 className="text-xl font-semibold text-gray-100">{session.title}</h2>
-          <p className="text-sm text-gray-400">
-            {session.agents.length} agents • Created {formatTimestamp(session.createdAt)}
+    <div className="bg-gray-900 border-b border-gray-700 px-4 py-2">
+      <div className="flex justify-between items-center">
+        <div className="flex-1 min-w-0">
+          <h2 className="text-lg font-semibold text-gray-100 truncate">{session.title}</h2>
+          <p className="text-xs text-gray-400">
+            {session.agents.length} agents • {formatTimestamp(session.createdAt)}
           </p>
         </div>
         
-        {/* Stage progress indicator */}
-        {session.stageHistory.length > 0 && (
-          <StageIndicator 
-            stageHistory={session.stageHistory} 
-            currentStage={currentStage}
-          />
-        )}
+        {/* Stage progress indicator - always show */}
+        <StageIndicator 
+          stageHistory={session.stageHistory || []} 
+          currentStage={currentStage}
+          complete={session.complete}
+        />
       </div>
     </div>
   );

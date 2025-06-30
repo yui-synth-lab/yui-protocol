@@ -1,13 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
-import rehypeHighlight from 'rehype-highlight';
-import rehypeRaw from 'rehype-raw';
-import rehypeSanitize from 'rehype-sanitize';
-import 'katex/dist/katex.min.css';
-import 'highlight.js/styles/github-dark.css';
 import { Session, Message, DialogueStage } from '../types/index';
 
 interface MessagesViewProps {
@@ -121,110 +113,64 @@ const MessagesView: React.FC<MessagesViewProps> = ({
 
   const messageGroups = groupMessagesByStage(messages);
 
-  // カスタムコンポーネント
-  const components = {
-    // コードブロックのカスタマイズ
-    code: ({ node, inline, className, children, ...props }: any) => {
-      const match = /language-(\w+)/.exec(className || '');
-      return !inline && match ? (
-        <div className="relative">
-          <div className="absolute top-0 right-0 px-2 py-1 text-xs text-gray-400 bg-gray-800">
-            {match[1]}
-          </div>
-          <pre className={`${className} bg-gray-900 p-4 overflow-x-auto`}>
-            <code className="text-sm" {...props}>
-              {children}
-            </code>
-          </pre>
-        </div>
-      ) : (
-        <code className={`${className} bg-gray-700 px-1 py-0.5 text-sm`} {...props}>
-          {children}
-        </code>
+  const renderMessageContent = (content: string) => {
+    try {
+      // 基本的なMarkdownの安全性チェック
+      if (!content || typeof content !== 'string') {
+        return <span className="text-gray-400 italic">[Empty or invalid content]</span>;
+      }
+      
+      // 安全なMarkdownのみを使用
+      return (
+        <ReactMarkdown
+          remarkPlugins={[]}
+          rehypePlugins={[]}
+          components={{
+            // 基本的なコンポーネントのみを許可
+            p: ({ children }) => <p className="mb-3 text-gray-300">{children}</p>,
+            h1: ({ children }) => <h1 className="text-2xl font-bold text-gray-100 my-4 border-b border-gray-700 pb-2">{children}</h1>,
+            h2: ({ children }) => <h2 className="text-xl font-bold text-gray-100 my-3 border-b border-gray-700 pb-1">{children}</h2>,
+            h3: ({ children }) => <h3 className="text-lg font-bold text-gray-100 my-2">{children}</h3>,
+            h4: ({ children }) => <h4 className="text-base font-bold text-gray-100 my-2">{children}</h4>,
+            h5: ({ children }) => <h5 className="text-sm font-bold text-gray-100 my-1">{children}</h5>,
+            h6: ({ children }) => <h6 className="text-xs font-bold text-gray-100 my-1">{children}</h6>,
+            strong: ({ children }) => <strong className="font-bold text-gray-100">{children}</strong>,
+            em: ({ children }) => <em className="italic text-gray-200">{children}</em>,
+            code: ({ children }) => <code className="bg-gray-700 px-1 py-0.5 text-sm text-gray-100 rounded">{children}</code>,
+            pre: ({ children }) => <pre className="bg-gray-900 p-4 overflow-x-auto text-sm text-gray-100 rounded mb-3">{children}</pre>,
+            blockquote: ({ children }) => <blockquote className="border-l-4 border-blue-500 pl-4 py-2 my-4 bg-gray-800">{children}</blockquote>,
+            ul: ({ children }) => <ul className="list-disc list-inside space-y-1 my-4 text-gray-300">{children}</ul>,
+            ol: ({ children }) => <ol className="list-decimal list-inside space-y-1 my-4 text-gray-300">{children}</ol>,
+            li: ({ children }) => <li className="text-gray-300">{children}</li>,
+            hr: () => <hr className="border-gray-700 my-4" />,
+            br: () => <br />,
+            // テーブル関連は無効化
+            table: () => <div className="bg-gray-800 p-4 rounded mb-3 text-gray-300">[Table content]</div>,
+            thead: () => null,
+            tbody: () => null,
+            tr: () => null,
+            th: () => null,
+            td: () => null,
+            // その他の危険な要素も無効化
+            a: () => <span className="text-blue-400">[Link]</span>,
+            img: () => <span className="text-gray-400">[Image]</span>,
+            // デフォルトの処理
+            div: ({ children }) => <div className="text-gray-300">{children}</div>,
+            span: ({ children }) => <span className="text-gray-300">{children}</span>
+          }}
+        >
+          {content}
+        </ReactMarkdown>
       );
-    },
-    // テーブルのカスタマイズ
-    table: ({ children }: any) => (
-      <div className="overflow-x-auto my-4">
-        <table className="min-w-full border-collapse border border-gray-600">
-          {children}
-        </table>
-      </div>
-    ),
-    th: ({ children }: any) => (
-      <th className="border border-gray-600 px-4 py-2 bg-gray-800 text-left font-medium">
-        {children}
-      </th>
-    ),
-    td: ({ children }: any) => (
-      <td className="border border-gray-600 px-4 py-2">
-        {children}
-      </td>
-    ),
-    // ブロッククォートのカスタマイズ
-    blockquote: ({ children }: any) => (
-      <blockquote className="border-l-4 border-blue-500 pl-4 py-2 my-4 bg-gray-800">
-        {children}
-      </blockquote>
-    ),
-    // リストのカスタマイズ
-    ul: ({ children }: any) => (
-      <ul className="list-disc list-inside space-y-1 my-4">
-        {children}
-      </ul>
-    ),
-    ol: ({ children }: any) => (
-      <ol className="list-decimal list-inside space-y-1 my-4">
-        {children}
-      </ol>
-    ),
-    // リンクのカスタマイズ
-    a: ({ href, children }: any) => (
-      <a 
-        href={href} 
-        target="_blank" 
-        rel="noopener noreferrer"
-        className="text-blue-400 hover:text-blue-300 underline"
-      >
-        {children}
-      </a>
-    ),
-    // 見出しのカスタマイズ
-    h1: ({ children }: any) => (
-      <h1 className="text-2xl font-bold text-gray-100 my-4 border-b border-gray-700 pb-2">
-        {children}
-      </h1>
-    ),
-    h2: ({ children }: any) => (
-      <h2 className="text-xl font-bold text-gray-100 my-3 border-b border-gray-700 pb-1">
-        {children}
-      </h2>
-    ),
-    h3: ({ children }: any) => (
-      <h3 className="text-lg font-bold text-gray-100 my-2">
-        {children}
-      </h3>
-    ),
-    h4: ({ children }: any) => (
-      <h4 className="text-base font-bold text-gray-100 my-2">
-        {children}
-      </h4>
-    ),
-    // 水平線のカスタマイズ
-    hr: () => (
-      <hr className="border-gray-600 my-6" />
-    ),
-    // 強調のカスタマイズ
-    strong: ({ children }: any) => (
-      <strong className="font-bold text-gray-100">
-        {children}
-      </strong>
-    ),
-    em: ({ children }: any) => (
-      <em className="italic text-gray-200">
-        {children}
-      </em>
-    ),
+    } catch (error) {
+      console.error('[MessagesView] Error rendering markdown content:', error);
+      // エラーが発生した場合はプレーンテキストとして表示
+      return (
+        <div className="whitespace-pre-wrap text-gray-100">
+          {content}
+        </div>
+      );
+    }
   };
 
   return (
@@ -275,19 +221,8 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                         {getAgentName(message.agentId)}
                       </div>
                     )}
-                    <div className="prose prose-invert prose-sm max-w-none prose-headings:text-gray-100 prose-p:text-gray-300 prose-strong:text-gray-100 prose-em:text-gray-200 prose-code:text-gray-100 prose-pre:bg-gray-900 prose-blockquote:bg-gray-800 prose-blockquote:border-blue-500 prose-a:text-blue-400 prose-a:hover:text-blue-300">
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm as any, remarkMath as any]}
-                        rehypePlugins={[
-                          rehypeKatex as any,
-                          rehypeHighlight as any,
-                          rehypeRaw as any,
-                          rehypeSanitize as any
-                        ]}
-                        components={components}
-                      >
-                        {message.content}
-                      </ReactMarkdown>
+                    <div className="prose prose-invert prose-sm max-w-none">
+                      {renderMessageContent(message.content ?? '')}
                     </div>
                     <div className="text-xs text-gray-500 mt-3">
                       {formatTimestamp(message.timestamp)}

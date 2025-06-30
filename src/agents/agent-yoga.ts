@@ -39,59 +39,33 @@ export class YogaAgent extends BaseAgent {
   }
 
   async stage1IndividualThought(prompt: string, context: Message[]): Promise<IndividualThought> {
-    const startTime = Date.now();
     const relevantContext = this.getRelevantContext(context);
     const contextAnalysis = this.analyzeContext(relevantContext);
     
-    const geminiPrompt = `${this.getStagePrompt('individual-thought')}
+    const geminiPrompt = this.getStagePrompt('individual-thought', {
+      query: prompt,
+      context: contextAnalysis
+    });
 
-Query: ${prompt}
-Context: ${contextAnalysis}
-
-Please provide your individual thought on this query, focusing on your intuitive and creative approach.`;
-
-    try {
-      const content = await this.callGeminiCli(geminiPrompt);
-      const duration = Date.now() - startTime;
-      
-      // Log the interaction
-      await this.logInteraction(
-        this.sessionId || 'unknown-session',
-        'individual-thought',
-        geminiPrompt,
-        content,
-        duration,
-        'success'
-      );
-      
-      return {
-        agentId: this.agent.id,
-        content,
-        reasoning: `I took an intuitive, creative approach challenging conventional thinking and exploring broad possibilities. Context: ${contextAnalysis}`,
-        assumptions: [
-          'Conventional approaches can be limiting',
-          'Creative disruption often leads to breakthroughs',
-          'Broad perspectives reveal hidden opportunities'
-        ],
-        approach: 'Intuitive creative exploration with broad innovative thinking'
-      };
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      
-      // Log the error
-      await this.logInteraction(
-        this.sessionId || 'unknown-session',
-        'individual-thought',
-        geminiPrompt,
-        'Error occurred during processing',
-        duration,
-        'error',
-        errorMessage
-      );
-      
-      throw error;
-    }
+    const content = await this.executeWithErrorHandling(
+      async () => this.callGeminiCli(geminiPrompt),
+      this.sessionId || 'unknown-session',
+      'individual-thought',
+      geminiPrompt,
+      'individual thought processing'
+    );
+    
+    return {
+      agentId: this.agent.id,
+      content,
+      reasoning: `I approached this with creative problem-solving, focusing on innovative and practical solutions. Context analysis: ${contextAnalysis}`,
+      assumptions: [
+        'Creative solutions often emerge from unconventional thinking',
+        'Practical implementation is as important as theoretical understanding',
+        'Innovation requires balancing creativity with feasibility'
+      ],
+      approach: 'Creative problem-solving with practical implementation focus'
+    };
   }
 
   async stage2MutualReflection(prompt: string, otherThoughts: IndividualThought[], context: Message[]): Promise<MutualReflection> {

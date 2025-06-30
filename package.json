@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -p tsconfig.server.json && vite build",
     "preview": "vite preview",
-    "test": "vitest",
+    "test": "vitest --run",
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
     "server": "node dist/server/index.js"
@@ -22,6 +22,7 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-markdown": "^8.0.7",
+    "react-router-dom": "^7.6.3",
     "rehype-highlight": "^7.0.2",
     "rehype-katex": "^7.0.1",
     "rehype-raw": "^7.0.0",

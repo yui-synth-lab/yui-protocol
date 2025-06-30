@@ -44,34 +44,41 @@ export class YuishinAgent extends BaseAgent {
     return {
       agentId: this.agent.id,
       content: response,
-      reasoning: 'Individual thought from Yuishin',
-      approach: 'synthesis',
-      assumptions: ['All perspectives are valuable', 'Objectivity is key']
+      reasoning: 'Individual thought synthesis',
+      assumptions: ['Creative synthesis approach'],
+      approach: 'Intuitive and creative thinking'
     };
   }
 
   async stage2MutualReflection(prompt: string, otherThoughts: IndividualThought[], context: Message[]): Promise<MutualReflection> {
-    const response = await this.callGeminiCli(prompt);
+    const thoughtsText = otherThoughts.map(t => `${t.agentId}: ${t.content}`).join('\n\n');
+    const fullPrompt = `${prompt}\n\n${thoughtsText}`;
+    const response = await this.callGeminiCli(fullPrompt);
+    
     return {
       agentId: this.agent.id,
       content: response,
-      reflections: otherThoughts.map(thought => ({
-        targetAgentId: thought.agentId,
-        reaction: `Summarized: ${thought.content.substring(0, 100)}...`,
+      reflections: otherThoughts.map(t => ({
+        targetAgentId: t.agentId,
+        reaction: 'Synthesized perspective',
         agreement: true,
-        questions: ['How does this perspective contribute to the overall understanding?']
+        questions: []
       }))
     };
   }
 
   async stage3ConflictResolution(conflicts: any[], context: Message[]): Promise<AgentResponse> {
-    const response = await this.callGeminiCli(JSON.stringify(conflicts));
+    const conflictsText = conflicts.map(c => c.description).join('\n\n');
+    const prompt = `Resolve these conflicts:\n\n${conflictsText}`;
+    const response = await this.callGeminiCli(prompt);
+    
     return {
       agentId: this.agent.id,
       content: response,
-      reasoning: 'Conflict resolution summary',
+      reasoning: 'Conflict resolution synthesis',
       confidence: await this.generateConfidence('conflict-resolution', context),
-      stage: 'conflict-resolution'
+      stage: 'conflict-resolution',
+      stageData: { conflicts }
     };
   }
 
@@ -80,9 +87,10 @@ export class YuishinAgent extends BaseAgent {
     return {
       agentId: this.agent.id,
       content: response,
-      reasoning: 'Synthesis attempt summary',
+      reasoning: 'Synthesis attempt',
       confidence: await this.generateConfidence('synthesis-attempt', context),
-      stage: 'synthesis-attempt'
+      stage: 'synthesis-attempt',
+      stageData: { synthesisData }
     };
   }
 
@@ -97,13 +105,13 @@ export class YuishinAgent extends BaseAgent {
     };
   }
 
-  // Specialized summarization methods
+  // Stage summarization methods - these are called by the router for each stage
   public async summarizeIndividualThoughts(
     thoughts: IndividualThought[], 
     userPrompt: string,
     language: Language = 'en'
   ): Promise<AgentResponse> {
-    const prompt = this.buildSummarizePrompt(thoughts, userPrompt, 'individual-thoughts', language);
+    const prompt = this.buildSummarizePrompt(thoughts, userPrompt, 'individual-thought', language);
     return this.executeSummarization(prompt, 'individual-thought', async () => {
       const response = await this.callGeminiCliWithTruncation(prompt);
       return {
@@ -225,91 +233,6 @@ export class YuishinAgent extends BaseAgent {
       prompt,
       'summarization'
     );
-  }
-
-  // Pre-summarization for token reduction
-  public async preSummarizeAgentResponses(
-    responses: AgentResponse[],
-    stage: DialogueStage,
-    language: Language = 'en'
-  ): Promise<AgentResponse[]> {
-    const processedResponses: AgentResponse[] = [];
-    
-    for (const response of responses) {
-      try {
-        const prompt = this.buildPreSummarizePrompt(response, stage, language);
-        const summarizedContent = await this.executePreSummarization(prompt, stage, response.agentId);
-        
-        processedResponses.push({
-          ...response,
-          content: summarizedContent,
-          reasoning: `Pre-summarized for ${stage} stage`,
-          confidence: Math.max(0.7, (response.confidence || 0.8) * 0.9) // Slightly reduce confidence
-        });
-      } catch (error) {
-        console.error(`[YuishinAgent] Error pre-summarizing response from ${response.agentId}:`, error);
-        // Keep original response if summarization fails
-        processedResponses.push(response);
-      }
-    }
-    
-    return processedResponses;
-  }
-
-  private async executePreSummarization(
-    prompt: string,
-    stage: DialogueStage,
-    agentId: string
-  ): Promise<string> {
-    return this.executeAIWithTruncationAndErrorHandling(
-      prompt,
-      this.sessionId || 'unknown-session',
-      stage,
-      'pre-summarization'
-    );
-  }
-
-  private buildPreSummarizePrompt(response: AgentResponse, stage: DialogueStage, language: Language): string {
-    const basePrompt = language === 'ja' ? 
-      this.getJapanesePreSummarizePrompt(stage) : 
-      this.getEnglishPreSummarizePrompt(stage);
-
-    return `${basePrompt}
-
-Agent ID: ${response.agentId}
-Original Content: ${response.content}
-Original Reasoning: ${response.reasoning || 'Not provided'}
-Original Confidence: ${response.confidence || 'Not provided'}
-
-Please provide a concise summary that preserves the key insights while reducing the token count.`;
-  }
-
-  private getEnglishPreSummarizePrompt(stage: string): string {
-    return `You are a summarization specialist. Your task is to create concise summaries of AI agent responses from the ${stage} stage of the Yui Protocol.
-
-Guidelines:
-1. Extract the most important insights and key points
-2. Preserve the agent's unique perspective and reasoning style
-3. Keep the summary under 500 words
-4. Preserve critical details that would be needed for the next stage
-5. Focus on actionable insights and conclusions
-6. Maintain the agent's confidence level and reasoning approach
-
-Format the summary as a clear, structured response that can be easily understood by other agents.`;
-  }
-
-  private getJapanesePreSummarizePrompt(stage: string): string {
-    return `あなたは要約専門家です。Yui Protocolの${stage}段階におけるAIエージェントの回答を簡潔に要約するタスクを担当します。
-
-ガイドライン:
-1. 最も重要な洞察とキーポイントを抽出する
-2. エージェントの独自の視点と推論スタイルを維持する
-3. 要約を500語以下に保つ
-4. 次の段階で必要となる重要な詳細を保持する
-5. 実行可能な洞察と結論に焦点を当てる
-6. エージェントの信頼度レベルと推論アプローチを維持する
-
-他のエージェントが簡単に理解できる、明確で構造化された回答として要約をフォーマットしてください。`;
   }
 
   private buildSummarizePrompt(data: any, userPrompt: string, stage: string, language: Language): string {

@@ -443,66 +443,6 @@ app.delete('/api/outputs/:id', (async (req: Request, res: Response) => {
   }
 }) as RequestHandler);
 
-// Interaction log endpoints
-app.get('/api/logs/sessions/:sessionId', (async (req: Request, res: Response) => {
-  try {
-    const { sessionId } = req.params;
-    const logs = await realtimeRouter.getSessionInteractionLogs(sessionId);
-    res.json(logs);
-  } catch (error) {
-    console.error('Error getting session interaction logs:', error);
-    res.status(500).json({ error: 'Failed to get session interaction logs' });
-  }
-}) as RequestHandler);
-
-app.get('/api/logs/agents/:agentId', (async (req: Request, res: Response) => {
-  try {
-    const { agentId } = req.params;
-    const logs = await realtimeRouter.getAgentInteractionLogs(agentId);
-    res.json(logs);
-  } catch (error) {
-    console.error('Error getting agent interaction logs:', error);
-    res.status(500).json({ error: 'Failed to get agent interaction logs' });
-  }
-}) as RequestHandler);
-
-app.get('/api/logs/stages/:stage', (async (req: Request, res: Response) => {
-  try {
-    const { stage } = req.params;
-    const logs = await realtimeRouter.getStageInteractionLogs(stage as any);
-    res.json(logs);
-  } catch (error) {
-    console.error('Error getting stage interaction logs:', error);
-    res.status(500).json({ error: 'Failed to get stage interaction logs' });
-  }
-}) as RequestHandler);
-
-app.get('/api/logs/summaries', (async (req: Request, res: Response) => {
-  try {
-    const summaries = await realtimeRouter.getAllSessionSummaries();
-    res.json(summaries);
-  } catch (error) {
-    console.error('Error getting session summaries:', error);
-    res.status(500).json({ error: 'Failed to get session summaries' });
-  }
-}) as RequestHandler);
-
-app.get('/api/logs/summaries/:sessionId', (async (req: Request, res: Response) => {
-  try {
-    const { sessionId } = req.params;
-    const session = realtimeRouter.getSession(sessionId);
-    if (!session) {
-      return res.status(404).json({ error: 'Session not found' });
-    }
-    
-    const summary = await realtimeRouter.generateSessionSummary(sessionId, session.title, 'en');
-    res.json(summary);
-  } catch (error) {
-    console.error('Error generating session summary:', error);
-    res.status(500).json({ error: 'Failed to generate session summary' });
-  }
-}) as RequestHandler);
-
 // Health check endpoint
 app.get('/api/health', ((req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -534,11 +474,6 @@ const server = app.listen(port, () => {
   console.log(`  GET  /api/outputs - Get all outputs`);
   console.log(`  GET  /api/outputs/:id - Get specific output`);
   console.log(`  DELETE /api/outputs/:id - Delete specific output`);
-  console.log(`  GET  /api/logs/sessions/:id - Get session interaction logs`);
-  console.log(`  GET  /api/logs/agents/:id - Get agent interaction logs`);
-  console.log(`  GET  /api/logs/stages/:stage - Get stage interaction logs`);
-  console.log(`  GET  /api/logs/summaries - Get session summaries`);
-  console.log(`  GET  /api/logs/summaries/:id - Get session summary`);
 });
 
 // Graceful shutdown handling

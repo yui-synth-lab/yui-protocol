@@ -39,7 +39,6 @@ export class HekitoAgent extends BaseAgent {
   }
 
   async stage1IndividualThought(prompt: string, context: Message[]): Promise<IndividualThought> {
-    const startTime = Date.now();
     const relevantContext = this.getRelevantContext(context);
     const contextAnalysis = this.analyzeContext(relevantContext);
     
@@ -50,48 +49,25 @@ Context: ${contextAnalysis}
 
 Please provide your individual thought on this query, focusing on your analytical and balanced approach. Consider multiple perspectives and domains.`;
 
-    try {
-      const content = await this.callGeminiCli(geminiPrompt);
-      const duration = Date.now() - startTime;
-      
-      // Log the interaction
-      await this.logInteraction(
-        this.sessionId || 'unknown-session',
-        'individual-thought',
-        geminiPrompt,
-        content,
-        duration,
-        'success'
-      );
-      
-      return {
-        agentId: this.agent.id,
-        content,
-        reasoning: `I approached this analytically, considering multiple perspectives and domains while maintaining balance. Context analysis: ${contextAnalysis}`,
-        assumptions: [
-          'Multiple perspectives provide richer understanding',
-          'Balance between different approaches is valuable',
-          'Cross-domain thinking reveals hidden connections'
-        ],
-        approach: 'Analytical synthesis with balanced cross-domain thinking'
-      };
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      
-      // Log the error
-      await this.logInteraction(
-        this.sessionId || 'unknown-session',
-        'individual-thought',
-        geminiPrompt,
-        'Error occurred during processing',
-        duration,
-        'error',
-        errorMessage
-      );
-      
-      throw error;
-    }
+    const content = await this.executeWithErrorHandling(
+      async () => this.callGeminiCli(geminiPrompt),
+      this.sessionId || 'unknown-session',
+      'individual-thought',
+      geminiPrompt,
+      'individual thought processing'
+    );
+    
+    return {
+      agentId: this.agent.id,
+      content,
+      reasoning: `I approached this analytically, considering multiple perspectives and domains while maintaining balance. Context analysis: ${contextAnalysis}`,
+      assumptions: [
+        'Multiple perspectives provide richer understanding',
+        'Balance between different approaches is valuable',
+        'Cross-domain thinking reveals hidden connections'
+      ],
+      approach: 'Analytical synthesis with balanced cross-domain thinking'
+    };
   }
 
   async stage2MutualReflection(prompt: string, otherThoughts: IndividualThought[], context: Message[]): Promise<MutualReflection> {

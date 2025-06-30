@@ -57,6 +57,25 @@ export abstract class AIExecutor {
   protected generateFallbackResponse(prompt: string): string {
     return `[${this.agentName}] Fallback response: I understand your query about "${prompt.substring(0, 50)}...". However, I'm currently experiencing technical difficulties with my primary AI service. Please try again later or contact support if the issue persists.`;
   }
+
+  protected sanitizeContent(content: string): string {
+    if (!content || typeof content !== 'string') {
+      return this.generateFallbackResponse('');
+    }
+    
+    // 基本的なサニタイゼーション
+    let sanitized = content.trim();
+    
+    // 非常に長いコンテンツを切り詰める
+    if (sanitized.length > 50000) {
+      sanitized = sanitized.substring(0, 50000) + '\n\n[Content truncated due to length]';
+    }
+    
+    // 不正な文字を除去
+    sanitized = sanitized.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+    
+    return sanitized;
+  }
 }
 
 // Shared utility function for generating fallback responses

@@ -42,7 +42,7 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({ agents, availableAgents }
     <div className="bg-gray-900 shadow-sm p-4 h-full flex flex-col">
       <h3 className="text-base font-semibold text-gray-100 mb-3 flex-shrink-0">Active Agents</h3>
       
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         <div className="space-y-3">
           {agents.map((agent) => (
             <div key={agent.id} className="flex items-start p-3 bg-gray-800 rounded">

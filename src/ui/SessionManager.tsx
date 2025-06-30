@@ -54,7 +54,7 @@ const SessionManager: React.FC<SessionManagerProps> = ({
   };
 
   return (
-    <div className="bg-gray-900 shadow-sm p-4 flex flex-col">
+    <div className="bg-gray-900 shadow-sm p-4 flex flex-col h-full overflow-hidden">
       <div className="flex items-center justify-between mb-3 flex-shrink-0">
         <h3 className="text-base font-semibold text-gray-100">Sessions</h3>
         <button
@@ -118,34 +118,48 @@ const SessionManager: React.FC<SessionManagerProps> = ({
         </form>
       )}
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         <div className="space-y-2">
           {sessions.length === 0 ? (
             <p className="text-xs text-gray-400 text-center py-4">No sessions yet.</p>
           ) : (
-            sessions.map((session) => (
-              <button
-                key={session.id}
-                onClick={() => onSelectSession(session)}
-                className={`w-full text-left p-3 transition-colors rounded ${
-                  currentSession?.id === session.id
-                    ? 'bg-blue-950 border border-blue-800'
-                    : 'hover:bg-gray-800'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-medium text-gray-100 text-sm truncate">{session.title}</h4>
-                    <p className="text-xs text-gray-400 mt-1">
-                      {session.agents.length} agents • {session.messages.length} messages
-                    </p>
+            sessions.map((session) => {
+              // Ensure we have the correct message count for this session
+              // Use defensive programming to prevent cross-session contamination
+              const messageCount = session.messages && Array.isArray(session.messages) 
+                ? session.messages.length 
+                : 0;
+              const agentCount = session.agents && Array.isArray(session.agents) 
+                ? session.agents.length 
+                : 0;
+              
+              // Create a stable key that doesn't change unless the session actually changes
+              const sessionKey = session.id;
+              
+              return (
+                <button
+                  key={sessionKey}
+                  onClick={() => onSelectSession(session)}
+                  className={`w-full text-left p-3 transition-colors rounded ${
+                    currentSession?.id === session.id
+                      ? 'bg-blue-950 border border-blue-800'
+                      : 'hover:bg-gray-800'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-medium text-gray-100 text-sm truncate">{session.title}</h4>
+                      <p className="text-xs text-gray-400 mt-1">
+                        {agentCount} agents • {messageCount} messages
+                      </p>
+                    </div>
+                    <span className="text-xs text-gray-500 ml-2 flex-shrink-0">
+                      {new Date(session.updatedAt).toLocaleDateString()}
+                    </span>
                   </div>
-                  <span className="text-xs text-gray-500 ml-2 flex-shrink-0">
-                    {new Date(session.updatedAt).toLocaleDateString()}
-                  </span>
-                </div>
-              </button>
-            ))
+                </button>
+              );
+            })
           )}
         </div>
       </div>

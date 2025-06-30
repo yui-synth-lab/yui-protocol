@@ -3,13 +3,30 @@ import ThreadView from './ThreadView';
 import AgentSelector from './AgentSelector';
 import SessionManager from './SessionManager';
 import { Session, Agent } from '../types/index';
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  useParams,
+  useNavigate,
+  useLocation
+} from 'react-router-dom';
 
-function App() {
-  const [currentSession, setCurrentSession] = useState<Session | null>(null);
+function AppRoutes() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [availableAgents, setAvailableAgents] = useState<Agent[]>([]);
   const [showProcessInfo, setShowProcessInfo] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
+
+  const navigate = useNavigate();
+  const location = useLocation();
+  const params = useParams();
+  const sessionIdFromUrl = params.sessionId;
+
+  // Get current session from URL
+  const currentSession = sessionIdFromUrl 
+    ? sessions.find(s => s.id === sessionIdFromUrl) || null
+    : null;
 
   useEffect(() => {
     // Load available agents and sessions on component mount
@@ -43,15 +60,15 @@ function App() {
     try {
       const response = await fetch('/api/sessions');
       const sessionsData = await response.json();
-      setSessions(sessionsData);
       
-      // Update current session if it exists in the new data
-      if (currentSession) {
-        const updatedCurrentSession = sessionsData.find((s: Session) => s.id === currentSession.id);
-        if (updatedCurrentSession) {
-          setCurrentSession(updatedCurrentSession);
-        }
-      }
+      // Sort sessions by updatedAt in descending order only on initial load
+      const sortedSessions = sessionsData.sort((a: Session, b: Session) => {
+        const dateA = a.updatedAt instanceof Date ? a.updatedAt : new Date(a.updatedAt);
+        const dateB = b.updatedAt instanceof Date ? b.updatedAt : new Date(b.updatedAt);
+        return dateB.getTime() - dateA.getTime();
+      });
+      
+      setSessions(sortedSessions);
     } catch (error) {
       console.error('Failed to load sessions:', error);
     }
@@ -72,42 +89,51 @@ function App() {
       const newSession = await response.json();
       console.log('App: Received new session:', newSession);
       
-      // Clear any existing realtime session data for the new session
-      localStorage.removeItem(`session_${newSession.id}`);
-      
-      setSessions(prev => [...prev, newSession]);
-      setCurrentSession(newSession);
+      // Add new session to the beginning of the list (most recent first)
+      setSessions(prev => [newSession, ...prev]);
+      navigate(`/session/${newSession.id}`);
     } catch (error) {
       console.error('Failed to create session:', error);
     }
   };
 
   const selectSession = (session: Session) => {
-    // Clear any existing realtime session data to prevent mixing
-    const existingSessionId = localStorage.getItem(`session_${session.id}`);
-    if (existingSessionId) {
-      localStorage.removeItem(`session_${session.id}`);
-      console.log('Cleared existing realtime session data for:', session.id);
-    }
-    setCurrentSession(session);
+    navigate(`/session/${session.id}`);
   };
 
   // Callback to handle session updates from ThreadView
   const handleSessionUpdate = async (updatedSession: Session) => {
-    setCurrentSession(updatedSession);
-
+    // Update sessions list without unnecessary sorting
     setSessions(prev => {
-      const updatedSessions = prev.map(s =>
-        s.id === updatedSession.id
-          ? { ...s, ...updatedSession, messages: updatedSession.messages }
-          : s
-      );
-      // Sort by updatedAt in descending order (newest first)
-      return updatedSessions.sort((a, b) => {
-        const dateA = a.updatedAt instanceof Date ? a.updatedAt : new Date(a.updatedAt);
-        const dateB = b.updatedAt instanceof Date ? b.updatedAt : new Date(b.updatedAt);
-        return dateB.getTime() - dateA.getTime();
+      const sessionIndex = prev.findIndex(s => s.id === updatedSession.id);
+      if (sessionIndex === -1) {
+        // Session not found, add it (shouldn't happen but just in case)
+        return [...prev, updatedSession];
+      }
+      
+      // Create a completely new sessions array to prevent reference issues
+      const newSessions = prev.map((session, index) => {
+        if (index === sessionIndex) {
+          // Create a new session object with updated fields
+          return {
+            id: session.id,
+            title: session.title,
+            agents: session.agents,
+            createdAt: session.createdAt,
+            // Only update the fields that actually changed
+            messages: updatedSession.messages || session.messages,
+            updatedAt: updatedSession.updatedAt || session.updatedAt,
+            currentStage: updatedSession.currentStage !== undefined ? updatedSession.currentStage : session.currentStage,
+            stageHistory: updatedSession.stageHistory || session.stageHistory,
+            status: updatedSession.status || session.status,
+            complete: updatedSession.complete !== undefined ? updatedSession.complete : session.complete
+          };
+        }
+        // Return unchanged session
+        return session;
       });
+      
+      return newSessions;
     });
   };
 
@@ -202,29 +228,35 @@ function App() {
               {/* Sidebar content */}
               <div className={`
                 ${showSidebar ? 'fixed lg:relative left-0 top-0' : ''}
-                h-full lg:h-auto w-80 lg:w-full max-w-sm lg:max-w-none
+                h-full lg:h-full w-80 lg:w-full max-w-sm lg:max-w-none
                 bg-gray-800 lg:bg-transparent
                 border-r border-gray-700 lg:border-none
                 z-50 lg:z-auto
-                overflow-y-auto
+                overflow-hidden
               `}>
-                <div className="p-4 lg:p-0 space-y-3">
-                  <SessionManager
-                    sessions={sessions}
-                    currentSession={currentSession}
-                    onSelectSession={(session) => {
-                      selectSession(session);
-                      setShowSidebar(false); // Close sidebar on mobile after selection
-                    }}
-                    onCreateSession={createNewSession}
-                    availableAgents={availableAgents}
-                  />
-                  {currentSession && (
-                    <AgentSelector
-                      agents={currentSession.agents}
-                      availableAgents={availableAgents}
-                    />
-                  )}
+                <div className="p-4 lg:p-0 h-full flex flex-col">
+                  <div className="flex-1 min-h-0 flex flex-col space-y-3">
+                    <div className="flex-1 min-h-0 overflow-hidden">
+                      <SessionManager
+                        sessions={sessions}
+                        currentSession={currentSession}
+                        onSelectSession={(session) => {
+                          selectSession(session);
+                          setShowSidebar(false); // Close sidebar on mobile after selection
+                        }}
+                        onCreateSession={createNewSession}
+                        availableAgents={availableAgents}
+                      />
+                    </div>
+                    {currentSession && (
+                      <div className="h-64 overflow-hidden">
+                        <AgentSelector
+                          agents={currentSession.agents}
+                          availableAgents={availableAgents}
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -261,4 +293,13 @@ function App() {
   );
 }
 
-export default App; 
+export default function App() {
+  return (
+    <Router>
+      <Routes>
+        <Route path="/session/:sessionId" element={<AppRoutes />} />
+        <Route path="/" element={<AppRoutes />} />
+      </Routes>
+    </Router>
+  );
+} 

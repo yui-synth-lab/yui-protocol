@@ -40,6 +40,7 @@ export interface Session {
   status: 'active' | 'completed' | 'paused';
   currentStage?: DialogueStage;
   stageHistory: StageHistory[];
+  complete?: boolean;
 }
 
 export interface AgentResponse {
@@ -142,67 +143,4 @@ export interface DialogueLog {
     duration: number;
     consensusLevel: number;
   };
-}
-
-// Detailed AI interaction logging types
-export interface AIInteractionLog {
-  id: string;
-  sessionId: string;
-  stage: DialogueStage;
-  agentId: string;
-  agentName: string;
-  timestamp: Date;
-  input: {
-    prompt: string;
-    context: Message[];
-    stageData?: any;
-    language: Language;
-  };
-  output: {
-    content: string;
-    reasoning?: string;
-    confidence?: number;
-    stageData?: any;
-    metadata?: Record<string, any>;
-  };
-  duration: number; // in milliseconds
-  status: 'success' | 'error' | 'timeout';
-  error?: string;
-}
-
-export interface SessionInteractionSummary {
-  sessionId: string;
-  title: string;
-  createdAt: Date;
-  completedAt?: Date;
-  totalInteractions: number;
-  agents: {
-    agentId: string;
-    agentName: string;
-    interactions: number;
-    totalDuration: number;
-    averageConfidence: number;
-  }[];
-  stages: {
-    stage: DialogueStage;
-    interactions: number;
-    averageDuration: number;
-    conflicts?: number;
-  }[];
-  language: Language;
-}
-
-// Simplified interaction log for hierarchical storage
-export interface SimplifiedInteractionLog {
-  id: string;
-  sessionId: string;
-  stage: DialogueStage;
-  agentId: string;
-  agentName: string;
-  timestamp: Date;
-  prompt: string;
-  output: string;
-  duration: number;
-  status: 'success' | 'error' | 'timeout';
-  error?: string;
 } 

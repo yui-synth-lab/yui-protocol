@@ -1,6 +1,6 @@
 import { promises as fs } from 'fs';
 import path from 'path';
-import { AIInteractionLog, SessionInteractionSummary, DialogueStage, Language } from '../types/index.js';
+import { DialogueStage, Language } from '../types/index.js';
 
 export interface SimplifiedInteractionLog {
   id: string;
@@ -214,120 +214,6 @@ export class InteractionLogger {
     } catch (error) {
       console.error(`[InteractionLogger] Error reading stage logs for ${stage}:`, error);
       return [];
-    }
-  }
-
-  // Generate session interaction summary
-  public async generateSessionSummary(sessionId: string, title: string, language: Language): Promise<SessionInteractionSummary> {
-    const logs = await this.getSessionLogs(sessionId);
-    
-    if (logs.length === 0) {
-      return {
-        sessionId,
-        title,
-        createdAt: new Date(),
-        totalInteractions: 0,
-        agents: [],
-        stages: [],
-        language
-      };
-    }
-
-    // Group by agent
-    const agentStats = new Map<string, { interactions: number; totalDuration: number; confidences: number[] }>();
-    const stageStats = new Map<DialogueStage, { interactions: number; totalDuration: number }>();
-
-    for (const log of logs) {
-      // Agent stats
-      if (!agentStats.has(log.agentId)) {
-        agentStats.set(log.agentId, { interactions: 0, totalDuration: 0, confidences: [] });
-      }
-      const agentStat = agentStats.get(log.agentId)!;
-      agentStat.interactions++;
-      agentStat.totalDuration += log.duration;
-
-      // Stage stats
-      if (!stageStats.has(log.stage)) {
-        stageStats.set(log.stage, { interactions: 0, totalDuration: 0 });
-      }
-      const stageStat = stageStats.get(log.stage)!;
-      stageStat.interactions++;
-      stageStat.totalDuration += log.duration;
-    }
-
-    const agents = Array.from(agentStats.entries()).map(([agentId, stats]) => ({
-      agentId,
-      agentName: logs.find(log => log.agentId === agentId)?.agentName || agentId,
-      interactions: stats.interactions,
-      totalDuration: stats.totalDuration,
-      averageConfidence: 0 // Simplified logs don't include confidence
-    }));
-
-    const stages = Array.from(stageStats.entries()).map(([stage, stats]) => ({
-      stage,
-      interactions: stats.interactions,
-      averageDuration: stats.totalDuration / stats.interactions
-    }));
-
-    return {
-      sessionId,
-      title,
-      createdAt: logs[0].timestamp,
-      completedAt: logs[logs.length - 1].timestamp,
-      totalInteractions: logs.length,
-      agents,
-      stages,
-      language
-    };
-  }
-
-  // Get all session summaries
-  public async getAllSessionSummaries(): Promise<SessionInteractionSummary[]> {
-    try {
-      const sessions = await fs.readdir(this.logDir);
-      const summaries: SessionInteractionSummary[] = [];
-      
-      for (const sessionId of sessions) {
-        const sessionDir = path.join(this.logDir, sessionId);
-        try {
-          const sessionStat = await fs.stat(sessionDir);
-          if (sessionStat.isDirectory()) {
-            try {
-              const logs = await this.getSessionLogs(sessionId);
-              if (logs.length > 0) {
-                const summary = await this.generateSessionSummary(
-                  sessionId, 
-                  `Session ${sessionId}`, 
-                  'en' // Default language
-                );
-                summaries.push(summary);
-              }
-            } catch (error) {
-              console.error(`[InteractionLogger] Error generating summary for ${sessionId}:`, error);
-            }
-          }
-        } catch (error) {
-          // Skip if not a directory
-        }
-      }
-      
-      return summaries.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-    } catch (error) {
-      console.error('[InteractionLogger] Error reading session summaries:', error);
-      return [];
-    }
-  }
-
-  // Delete logs for a session
-  public async deleteSessionLogs(sessionId: string): Promise<boolean> {
-    try {
-      const sessionDir = path.join(this.logDir, sessionId);
-      await fs.rm(sessionDir, { recursive: true, force: true });
-      console.log(`[InteractionLogger] Deleted logs for session ${sessionId}`);
-      return true;
-    } catch (error) {
-      console.error(`[InteractionLogger] Error deleting logs for session ${sessionId}:`, error);
-      return false;
     }
   }
 } 

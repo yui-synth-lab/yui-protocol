@@ -39,7 +39,6 @@ export class KanshiAgent extends BaseAgent {
   }
 
   async stage1IndividualThought(prompt: string, context: Message[]): Promise<IndividualThought> {
-    const startTime = Date.now();
     const relevantContext = this.getRelevantContext(context);
     const contextAnalysis = this.analyzeContext(relevantContext);
     
@@ -48,48 +47,25 @@ export class KanshiAgent extends BaseAgent {
       context: contextAnalysis
     });
 
-    try {
-      const content = await this.callGeminiCli(geminiPrompt);
-      const duration = Date.now() - startTime;
-      
-      // Log the interaction
-      await this.logInteraction(
-        this.sessionId || 'unknown-session',
-        'individual-thought',
-        geminiPrompt,
-        content,
-        duration,
-        'success'
-      );
-      
-      return {
-        agentId: this.agent.id,
-        content,
-        reasoning: `I took a critical, step-by-step approach focusing on actionable solutions and deep analysis. Context analysis: ${contextAnalysis}`,
-        assumptions: [
-          'Problems can be broken down into manageable parts',
-          'Practical solutions are preferable to theoretical ones',
-          'Clear communication is essential for implementation'
-        ],
-        approach: 'Critical analysis with practical step-by-step problem solving'
-      };
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      
-      // Log the error
-      await this.logInteraction(
-        this.sessionId || 'unknown-session',
-        'individual-thought',
-        geminiPrompt,
-        'Error occurred during processing',
-        duration,
-        'error',
-        errorMessage
-      );
-      
-      throw error;
-    }
+    const content = await this.executeWithErrorHandling(
+      async () => this.callGeminiCli(geminiPrompt),
+      this.sessionId || 'unknown-session',
+      'individual-thought',
+      geminiPrompt,
+      'individual thought processing'
+    );
+    
+    return {
+      agentId: this.agent.id,
+      content,
+      reasoning: `I took a critical, step-by-step approach focusing on actionable solutions and deep analysis. Context analysis: ${contextAnalysis}`,
+      assumptions: [
+        'Problems can be broken down into manageable parts',
+        'Practical solutions are preferable to theoretical ones',
+        'Clear communication is essential for implementation'
+      ],
+      approach: 'Critical analysis with practical step-by-step problem solving'
+    };
   }
 
   async stage2MutualReflection(prompt: string, otherThoughts: IndividualThought[], context: Message[]): Promise<MutualReflection> {

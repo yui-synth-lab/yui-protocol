@@ -39,7 +39,6 @@ export class EiroAgent extends BaseAgent {
   }
 
   async stage1IndividualThought(prompt: string, context: Message[]): Promise<IndividualThought> {
-    const startTime = Date.now();
     const relevantContext = this.getRelevantContext(context);
     const contextAnalysis = this.analyzeContext(relevantContext);
     
@@ -48,48 +47,25 @@ export class EiroAgent extends BaseAgent {
       context: contextAnalysis
     });
 
-    try {
-      const content = await this.callGeminiCli(geminiPrompt);
-      const duration = Date.now() - startTime;
-      
-      // Log the interaction
-      await this.logInteraction(
-        this.sessionId || 'unknown-session',
-        'individual-thought',
-        geminiPrompt,
-        content,
-        duration,
-        'success'
-      );
-      
-      return {
-        agentId: this.agent.id,
-        content,
-        reasoning: `I approached this from a logical angle, considering the broader implications and ethical dimensions. The context shows ${contextAnalysis}`,
-        assumptions: [
-          'Logical consistency is paramount',
-          'Ethical considerations should be included',
-          'Multiple perspectives should be considered'
-        ],
-        approach: 'Systematic logical analysis with ethical consideration'
-      };
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      
-      // Log the error
-      await this.logInteraction(
-        this.sessionId || 'unknown-session',
-        'individual-thought',
-        geminiPrompt,
-        'Error occurred during processing',
-        duration,
-        'error',
-        errorMessage
-      );
-      
-      throw error;
-    }
+    const content = await this.executeWithErrorHandling(
+      async () => this.callGeminiCli(geminiPrompt),
+      this.sessionId || 'unknown-session',
+      'individual-thought',
+      geminiPrompt,
+      'individual thought processing'
+    );
+    
+    return {
+      agentId: this.agent.id,
+      content,
+      reasoning: `I approached this from a logical angle, considering the broader implications and ethical dimensions. The context shows ${contextAnalysis}`,
+      assumptions: [
+        'Logical consistency is paramount',
+        'Ethical considerations should be included',
+        'Multiple perspectives should be considered'
+      ],
+      approach: 'Systematic logical analysis with ethical consideration'
+    };
   }
 
   async stage2MutualReflection(prompt: string, otherThoughts: IndividualThought[], context: Message[]): Promise<MutualReflection> {

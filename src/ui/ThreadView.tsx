@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Session, Message, DialogueStage } from '../types/index';
-import InteractionLogViewer from './InteractionLogViewer';
 import ThreadHeader from './ThreadHeader';
 import MessagesView from './MessagesView';
 
@@ -26,7 +25,6 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
   const [showContinueButton, setShowContinueButton] = useState(false);
   const [isWaitingForFirstResponse, setIsWaitingForFirstResponse] = useState(false);
   const [pendingUserMessage, setPendingUserMessage] = useState<Message | null>(null);
-  const [viewMode, setViewMode] = useState<'messages' | 'logs'>('messages');
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   
   // Refs
@@ -51,10 +49,11 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
     
     setCurrentStage(session.currentStage || null);
     
-    const hasProgress = (session.stageHistory && session.stageHistory.length > 0) ||
-                       (session.messages && session.messages.length > 1);
+    // Check if all 5 stages are completed
+    const completedStages = session.stageHistory?.filter(h => h.endTime) || [];
+    const hasProgress = completedStages.length > 0 || (session.messages && session.messages.length > 1);
     
-    const isCompleted = session?.status === 'completed';
+    const isCompleted = session?.status === 'completed' || completedStages.length >= 5;
     setShowContinueButton(hasProgress && !isCompleted);
   }, [session.messages, session.currentStage, session.id, session.stageHistory, session.status]);
 
@@ -72,13 +71,7 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
     setRealtimeSessionId(null);
     setIsCreatingSession(false);
     
-    const currentRealtimeId = localStorage.getItem(`session_${session.id}`);
-    if (currentRealtimeId !== session.id) {
-      localStorage.removeItem(`session_${session.id}`);
-      console.log(`[UI] Session change reset completed for new session`);
-    } else {
-      console.log(`[UI] Same session, no reset needed`);
-    }
+    console.log(`[UI] Session change reset completed for new session`);
   }, [session.id]);
 
   // Only create if realtimeSessionId is null and not creating session
@@ -108,18 +101,9 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
       console.log('[UI] Starting realtime session creation for:', session.title);
       setIsCreatingSession(true);
       
-      const existingRealtimeId = localStorage.getItem(`session_${session.id}`);
-      if (existingRealtimeId === session.id) {
-        console.log(`[UI] Reusing existing realtime session: ${existingRealtimeId}`);
-        setRealtimeSessionId(existingRealtimeId);
-        return;
-      }
-      
-      localStorage.removeItem(`session_${session.id}`);
-      
+      // Use session ID directly from URL/props
       setRealtimeSessionId(session.id);
-      localStorage.setItem(`session_${session.id}`, session.id);
-      console.log('[UI] Using existing session ID for realtime:', session.id);
+      console.log('[UI] Using session ID for realtime:', session.id);
       
     } catch (error) {
       console.error('[UI] Error setting up realtime session:', error);
@@ -165,10 +149,12 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
     });
     
     try {
-      const isSessionCompleted = (session.stageHistory && session.stageHistory.length >= 5);
+      // Check if all 5 stages are completed
+      const completedStages = session.stageHistory?.filter(h => h.endTime) || [];
+      const isAllStagesCompleted = completedStages.length >= 5;
       
-      if (isSessionCompleted) {
-        console.log(`[UI] Session completed, starting new process`);
+      if (isAllStagesCompleted) {
+        console.log(`[UI] All 5 stages completed, starting new process`);
         
         try {
           const resetResponse = await fetch(`/api/sessions/${realtimeSessionId}/reset`, {
@@ -202,7 +188,8 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
           }
         }
       } else {
-        const currentProgress = session.stageHistory.length;
+        // Continue with remaining stages
+        const currentProgress = completedStages.length;
         const remainingStages = stages.slice(currentProgress);
 
         console.log(`[UI] Current progress: ${currentProgress}/${stages.length}, remaining stages: ${remainingStages.join(', ')}`);
@@ -307,12 +294,13 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
                     const newMessages = [...prev, data.message];
                     console.log(`[UI] Progress message ${messageCount} from ${data.message.agentId}, total messages: ${newMessages.length}`);
                     
+                    // Batch session updates to reduce UI flicker
                     setTimeout(() => {
                       debouncedNotifySessionUpdate({
                         messages: newMessages,
                         updatedAt: new Date()
                       });
-                    }, 0);
+                    }, 50); // Reduced delay for better responsiveness
                     
                     return newMessages;
                   });
@@ -393,13 +381,30 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
   const notifySessionUpdate = async (updatedSessionData: any) => {
     if (onSessionUpdate) {
       try {
-        const updatedSession = {
-          ...session,
-          ...updatedSessionData,
-          messages: updatedSessionData.messages || messages,
-          updatedAt: updatedSessionData.updatedAt || new Date()
-        };
-        await onSessionUpdate(updatedSession);
+        // Only update if there are actual changes
+        const hasChanges = 
+          updatedSessionData.messages?.length !== messages.length ||
+          updatedSessionData.currentStage !== session.currentStage ||
+          updatedSessionData.status !== session.status ||
+          updatedSessionData.complete !== session.complete;
+        
+        if (hasChanges) {
+          // Create a clean update object with only the necessary fields
+          const updatedSession = {
+            id: session.id,
+            title: session.title,
+            agents: session.agents,
+            createdAt: session.createdAt,
+            // Only update the fields that actually changed
+            messages: updatedSessionData.messages || session.messages,
+            updatedAt: updatedSessionData.updatedAt || new Date(),
+            currentStage: updatedSessionData.currentStage !== undefined ? updatedSessionData.currentStage : session.currentStage,
+            stageHistory: updatedSessionData.stageHistory || session.stageHistory,
+            status: updatedSessionData.status || session.status,
+            complete: updatedSessionData.complete !== undefined ? updatedSessionData.complete : session.complete
+          };
+          await onSessionUpdate(updatedSession);
+        }
       } catch (error) {
         console.error('[UI] Error notifying parent of session update:', error);
       }
@@ -409,14 +414,33 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
   const debouncedNotifySessionUpdate = React.useCallback(
     React.useMemo(() => {
       let timeoutId: NodeJS.Timeout;
+      let pendingUpdate: any = null;
+      
       return (updatedSessionData: any) => {
+        // Merge pending updates with care to prevent cross-session contamination
+        if (pendingUpdate) {
+          pendingUpdate = {
+            // Preserve the most recent values for each field
+            messages: updatedSessionData.messages || pendingUpdate.messages,
+            updatedAt: updatedSessionData.updatedAt || pendingUpdate.updatedAt,
+            currentStage: updatedSessionData.currentStage !== undefined ? updatedSessionData.currentStage : pendingUpdate.currentStage,
+            stageHistory: updatedSessionData.stageHistory || pendingUpdate.stageHistory,
+            status: updatedSessionData.status || pendingUpdate.status,
+            complete: updatedSessionData.complete !== undefined ? updatedSessionData.complete : pendingUpdate.complete
+          };
+        } else {
+          pendingUpdate = updatedSessionData;
+        }
+        
         clearTimeout(timeoutId);
         timeoutId = setTimeout(() => {
-          notifySessionUpdate(updatedSessionData);
+          if (pendingUpdate) {
+            notifySessionUpdate(pendingUpdate);
+            pendingUpdate = null;
+          }
         }, 100);
       };
-    }, []),
-    [notifySessionUpdate]
+    }, [notifySessionUpdate])
   );
 
   const stages: DialogueStage[] = [
@@ -453,10 +477,12 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
     setMessages(prev => [...prev, userMessage]);
 
     try {
-      const isSessionCompleted = (session.stageHistory && session.stageHistory.length >= 5);
+      // Check if all 5 stages are completed
+      const completedStages = session.stageHistory?.filter(h => h.endTime) || [];
+      const isAllStagesCompleted = completedStages.length >= 5;
       
-      if (isSessionCompleted) {
-        console.log(`[UI] Session completed, starting new process`);
+      if (isAllStagesCompleted) {
+        console.log(`[UI] All 5 stages completed, starting new process`);
         
         try {
           const resetResponse = await fetch(`/api/sessions/${realtimeSessionId}/reset`, {
@@ -490,10 +516,11 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
           }
         }
       } else {
-        const currentProgress = session.stageHistory.length;
+        // Continue with remaining stages
+        const currentProgress = completedStages.length;
         const remainingStages = stages.slice(currentProgress);
 
-        console.log(`[UI] Continuing from progress: ${currentProgress}/${stages.length}, remaining stages: ${remainingStages.join(', ')}`);
+        console.log(`[UI] Current progress: ${currentProgress}/${stages.length}, remaining stages: ${remainingStages.join(', ')}`);
 
         for (const stage of remainingStages) {
           console.log(`[UI] Starting stage: ${stage}`);
@@ -525,93 +552,63 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
       {/* Header */}
       <ThreadHeader session={session} currentStage={currentStage} />
 
-      {/* View mode tabs */}
-      <div className="bg-gray-900 border-b border-gray-700">
-        <div className="flex">
-          <button
-            onClick={() => setViewMode('messages')}
-            className={`px-4 py-2 text-sm font-medium ${
-              viewMode === 'messages'
-                ? 'text-blue-300 border-b-2 border-blue-400'
-                : 'text-gray-400 hover:text-gray-200'
-            }`}
-          >
-            Messages
-          </button>
-          <button
-            onClick={() => setViewMode('logs')}
-            className={`px-4 py-2 text-sm font-medium ${
-              viewMode === 'logs'
-                ? 'text-blue-300 border-b-2 border-blue-400'
-                : 'text-gray-400 hover:text-gray-200'
-            }`}
-          >
-            Interaction Logs
-          </button>
-        </div>
-      </div>
-
       {/* Main content area */}
       <div className="flex-1 min-h-0">
-        {viewMode === 'messages' ? (
-          <div className="flex flex-col h-full">
-            {/* Messages container */}
-            <MessagesView
-              session={session}
-              messages={messages}
-              currentStage={currentStage}
-              onScroll={setShouldAutoScroll}
-              shouldAutoScroll={shouldAutoScroll}
-            />
+        <div className="flex flex-col h-full">
+          {/* Messages container */}
+          <MessagesView
+            session={session}
+            messages={messages}
+            currentStage={currentStage}
+            onScroll={setShouldAutoScroll}
+            shouldAutoScroll={shouldAutoScroll}
+          />
 
-            {/* Continue Process button */}
-            {showContinueButton && (
-              <div className="bg-gray-900 border-t border-gray-700 p-4">
-                <button
-                  onClick={() => handleSendPrompt('Continue Process')}
-                  disabled={isProcessing}
-                  className="w-full bg-blue-700 text-white py-3 px-4 hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed rounded"
-                >
-                  {isProcessing ? 'Processing...' : 'Continue Process'}
-                </button>
-              </div>
-            )}
-
-            {/* Input form */}
+          {/* Continue Process button */}
+          {showContinueButton && (
             <div className="bg-gray-900 border-t border-gray-700 p-4">
-              <form onSubmit={handleSubmit} className="flex space-x-2">
-                <div className="flex-1">
-                  <textarea
-                    ref={textareaRef}
-                    value={userPrompt}
-                    onChange={(e) => setUserPrompt(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        if (!isProcessing && userPrompt.trim() && realtimeSessionId) {
-                          handleSubmit(e as any);
-                        }
-                      }
-                    }}
-                    placeholder="Enter your prompt... (Enter to send, Shift+Enter for new line)"
-                    className="w-full px-3 py-3 border border-gray-700 bg-gray-800 text-gray-100 resize-none focus:outline-none focus:ring-2 focus:ring-blue-700 focus:border-transparent rounded"
-                    rows={1}
-                    disabled={isProcessing || isCreatingSession || !realtimeSessionId}
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={!userPrompt.trim() || isProcessing || isCreatingSession || !realtimeSessionId}
-                  className="px-6 py-3 bg-blue-700 text-white hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed rounded"
-                >
-                  Send
-                </button>
-              </form>
+              <button
+                onClick={() => handleSendPrompt('Continue Process')}
+                disabled={isProcessing}
+                className="w-full bg-blue-700 text-white py-3 px-4 hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed rounded"
+              >
+                {isProcessing ? 'Processing...' : 'Continue Process'}
+              </button>
             </div>
+          )}
+
+          {/* Input form */}
+          <div className="bg-gray-900 border-t border-gray-700 p-4">
+            <form onSubmit={handleSubmit} className="flex space-x-2">
+              <div className="flex-1">
+                <textarea
+                  ref={textareaRef}
+                  value={userPrompt}
+                  onChange={(e) => setUserPrompt(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      if (!isProcessing && userPrompt.trim() && realtimeSessionId) {
+                        handleSubmit(e as any);
+                      }
+                    }
+                  }}
+                  placeholder="Enter your prompt... (Enter to send, Shift+Enter for new line)"
+                  className="w-full px-3 py-3 border border-gray-700 bg-gray-800 text-gray-100 resize-none focus:outline-none focus:ring-2 focus:ring-blue-700 focus:border-transparent rounded"
+                  rows={1}
+                  disabled={isProcessing || isCreatingSession || !realtimeSessionId}
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={!userPrompt.trim() || isProcessing || isCreatingSession || !realtimeSessionId}
+                className="px-6 py-3 bg-blue-700 text-white hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed rounded"
+              >
+                Send
+              </button>
+            </form>
           </div>
-        ) : (
-          <InteractionLogViewer sessionId={session.id} />
-        )}
+        </div>
       </div>
 
       {/* Loading overlay */}
