@@ -2,7 +2,7 @@ export interface AIExecutorOptions {
   agentName: string;
   maxTokens?: number;
   model?: string;
-  provider?: 'gemini' | 'openai' | 'anthropic' | 'custom';
+  provider?: string;
   customConfig?: Record<string, any>;
 }
 
