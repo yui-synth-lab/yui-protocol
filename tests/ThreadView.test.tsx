@@ -209,26 +209,26 @@ describe('ThreadView', () => {
       expect(screen.getByText(/Mutual Reflection/)).toBeInTheDocument();
     });
 
-    it('displays special styling for yuishin agent', () => {
-      const sessionWithYuishin = {
+    it('displays special styling for yui agent', () => {
+      const sessionWithyui = {
         ...mockSession,
         messages: [
           ...mockSession.messages,
           {
             id: 'msg3',
-            agentId: 'yuishin-001',
-            content: 'Special message from Yuishin',
+            agentId: 'yui-000',
+            content: 'Special message from yui',
             timestamp: new Date('2024-01-01T10:02:00Z'),
             role: 'agent' as const
           }
         ]
       };
       
-      render(<ThreadView session={sessionWithYuishin} onSessionUpdate={mockOnSessionUpdate} />);
+      render(<ThreadView session={sessionWithyui} onSessionUpdate={mockOnSessionUpdate} />);
       
-      const yuishinMessage = screen.getByText('Special message from Yuishin');
+      const yuiMessage = screen.getByText('Special message from yui');
       // Find the message container that should have yellow styling
-      const messageContainer = yuishinMessage.closest('div[class*="border-yellow-600"]');
+      const messageContainer = yuiMessage.closest('div[class*="border-yellow-600"]');
       expect(messageContainer).toHaveClass('border', 'border-yellow-600');
     });
   });

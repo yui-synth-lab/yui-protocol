@@ -1,6 +1,5 @@
 export interface AIExecutorOptions {
   agentName: string;
-  maxTokens?: number;
   model?: string;
   provider?: string;
   customConfig?: Record<string, any>;
@@ -17,14 +16,12 @@ export interface AIExecutionResult {
 
 export abstract class AIExecutor {
   protected agentName: string;
-  protected maxTokens: number;
   protected model: string;
   protected provider: string;
   protected customConfig: Record<string, any>;
 
   constructor(options: AIExecutorOptions) {
     this.agentName = options.agentName;
-    this.maxTokens = options.maxTokens || 4000;
     this.model = options.model || 'default';
     this.provider = options.provider || 'custom';
     this.customConfig = options.customConfig || {};
@@ -32,27 +29,6 @@ export abstract class AIExecutor {
 
   abstract execute(prompt: string): Promise<AIExecutionResult>;
   
-  abstract executeWithTruncation(prompt: string): Promise<AIExecutionResult>;
-
-  protected truncatePrompt(prompt: string, maxTokens: number): string {
-    const estimatedTokens = Math.ceil(prompt.length / 4);
-    
-    if (estimatedTokens <= maxTokens) {
-      return prompt;
-    }
-    
-    // Simple truncation - keep the beginning and end
-    const maxChars = maxTokens * 4;
-    const halfChars = Math.floor(maxChars / 2);
-    
-    if (prompt.length <= maxChars) {
-      return prompt;
-    }
-    
-    return prompt.substring(0, halfChars) + 
-           '\n\n[Content truncated for token limit]\n\n' + 
-           prompt.substring(prompt.length - halfChars);
-  }
 
   protected generateFallbackResponse(prompt: string): string {
     return `[${this.agentName}] Fallback response: I understand your query about "${prompt.substring(0, 50)}...". However, I'm currently experiencing technical difficulties with my primary AI service. Please try again later or contact support if the issue persists.`;
@@ -65,11 +41,6 @@ export abstract class AIExecutor {
     
     // 基本的なサニタイゼーション
     let sanitized = content.trim();
-    
-    // 非常に長いコンテンツを切り詰める
-    if (sanitized.length > 50000) {
-      sanitized = sanitized.substring(0, 50000) + '\n\n[Content truncated due to length]';
-    }
     
     // 不正な文字を除去
     sanitized = sanitized.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
@@ -115,10 +86,6 @@ export async function createAIExecutor(agentName: string, options?: Partial<AIEx
           duration,
           success: true
         };
-      }
-
-      async executeWithTruncation(prompt: string): Promise<AIExecutionResult> {
-        return this.execute(prompt);
       }
     })({ agentName, ...options });
   }

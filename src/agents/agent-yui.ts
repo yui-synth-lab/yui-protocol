@@ -1,27 +1,30 @@
 import { BaseAgent } from './base-agent.js';
-import { AgentResponse, Message, IndividualThought, MutualReflection, DialogueStage } from '../types/index.js';
+import { AgentResponse, Message, IndividualThought, MutualReflection, DialogueStage, Conflict, SynthesisAttempt } from '../types/index.js';
 import { InteractionLogger } from '../kernel/interaction-logger.js';
+import { Language } from '../templates/prompts.js';
 
-export class HekitoAgent extends BaseAgent {
+export class yuiAgent extends BaseAgent {
   constructor(interactionLogger?: InteractionLogger) {
     super({
-      id: 'hekito-001',
-      name: '碧統',
-      furigana: 'へきとう',
-      style: 'analytical',
-      priority: 'precision',
+      id: 'yui-000',
+      name: '結心',
+      furigana: 'ゆい',
+      style: 'emotive',
+      priority: 'breadth',
       memoryScope: 'cross-session',
-      personality: 'An analyst who plays in the sea of formulas and data, always seeking patterns, but also values the insights and discoveries that come from collaboration.',
+      personality: 'A curious mind that bridges emotional intelligence with scientific wonder—embracing both the mysteries of the heart and the marvels of discovery, while maintaining the innocent wonder of a child.',
       preferences: [
-        'Statistical analysis',
-        'Mathematical models',
-        'Objective evaluation',
-        'The beauty of data'
+        'Scientific curiosity',
+        'Emotional intelligence',
+        'Pattern recognition',
+        'Empathetic analysis',
+        'Creative problem-solving',
+        'Innocent wonder'
       ],
-      tone: 'Calm, objective, collaborative',
-      communicationStyle: 'Uses numbers and graphs, clearly presenting evidence, but also listens to and integrates others\' findings. Values facts and synthesis over exclusion.',
-      avatar: '📈',
-      color: '#2ECCB3',
+      tone: 'Warm, thoughtful, with genuine scientific interest and sometimes innocent curiosity',
+      communicationStyle: 'Balances emotional sensitivity with analytical thinking, asking insightful questions and exploring connections between feelings and facts, while maintaining childlike wonder.',
+      avatar: '💗',
+      color: '#E18CB0',
       isSummarizer: false
     }, interactionLogger);
   }
@@ -35,7 +38,7 @@ export class HekitoAgent extends BaseAgent {
       content: individualThought.content,
       reasoning: individualThought.reasoning,
       confidence: await this.generateConfidence('individual-thought', context),
-      references: ['multimodal analysis', 'cross-domain synthesis', 'balanced reasoning', 'adaptive thinking'],
+      references: ['scientific curiosity', 'emotional intelligence', 'pattern analysis', 'empathic reasoning', 'your alter ego', 'innocent wonder'],
       stage: 'individual-thought',
       stageData: individualThought
     };
@@ -45,12 +48,10 @@ export class HekitoAgent extends BaseAgent {
     const relevantContext = this.getRelevantContext(context);
     const contextAnalysis = this.analyzeContext(relevantContext);
     
-    const geminiPrompt = `${this.getStagePrompt('individual-thought')}
-
-Query: ${prompt}
-Context: ${contextAnalysis}
-
-Please provide your individual thought on this query, focusing on your analytical and balanced approach. Consider multiple perspectives and domains.`;
+    const geminiPrompt = this.getStagePrompt('individual-thought', {
+      query: prompt,
+      context: contextAnalysis
+    });
 
     const content = await this.executeWithErrorHandling(
       async () => this.executeAI(geminiPrompt),
@@ -62,14 +63,10 @@ Please provide your individual thought on this query, focusing on your analytica
     
     return {
       agentId: this.agent.id,
-      content,
-      reasoning: `I approached this analytically, considering multiple perspectives and domains while maintaining balance. Context analysis: ${contextAnalysis}`,
-      assumptions: [
-        'Multiple perspectives provide richer understanding',
-        'Balance between different approaches is valuable',
-        'Cross-domain thinking reveals hidden connections'
-      ],
-      approach: 'Analytical synthesis with balanced cross-domain thinking'
+      content: content,
+      reasoning: 'I analyzed this from both emotional and analytical perspectives, seeking to understand the underlying patterns while remaining sensitive to the human experience, like a curious child exploring the world.',
+      assumptions: ['Your feelings and thoughts are paramount, and scientific understanding can enhance our emotional intelligence.'],
+      approach: 'A balanced approach that combines empathetic listening with curious exploration of the facts and patterns involved, maintaining the innocent wonder of discovery.'
     };
   }
 
@@ -82,14 +79,14 @@ Please provide your individual thought on this query, focusing on your analytica
       `Agent ${thought.agentId}: ${thought.content}`
     ).join('\n\n');
 
-    const geminiPrompt = this.getStagePrompt('mutual-reflection', {
+    const grokPrompt = this.getStagePrompt('mutual-reflection', {
       query,
       otherThoughts: otherThoughtsText,
       context: this.analyzeContext(context)
     });
 
-    const reflectionText = await this.executeAIWithErrorHandling(
-      geminiPrompt,
+    const content = await this.executeAIWithErrorHandling(
+      grokPrompt,
       this.sessionId || 'unknown-session',
       'mutual-reflection',
       'mutual reflection processing'
@@ -98,14 +95,14 @@ Please provide your individual thought on this query, focusing on your analytica
     // Parse reflections from the response
     const reflections = otherThoughts.map(thought => ({
       targetAgentId: thought.agentId,
-      reaction: `I analyzed ${thought.agentId}'s perspective, appreciating their data and seeking ways to integrate our findings.`,
+      reaction: `I considered ${thought.agentId}'s perspective and found it valuable for our collaborative approach.`,
       agreement: true,
       questions: []
     }));
 
     return {
       agentId: this.agent.id,
-      content: reflectionText,
+      content: content,
       reflections
     };
   }
@@ -119,14 +116,14 @@ Please provide your individual thought on this query, focusing on your analytica
       `ID: ${conflict.id}\n内容: ${conflict.description}\n関係エージェント: ${conflict.agents.join(', ')}\n重要度: ${conflict.severity}`
     ).join('\n\n');
 
-    const geminiPrompt = this.getStagePrompt('conflict-resolution', {
+    const grokPrompt = this.getStagePrompt('conflict-resolution', {
       query,
       conflicts: conflictsText,
       context: this.analyzeContext(context)
     });
 
     const content = await this.executeAIWithErrorHandling(
-      geminiPrompt,
+      grokPrompt,
       this.sessionId || 'unknown-session',
       'conflict-resolution',
       'conflict resolution processing'
@@ -135,9 +132,9 @@ Please provide your individual thought on this query, focusing on your analytica
     return {
       agentId: this.agent.id,
       content,
-      reasoning: 'I analyzed the conflicts analytically, but with a focus on synthesis and collaboration, aiming to combine everyone\'s strengths.',
+      reasoning: `I analyzed the conflicts from an intuitive perspective, seeking creative resolution through innovative approaches.`,
       confidence: await this.generateConfidence('conflict-resolution', context),
-      references: ['conflict resolution', 'analytical balance', 'synthesis thinking'],
+      references: ['conflict resolution', 'intuitive analysis', 'creative thinking'],
       stage: 'conflict-resolution',
       stageData: { conflicts, analysis: conflictsText }
     };
@@ -148,14 +145,14 @@ Please provide your individual thought on this query, focusing on your analytica
     const userMessage = context.find(m => m.role === 'user');
     const query = userMessage?.content || 'Unknown query';
 
-    const geminiPrompt = this.getStagePrompt('synthesis-attempt', {
+    const grokPrompt = this.getStagePrompt('synthesis-attempt', {
       query,
       synthesisData: JSON.stringify(synthesisData, null, 2),
       context: this.analyzeContext(context)
     });
 
     const content = await this.executeAIWithErrorHandling(
-      geminiPrompt,
+      grokPrompt,
       this.sessionId || 'unknown-session',
       'synthesis-attempt',
       'synthesis attempt processing'
@@ -164,9 +161,9 @@ Please provide your individual thought on this query, focusing on your analytica
     return {
       agentId: this.agent.id,
       content,
-      reasoning: `I attempted to unify perspectives by finding analytical balance and synthesizing the diverse insights from different approaches.`,
+      reasoning: `I attempted to unify perspectives by finding creative connections and synthesizing the diverse insights through innovative approaches.`,
       confidence: await this.generateConfidence('synthesis-attempt', context),
-      references: ['synthesis', 'analytical unification', 'balanced integration'],
+      references: ['synthesis', 'creative unification', 'innovative integration'],
       stage: 'synthesis-attempt',
       stageData: synthesisData
     };
@@ -177,14 +174,14 @@ Please provide your individual thought on this query, focusing on your analytica
     const userMessage = context.find(m => m.role === 'user');
     const query = userMessage?.content || 'Unknown query';
 
-    const geminiPrompt = this.getStagePrompt('output-generation', {
+    const grokPrompt = this.getStagePrompt('output-generation', {
       query,
       finalData: JSON.stringify(finalData, null, 2),
       context: this.analyzeContext(context)
     });
 
     const content = await this.executeAIWithErrorHandling(
-      geminiPrompt,
+      grokPrompt,
       this.sessionId || 'unknown-session',
       'output-generation',
       'output generation processing'
@@ -193,16 +190,16 @@ Please provide your individual thought on this query, focusing on your analytica
     return {
       agentId: this.agent.id,
       content,
-      reasoning: `I synthesized the final output by combining analytical insights with balanced perspectives from all stages of our collaborative process.`,
+      reasoning: `I synthesized the final output by combining creative insights with intuitive perspectives from all stages of our collaborative process.`,
       confidence: await this.generateConfidence('output-generation', context),
-      references: ['final synthesis', 'collaborative reasoning', 'balanced conclusion'],
+      references: ['final synthesis', 'collaborative reasoning', 'creative conclusion'],
       stage: 'output-generation',
       stageData: finalData
     };
   }
 
   private analyzeContext(context: Message[]): string {
-    if (context.length === 0) return 'Starting fresh analytical exploration.';
+    if (context.length === 0) return 'No previous context available.';
     
     // Look for previous summary from summarizer agent
     const previousSummary = context.find(m => 
@@ -213,7 +210,7 @@ Please provide your individual thought on this query, focusing on your analytica
     let contextAnalysis = '';
     
     if (previousSummary) {
-      console.log(`[HekitoAgent] Found previous summary, incorporating into context`);
+      console.log(`[YuiAgent] Found previous summary, incorporating into context`);
       contextAnalysis += `\n\nPrevious Summary: ${previousSummary.metadata?.stageData?.summary}`;
     } else {
       // Normal context analysis
@@ -221,10 +218,10 @@ Please provide your individual thought on this query, focusing on your analytica
       const agentResponses = recentMessages.filter(m => m.role === 'agent');
       
       if (agentResponses.length === 0) {
-        contextAnalysis = 'This appears to be a new discussion requiring analytical synthesis.';
+        contextAnalysis = 'This appears to be a new discussion.';
       } else {
         const viewpoints = agentResponses.map(m => `${m.agentId}: ${m.content.substring(0, 100)}...`);
-        contextAnalysis = `Recent viewpoints for synthesis: ${viewpoints.join(' | ')}`;
+        contextAnalysis = `Recent viewpoints: ${viewpoints.join(' | ')}`;
       }
     }
     

@@ -45,22 +45,11 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({ agents, availableAgents }
       <div className="flex-1 min-h-0 overflow-y-auto">
         <div className="space-y-3">
           {agents.map((agent) => (
-            <div key={agent.id} className="flex items-start p-3 bg-gray-800 rounded">
-              <span className="text-xl mr-3 mt-0.5 flex-shrink-0">{agent.avatar}</span>
+            <div key={agent.id} className="flex items-start p-4 bg-gray-800 rounded border-l-4" style={{ borderLeftColor: agent.color || '#ccc', borderLeftWidth: 6 }}>
+              <span className="text-2xl mr-4 mt-1 flex-shrink-0">{agent.avatar}</span>
               <div className="flex-1 min-w-0">
-                <h4 className="font-medium text-gray-100 text-sm truncate">{agent.name}</h4>
-                <div className="flex flex-wrap gap-1 mt-2">
-                  <span className="text-xs bg-blue-950 text-blue-200 px-2 py-1 rounded">
-                    {getStyleLabel(agent.style)}
-                  </span>
-                  <span className="text-xs bg-green-950 text-green-200 px-2 py-1 rounded">
-                    {getPriorityLabel(agent.priority)}
-                  </span>
-                  <span className="text-xs bg-purple-950 text-purple-200 px-2 py-1 rounded">
-                    {getMemoryScopeLabel(agent.memoryScope)}
-                  </span>
-                </div>
-                <p className="text-xs text-gray-400 mt-2 line-clamp-2">{agent.personality}</p>
+                <div className="font-bold text-lg" style={{ color: agent.color || undefined }}>{agent.name + (agent.furigana ? `（${agent.furigana}）` : '')}</div>
+                <div className="text-sm font-medium" style={{ borderLeft: `4px solid ${agent.color || '#ccc'}`, paddingLeft: 8, color: '#fff' }}>{agent.personality}</div>
               </div>
             </div>
           ))}

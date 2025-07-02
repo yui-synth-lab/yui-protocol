@@ -89,6 +89,11 @@ const MessagesView: React.FC<MessagesViewProps> = ({
     return stageColors[stage] || 'bg-gray-900';
   };
 
+  const getAgentColor = (agentId: string) => {
+    const agent = session.agents.find(a => a.id === agentId);
+    return agent?.color || '#ccc';
+  };
+
   const groupMessagesByStage = (messages: Message[]) => {
     const groups: { stage?: DialogueStage; messages: Message[] }[] = [];
     let currentGroup: { stage?: DialogueStage; messages: Message[] } = { messages: [] };
@@ -187,50 +192,65 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                 <h3 className="font-medium text-gray-200">{getStageLabel(group.stage)}</h3>
               </div>
             )}
-            {group.messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex space-x-3 ${
-                  message.role === 'user' ? 'justify-end flex-row-reverse' : 'justify-start'
-                }`}
-              >
-                {message.role !== 'user' && (
-                  <div className="flex-shrink-0">
-                    <div className="w-10 h-10 bg-gray-800 flex items-center justify-center text-sm rounded">
-                      {getAgentAvatar(message.agentId)}
-                    </div>
-                  </div>
-                )}
-                {message.role === 'user' && (
-                  <div className="flex-shrink-0 ml-2">
-                    <div className="w-10 h-10 bg-blue-800 flex items-center justify-center text-sm rounded">
-                      {getUserAvatar()}
-                    </div>
-                  </div>
-                )}
+            {group.messages.map((message) => {
+              const isAgent = message.role !== 'user';
+              const agentColor = isAgent ? getAgentColor(message.agentId) : undefined;
+              return (
                 <div
-                  className={`w-full mx-2 md:mx-16 lg:mx-32 px-4 py-3 
-                    bg-gray-800 text-gray-100 rounded
-                    ${message.role === 'user' ? 'border border-blue-700' : ''}
-                    ${message.agentId === 'yuishin-001' ? 'border border-yellow-600' : (message.role !== 'user' ? 'border border-gray-700' : '')}
-                  `}
+                  key={message.id}
+                  className={`flex space-x-3 ${
+                    message.role === 'user' ? 'justify-end flex-row-reverse' : 'justify-start'
+                  }`}
                 >
-                  <div className="text-sm">
-                    {message.role !== 'user' && (
-                      <div className="font-medium text-gray-300 mb-2">
-                        {getAgentName(message.agentId)}
+                  {isAgent && (
+                    <div className="flex-shrink-0">
+                      <div className="w-10 h-10 bg-gray-800 flex items-center justify-center text-sm rounded">
+                        {getAgentAvatar(message.agentId)}
                       </div>
-                    )}
-                    <div className="prose prose-invert prose-sm max-w-none">
-                      {renderMessageContent(message.content ?? '')}
                     </div>
-                    <div className="text-xs text-gray-500 mt-3">
-                      {formatTimestamp(message.timestamp)}
+                  )}
+                  {message.role === 'user' && (
+                    <div className="flex-shrink-0 ml-2">
+                      <div className="w-10 h-10 bg-blue-800 flex items-center justify-center text-sm rounded">
+                        {getUserAvatar()}
+                      </div>
+                    </div>
+                  )}
+                  <div
+                    className={`w-full mx-2 md:mx-16 lg:mx-32 px-4 py-3 bg-gray-800 text-gray-100 rounded ${
+                      message.role === 'user' ? 'border border-blue-700' : ''
+                    }`}
+                    style={
+                      isAgent
+                        ? {
+                            borderLeft: `6px solid ${agentColor}`,
+                            background: agentColor ? `${agentColor}22` : undefined, // 22 = ~13% opacity
+                          }
+                        : undefined
+                    }
+                  >
+                    <div className="text-sm">
+                      {isAgent && (
+                        <div className="font-medium mb-2" style={{ color: agentColor }}>
+                          {getAgentName(message.agentId)}
+                        </div>
+                      )}
+                      <div className="prose prose-invert prose-sm max-w-none">
+                        {renderMessageContent(message.content ?? '')}
+                      </div>
+                      {message.metadata?.voteFor && (
+                        <div className="mt-2 inline-block px-2 py-1 rounded bg-indigo-700 text-xs text-white font-semibold">
+                          投票: {getAgentName(message.metadata.voteFor)}
+                        </div>
+                      )}
+                      <div className="text-xs text-gray-500 mt-3">
+                        {formatTimestamp(message.timestamp)}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ))
       )}

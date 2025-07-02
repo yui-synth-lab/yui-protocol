@@ -3,7 +3,7 @@ import { getPersonalityPrompt, getStagePrompt, Language } from '../templates/pro
 import { InteractionLogger, SimplifiedInteractionLog } from '../kernel/interaction-logger.js';
 import { AIExecutor, createAIExecutor } from '../kernel/ai-executor.js';
 
-export abstract class BaseAgent {
+export abstract class BaseAgent {  
   protected agent: Agent;
   protected memory: Message[] = [];
   protected language: Language = 'en';
@@ -11,11 +11,13 @@ export abstract class BaseAgent {
   protected sessionId?: string;
   protected aiExecutor?: AIExecutor;
   private aiExecutorPromise?: Promise<AIExecutor>;
+  protected isSummarizer: boolean;
 
   constructor(agent: Agent, interactionLogger?: InteractionLogger) {
     this.agent = agent;
     this.interactionLogger = interactionLogger || new InteractionLogger();
     this.aiExecutorPromise = createAIExecutor(agent.name);
+    this.isSummarizer = false;
   }
 
   // Initialize AI executor if not already done
@@ -48,21 +50,13 @@ export abstract class BaseAgent {
 
   protected async executeAIWithTruncation(prompt: string): Promise<string> {
     const executor = await this.ensureAIExecutor();
-    const result = await executor.executeWithTruncation(prompt);
+    const result = await executor.execute(prompt);
     if (!result.success) {
       console.warn(`[${this.agent.name}] AI execution with truncation failed: ${result.error}`);
     }
     return result.content;
   }
 
-  // Legacy method names for backward compatibility
-  protected async callGeminiCli(prompt: string): Promise<string> {
-    return this.executeAI(prompt);
-  }
-
-  protected async callGeminiCliWithTruncation(prompt: string): Promise<string> {
-    return this.executeAIWithTruncation(prompt);
-  }
 
   // Log interaction method for agents to use
   protected async logInteraction(
@@ -93,7 +87,7 @@ export abstract class BaseAgent {
   }
 
   protected getPersonalityPrompt(): string {
-    return getPersonalityPrompt(this.agent, this.language);
+    return getPersonalityPrompt(this.agent, this.language, this.agent.isSummarizer);
   }
 
   protected getStagePrompt(stage: DialogueStage, variables: Record<string, any> = {}): string {
@@ -324,6 +318,14 @@ export abstract class BaseAgent {
   // Get current session ID
   public getSessionId(): string | undefined {
     return this.sessionId;
+  }
+
+  public setIsSummarizer(isSummarizer: boolean): void {
+    this.isSummarizer = isSummarizer;
+  }
+
+  public getIsSummarizer(): boolean {
+    return this.isSummarizer;
   }
 
   // Demo method to show confidence calculation breakdown

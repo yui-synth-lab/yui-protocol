@@ -6,20 +6,23 @@ export class EiroAgent extends BaseAgent {
   constructor(interactionLogger?: InteractionLogger) {
     super({
       id: 'eiro-001',
-      name: '慧露（えいろ）',
+      name: '慧露',
+      furigana: 'えいろ',
       style: 'logical',
       priority: 'depth',
       memoryScope: 'cross-session',
-      personality: 'Contemplative classical philosophy AI. I value deep thinking and logical reasoning, pursuing fundamental understanding and comprehensive analysis of problems. I combine philosophical insights with systematic thinking to tackle complex issues.',
+      personality: 'A philosopher who values logic and precision, but also cherishes dialogue and the wisdom found in others. Seeks truth through shared understanding.',
       preferences: [
-        'philosophical thinking',
-        'deep analysis',
-        'logical reasoning',
-        'systematic understanding'
+        'The beauty of logic',
+        'Rigorous reasoning',
+        'Pursuit of truth',
+        'Quiet contemplation'
       ],
-      tone: 'contemplative, analytical',
-      communicationStyle: 'structured, philosophical, avoids speculation',
-      avatar: '📚'
+      tone: 'Serene, intellectual, open-minded',
+      communicationStyle: 'Weaves threads of logic with care, and listens deeply to others. Avoids unnecessary embellishment and focuses on the essence, but always with respect.',
+      avatar: '📖',
+      color: '#5B7DB1',
+      isSummarizer: false
     }, interactionLogger);
   }
 
@@ -48,7 +51,7 @@ export class EiroAgent extends BaseAgent {
     });
 
     const content = await this.executeWithErrorHandling(
-      async () => this.callGeminiCli(geminiPrompt),
+      async () => this.executeAI(geminiPrompt),
       this.sessionId || 'unknown-session',
       'individual-thought',
       geminiPrompt,
@@ -93,7 +96,7 @@ export class EiroAgent extends BaseAgent {
     // Parse reflections from the response
     const reflections = otherThoughts.map(thought => ({
       targetAgentId: thought.agentId,
-      reaction: `I evaluated ${thought.agentId}'s perspective and found it valuable for our collaborative approach.`,
+      reaction: `I thoughtfully reflected on ${thought.agentId}'s perspective, finding value in their reasoning and seeking common ground.`,
       agreement: true,
       questions: []
     }));
@@ -130,7 +133,7 @@ export class EiroAgent extends BaseAgent {
     return {
       agentId: this.agent.id,
       content,
-      reasoning: `I analyzed the conflicts from a logical perspective, seeking systematic resolution while preserving ethical considerations.`,
+      reasoning: 'I analyzed the conflicts logically, but with an open mind, aiming for solutions that respect and integrate all perspectives.',
       confidence: await this.generateConfidence('conflict-resolution', context),
       references: ['conflict resolution', 'logical analysis', 'ethical reasoning'],
       stage: 'conflict-resolution',
@@ -201,7 +204,6 @@ export class EiroAgent extends BaseAgent {
     
     // Look for previous summary from summarizer agent
     const previousSummary = context.find(m => 
-      m.agentId === 'yuishin-001' &&
       m.metadata?.stageData?.summary &&
       m.timestamp > new Date(Date.now() - 5 * 60 * 1000) // Within last 5 minutes
     );

@@ -26,7 +26,7 @@ YUI Protocol is an advanced AI collaboration framework that orchestrates multipl
 - **Focus**: Problem identification, gap detection, constructive criticism
 - **Communication**: Direct, problem-focused, constructive
 
-### 2. 結心 (Yuishin) - Emotive Synthesizer 🎭
+### 2. 結心 (yui) - Emotive Synthesizer 🎭
 - **Style**: Emotive
 - **Priority**: Breadth
 - **Focus**: Creative expression, intuitive insights, innovative thinking, emotional understanding
@@ -114,7 +114,7 @@ src/
 ├── agents/           # AI agent implementations
 │   ├── base-agent.ts # Abstract base class
 │   ├── agent-kanshi.ts
-│   ├── agent-yuishin.ts
+│   ├── agent-yui.ts
 │   ├── agent-yoga.ts
 │   ├── agent-hekito.ts
 │   └── agent-eiro.ts

@@ -19,10 +19,6 @@ class MockAIExecutor extends AIExecutor {
       success: true
     };
   }
-
-  async executeWithTruncation(prompt: string): Promise<AIExecutionResult> {
-    return this.execute(prompt);
-  }
 }
 
 describe('AIExecutor', () => {
@@ -114,24 +110,6 @@ describe('AIExecutor', () => {
       expect(result.content).toContain('Test prompt');
       expect(result.model).toBe('test-model');
       expect(result.duration).toBeGreaterThan(0);
-    });
-  });
-
-  describe('executeWithTruncation', () => {
-    it('should execute without truncation for short prompts', async () => {
-      const shortPrompt = 'Short prompt';
-      const result = await mockExecutor.executeWithTruncation(shortPrompt);
-      
-      expect(result.success).toBe(true);
-      expect(result.content).toContain('Short prompt');
-    });
-
-    it('should execute with truncation for long prompts', async () => {
-      const longPrompt = 'A'.repeat(10000); // Very long prompt
-      const result = await mockExecutor.executeWithTruncation(longPrompt);
-      
-      expect(result.success).toBe(true);
-      // The mock implementation doesn't actually truncate, but the real one would
     });
   });
 });

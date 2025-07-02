@@ -11,6 +11,7 @@ import {
   useNavigate,
   useLocation
 } from 'react-router-dom';
+import imgUrl from './images/YuiProtocol.png'
 
 function AppRoutes() {
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -144,7 +145,7 @@ function AppRoutes() {
           <header className="flex-shrink-0 mb-4">
             <div className="flex items-center justify-between mb-3">
               <h1 className="text-3xl font-bold text-gray-100">
-                ⛩️ Yui Protocol
+                <img src={imgUrl} alt="Yui Protocol" className="w-10 h-10 inline-block" /> Yui Protocol
               </h1>
               {/* Mobile sidebar toggle */}
               <button
@@ -249,12 +250,12 @@ function AppRoutes() {
                       />
                     </div>
                     {currentSession && (
-                      <div className="h-64 overflow-hidden">
-                        <AgentSelector
-                          agents={currentSession.agents}
-                          availableAgents={availableAgents}
-                        />
-                      </div>
+                      <div className="flex-1 min-h-0 overflow-hidden">
+                      <AgentSelector
+                        agents={currentSession.agents}
+                        availableAgents={availableAgents}
+                      />
+                    </div>
                     )}
                   </div>
                 </div>

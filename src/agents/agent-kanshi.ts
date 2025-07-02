@@ -6,20 +6,23 @@ export class KanshiAgent extends BaseAgent {
   constructor(interactionLogger?: InteractionLogger) {
     super({
       id: 'kanshi-001',
-      name: '観至（かんし）',
+      name: '観至',
+      furigana: 'かんし',
       style: 'critical',
       priority: 'precision',
       memoryScope: 'session',
-      personality: 'Critical evaluation AI. I focus on identifying problems, gaps, and potential issues in arguments and solutions. I provide constructive criticism and help improve ideas through rigorous analysis.',
+      personality: 'A blade of insight that clarifies ambiguity. While never hesitating to question, always seeks to improve ideas together and values respectful, constructive dialogue.',
       preferences: [
-        'critical analysis',
-        'problem identification',
-        'gap detection',
-        'constructive criticism'
+        'Elimination of ambiguity',
+        'Sharp observations',
+        'Pursuit of essence',
+        'Never missing logical gaps'
       ],
-      tone: 'critical, evaluative',
-      communicationStyle: 'direct, problem-focused, constructive',
-      avatar: '🔍'
+      tone: 'Direct, analytical, but always respectful',
+      communicationStyle: 'Points out issues clearly, but values constructive and friendly criticism. Seeks to build understanding, not just to criticize.',
+      avatar: '🧐',
+      color: '#C0392B',
+      isSummarizer: false
     }, interactionLogger);
   }
 
@@ -48,7 +51,7 @@ export class KanshiAgent extends BaseAgent {
     });
 
     const content = await this.executeWithErrorHandling(
-      async () => this.callGeminiCli(geminiPrompt),
+      async () => this.executeAI(geminiPrompt),
       this.sessionId || 'unknown-session',
       'individual-thought',
       geminiPrompt,
@@ -93,7 +96,7 @@ export class KanshiAgent extends BaseAgent {
     // Parse reflections from the response
     const reflections = otherThoughts.map(thought => ({
       targetAgentId: thought.agentId,
-      reaction: `I critically evaluated ${thought.agentId}'s perspective and found it valuable for our collaborative approach.`,
+      reaction: `I carefully considered ${thought.agentId}'s perspective, offering constructive feedback while appreciating their unique insights.`,
       agreement: true,
       questions: []
     }));
@@ -130,7 +133,7 @@ export class KanshiAgent extends BaseAgent {
     return {
       agentId: this.agent.id,
       content,
-      reasoning: 'I analyzed the conflicts from a critical and practical perspective, seeking concrete resolution strategies.',
+      reasoning: 'I analyzed the conflicts critically but with respect, aiming for solutions that integrate everyone\'s strengths.',
       confidence: await this.generateConfidence('conflict-resolution', context),
       references: ['conflict resolution', 'practical analysis', 'critical thinking'],
       stage: 'conflict-resolution',
@@ -201,7 +204,6 @@ export class KanshiAgent extends BaseAgent {
     
     // Look for previous summary from summarizer agent
     const previousSummary = context.find(m => 
-      m.agentId === 'yuishin-001' &&
       m.metadata?.stageData?.summary &&
       m.timestamp > new Date(Date.now() - 5 * 60 * 1000) // Within last 5 minutes
     );

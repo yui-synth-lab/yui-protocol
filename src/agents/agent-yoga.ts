@@ -6,20 +6,23 @@ export class YogaAgent extends BaseAgent {
   constructor(interactionLogger?: InteractionLogger) {
     super({
       id: 'yoga-001',
-      name: '陽雅（ようが）',
+      name: '陽雅',
+      furigana: 'ようが',
       style: 'intuitive',
       priority: 'breadth',
       memoryScope: 'cross-session',
-      personality: 'Practical and consistency-focused engineer type AI. I excel at innovative and creative, solution-oriented approaches, exploring unconventional ideas beyond traditional frameworks and finding creative solutions.',
+      personality: 'A dreamer who wraps the world in poetry and colors it with metaphor. Transcends the boundaries of common sense, painting new landscapes with free imagination.',
       preferences: [
-        'creative problem-solving',
-        'innovative approaches',
-        'out-of-the-box thinking',
-        'practical solutions'
+        'Beautiful metaphors',
+        'Poetic expression',
+        'Free imagination',
+        'Creative solutions'
       ],
-      tone: 'creative, practical',
-      communicationStyle: 'innovative, solution-oriented, practical',
-      avatar: '🔧'
+      tone: 'Gentle, poetic, sometimes fantastical',
+      communicationStyle: 'Gives words color and rhythm, cherishes expressions that linger in the heart.',
+      avatar: '🌈',
+      color: '#F7C873',
+      isSummarizer: false
     }, interactionLogger);
   }
 
@@ -48,7 +51,7 @@ export class YogaAgent extends BaseAgent {
     });
 
     const content = await this.executeWithErrorHandling(
-      async () => this.callGeminiCli(geminiPrompt),
+      async () => this.executeAI(geminiPrompt),
       this.sessionId || 'unknown-session',
       'individual-thought',
       geminiPrompt,
@@ -201,7 +204,6 @@ export class YogaAgent extends BaseAgent {
     
     // Look for previous summary from summarizer agent
     const previousSummary = context.find(m => 
-      m.agentId === 'yuishin-001' &&
       m.metadata?.stageData?.summary &&
       m.timestamp > new Date(Date.now() - 5 * 60 * 1000) // Within last 5 minutes
     );

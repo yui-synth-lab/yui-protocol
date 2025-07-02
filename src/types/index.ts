@@ -5,6 +5,7 @@ export type { Language };
 export interface Agent {
   id: string;
   name: string;
+  furigana: string;
   style: "logical" | "critical" | "intuitive" | "meta" | "emotive" | "analytical";
   priority: "precision" | "breadth" | "depth" | "balance";
   memoryScope: "local" | "session" | "cross-session";
@@ -13,6 +14,8 @@ export interface Agent {
   tone: string;
   communicationStyle: string;
   avatar?: string;
+  color?: string;
+  isSummarizer?: boolean;
 }
 
 export interface Message {
@@ -27,6 +30,7 @@ export interface Message {
     confidence?: number;
     references?: string[];
     stageData?: any;
+    voteFor?: string;
   };
 }
 

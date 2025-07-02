@@ -19,8 +19,8 @@ describe('MessagesView', () => {
       communicationStyle: 'formal'
     },
     {
-      id: 'yuishin-001',
-      name: 'Yuishin',
+      id: 'yui-000',
+      name: 'yui',
       style: 'meta',
       priority: 'balance',
       memoryScope: 'session',
@@ -61,8 +61,8 @@ describe('MessagesView', () => {
     },
     {
       id: 'msg-3',
-      agentId: 'yuishin-001',
-      content: 'This is a summary from Yuishin',
+      agentId: 'yui-000',
+      content: 'This is a summary from yui',
       timestamp: new Date('2024-01-01T10:02:00Z'),
       role: 'agent',
       stage: 'output-generation'
@@ -94,7 +94,7 @@ describe('MessagesView', () => {
     
     expect(screen.getByText('Hello, this is a test message')).toBeInTheDocument();
     expect(screen.getByText('This is a response from agent 1')).toBeInTheDocument();
-    expect(screen.getByText('This is a summary from Yuishin')).toBeInTheDocument();
+    expect(screen.getByText('This is a summary from yui')).toBeInTheDocument();
   });
 
   it('shows stage headers when messages have stages', () => {
@@ -122,7 +122,7 @@ describe('MessagesView', () => {
     );
     
     expect(screen.getByText('Test Agent 1')).toBeInTheDocument();
-    expect(screen.getByText('Yuishin')).toBeInTheDocument();
+    expect(screen.getByText('yui')).toBeInTheDocument();
   });
 
   it('shows agent avatars', () => {
@@ -140,7 +140,7 @@ describe('MessagesView', () => {
     expect(screen.getByText('🧠')).toBeInTheDocument();
   });
 
-  it('applies special styling to Yuishin messages', () => {
+  it('applies special styling to yui messages', () => {
     render(
       <MessagesView
         session={mockSession}
@@ -150,9 +150,9 @@ describe('MessagesView', () => {
       />
     );
     
-    // Yuishin message should have special styling (yellow border)
-    const yuishinMessage = screen.getByText('This is a summary from Yuishin');
-    const messageContainer = yuishinMessage.closest('div[class*="border-yellow-600"]');
+    // yui message should have special styling (yellow border)
+    const yuiMessage = screen.getByText('This is a summary from yui');
+    const messageContainer = yuiMessage.closest('div[class*="border-yellow-600"]');
     expect(messageContainer).toHaveClass('border', 'border-yellow-600');
   });
 

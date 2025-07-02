@@ -35,7 +35,6 @@ class MockAIExecutor extends AIExecutor {
   constructor() {
     super({
       agentName: 'TestAgent',
-      maxTokens: 4000,
       model: 'test-model',
       provider: 'custom'
     });
@@ -48,10 +47,6 @@ class MockAIExecutor extends AIExecutor {
       duration: 100,
       success: true
     };
-  }
-
-  async executeWithTruncation(prompt: string): Promise<any> {
-    return this.execute(prompt);
   }
 }
 
@@ -135,11 +130,6 @@ describe('BaseAgent', () => {
           success: false,
           error: 'Test error'
         }),
-        executeWithTruncation: vi.fn().mockResolvedValue({
-          content: 'Error fallback response',
-          success: false,
-          error: 'Test error'
-        })
       } as any;
       
       agent['aiExecutor'] = mockExecutor;

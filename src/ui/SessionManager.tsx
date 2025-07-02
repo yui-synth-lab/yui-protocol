@@ -31,30 +31,14 @@ const SessionManager: React.FC<SessionManagerProps> = ({
 
   const handleCreateSession = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newSessionTitle.trim() || selectedAgentIds.length === 0) return;
-
-    console.log('Creating session with:', {
-      title: newSessionTitle,
-      selectedAgentIds: selectedAgentIds,
-      availableAgents: availableAgents.map(a => ({ id: a.id, name: a.name }))
-    });
-
-    onCreateSession(newSessionTitle, selectedAgentIds);
+    if (!newSessionTitle.trim()) return;
+    onCreateSession(newSessionTitle, availableAgents.map(agent => agent.id));
     setNewSessionTitle('');
-    setSelectedAgentIds(availableAgents.map(agent => agent.id)); // Reset to all agents
     setShowCreateForm(false);
   };
 
-  const toggleAgentSelection = (agentId: string) => {
-    setSelectedAgentIds(prev => 
-      prev.includes(agentId) 
-        ? prev.filter(id => id !== agentId)
-        : [...prev, agentId]
-    );
-  };
-
   return (
-    <div className="bg-gray-900 shadow-sm p-4 flex flex-col h-full overflow-hidden">
+    <div className="bg-gray-900 shadow-sm p-4 flex flex-col max-h-[60vh] overflow-y-auto">
       <div className="flex items-center justify-between mb-3 flex-shrink-0">
         <h3 className="text-base font-semibold text-gray-100">Sessions</h3>
         <button
@@ -87,30 +71,9 @@ const SessionManager: React.FC<SessionManagerProps> = ({
             />
           </div>
 
-          <div>
-            <label className="block text-xs font-medium text-gray-300 mb-1">
-              Select Agents
-            </label>
-            <div className="space-y-2 max-h-32 overflow-y-auto">
-              {availableAgents.map((agent) => (
-                <label key={agent.id} className="flex items-center p-2 hover:bg-gray-800 rounded">
-                  <input
-                    type="checkbox"
-                    checked={selectedAgentIds.includes(agent.id)}
-                    onChange={() => toggleAgentSelection(agent.id)}
-                    className="mr-3 accent-blue-800 w-4 h-4"
-                  />
-                  <span className="text-sm text-gray-100">
-                    {agent.avatar} {agent.name}
-                  </span>
-                </label>
-              ))}
-            </div>
-          </div>
-
           <button
             type="submit"
-            disabled={!newSessionTitle.trim() || selectedAgentIds.length === 0}
+            disabled={!newSessionTitle.trim()}
             className="w-full bg-blue-800 text-white py-2 text-sm hover:bg-blue-900 disabled:opacity-50 disabled:cursor-not-allowed rounded"
           >
             Create Session
