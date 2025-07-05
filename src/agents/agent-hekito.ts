@@ -139,7 +139,12 @@ Please provide your individual thought on this query, focusing on your analytica
       confidence: await this.generateConfidence('conflict-resolution', context),
       references: ['conflict resolution', 'analytical balance', 'synthesis thinking'],
       stage: 'conflict-resolution',
-      stageData: { conflicts, analysis: conflictsText }
+      stageData: { 
+        agentId: this.agent.id,
+        content: content,
+        conflicts, 
+        analysis: conflictsText 
+      }
     };
   }
 

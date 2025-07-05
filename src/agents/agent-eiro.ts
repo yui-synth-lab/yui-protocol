@@ -137,7 +137,12 @@ export class EiroAgent extends BaseAgent {
       confidence: await this.generateConfidence('conflict-resolution', context),
       references: ['conflict resolution', 'logical analysis', 'ethical reasoning'],
       stage: 'conflict-resolution',
-      stageData: { conflicts, analysis: conflictsText }
+      stageData: { 
+        agentId: this.agent.id,
+        content: content,
+        conflicts, 
+        analysis: conflictsText 
+      }
     };
   }
 

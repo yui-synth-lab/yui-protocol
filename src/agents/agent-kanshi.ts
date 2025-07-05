@@ -137,7 +137,12 @@ export class KanshiAgent extends BaseAgent {
       confidence: await this.generateConfidence('conflict-resolution', context),
       references: ['conflict resolution', 'practical analysis', 'critical thinking'],
       stage: 'conflict-resolution',
-      stageData: { conflicts, resolution: content }
+      stageData: { 
+        agentId: this.agent.id,
+        content: content,
+        conflicts, 
+        resolution: content 
+      }
     };
   }
 

@@ -30,7 +30,7 @@ export interface Message {
     reasoning?: string;
     confidence?: number;
     references?: string[];
-    stageData?: any;
+    stageData?: StageData;
     voteFor?: string;
     voteReasoning?: string;
     voteSection?: string;
@@ -62,7 +62,7 @@ export interface AgentResponse {
   confidence?: number;
   references?: string[];
   stage?: DialogueStage;
-  stageData?: any;
+  stageData?: StageData;
   metadata?: {
     voteFor?: string;
     voteReasoning?: string;
@@ -186,4 +186,130 @@ export interface SummaryStage {
   timestamp: Date;
   stageNumber: number;
   sequenceNumber?: number;
+}
+
+// Additional types for realtime-router
+export interface StageData {
+  agentId: string;
+  content: string;
+  reasoning?: string;
+  confidence?: number;
+  summary?: string;
+  reflections?: {
+    targetAgentId: string;
+    reaction: string;
+    agreement: boolean;
+    questions: string[];
+  }[];
+  assumptions?: string[];
+  approach?: string;
+  conflicts?: Conflict[];
+  analysis?: string;
+  resolution?: string;
+}
+
+export interface AgentInstance {
+  getAgent(): Agent;
+  setLanguage(language: Language): void;
+  setSessionId(sessionId: string): void;
+  setIsSummarizer(isSummarizer: boolean): void;
+  stage1IndividualThought(prompt: string, context: Message[]): Promise<AgentResponse>;
+  stage2MutualReflection(prompt: string, individualThoughts: IndividualThought[], context: Message[]): Promise<AgentResponse>;
+  stage3ConflictResolution(conflicts: Conflict[], context: Message[]): Promise<AgentResponse>;
+  stage4SynthesisAttempt(synthesisData: SynthesisData, context: Message[]): Promise<AgentResponse>;
+  stage5OutputGeneration(finalData: FinalData, context: Message[]): Promise<AgentResponse>;
+  stage5_1Finalize(votingResults: VotingResults, responses: AgentResponse[], context: Message[]): Promise<AgentResponse>;
+}
+
+export interface SynthesisData {
+  query: string;
+  individualThoughts: string[];
+  mutualReflections: string[];
+  conflictResolutions: string[];
+  context: string;
+}
+
+export interface FinalData {
+  query: string;
+  finalData: {
+    individualThoughts: string[];
+    mutualReflections: string[];
+    conflictResolutions: string[];
+    synthesisAttempts: string[];
+  };
+  context: string;
+}
+
+export interface VotingResults {
+  [agentId: string]: string;
+}
+
+export interface StageSummarizerOptions {
+  language?: Language;
+  maxSummaryLength?: number;
+  includeConfidence?: boolean;
+}
+
+export interface DelayOptions {
+  stageSummarizerDelayMS?: number;
+  finalSummaryDelayMS?: number;
+}
+
+export interface ProgressCallback {
+  (message: Message): void;
+}
+
+export interface StageExecutionResult {
+  stage: DialogueStage;
+  agentResponses: AgentResponse[];
+  duration: number;
+}
+
+export interface SummaryExecutionResult {
+  responses: AgentResponse[];
+}
+
+export interface FinalizeExecutionResult {
+  responses: AgentResponse[];
+}
+
+export interface ConflictDescriptionTemplates {
+  diversePerspectives: string;
+  agentApproaches: string;
+  approachAnalysis: string;
+  potentialConflicts: string;
+  mutualUnderstanding: string;
+  complementarySolutions: string;
+  conflictDetails: string;
+  rootCauseAnalysis: string;
+  resolutionDirection: string;
+  discussionFocus: string;
+  understandingDifferences: string;
+  conceptualTensions: string;
+  valueConflicts: string;
+  ideaContradictions: string;
+  synthesisOpportunities: string;
+  frameworkIntegration: string;
+  conceptualResolution: string;
+  ideaSynthesis: string;
+  perspectiveIntegration: string;
+  coreInsights: string;
+  fundamentalQuestions: string;
+  emergingDirections: string;
+  unresolvedTensions: string;
+  synthesisPossibilities: string;
+  multiplePerspectives: string;
+  noSignificantConflicts: string;
+}
+
+export interface ApproachAnalysis {
+  agentId: string;
+  approach: string;
+  style: Agent['style'];
+}
+
+export interface PotentialConflict {
+  type: string;
+  description: string;
+  agents: string[];
 } 

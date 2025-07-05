@@ -142,7 +142,11 @@ export abstract class BaseAgent {
       confidence: await this.generateConfidence('conflict-resolution', context),
       references: ['conflict-analysis', 'resolution-strategy'],
       stage: 'conflict-resolution',
-      stageData: { summary: content.slice(0, 100) }
+      stageData: { 
+        agentId: this.agent.id,
+        content: content,
+        summary: content.slice(0, 100) 
+      }
     };
   }
 
@@ -175,7 +179,11 @@ export abstract class BaseAgent {
       confidence: await this.generateConfidence('synthesis-attempt', context),
       references: ['synthesis', 'integration'],
       stage: 'synthesis-attempt',
-      stageData: { summary: content.slice(0, 100) }
+      stageData: { 
+        agentId: this.agent.id,
+        content: content,
+        summary: content.slice(0, 100) 
+      }
     };
   }
 
@@ -222,7 +230,11 @@ export abstract class BaseAgent {
       confidence: await this.generateConfidence('output-generation', context),
       references: ['final-synthesis', 'comprehensive-output'],
       stage: 'output-generation',
-      stageData: { summary: content.slice(0, 100) },
+      stageData: { 
+        agentId: this.agent.id,
+        content: content,
+        summary: content.slice(0, 100) 
+      },
       metadata: {
         voteFor: voteDetails.votedAgent || undefined,
         voteReasoning: voteDetails.reasoning || undefined,
@@ -260,7 +272,11 @@ export abstract class BaseAgent {
       confidence: await this.generateConfidence('mutual-reflection-summary', context),
       references: ['conflict-extraction', 'summary-generation'],
       stage: 'mutual-reflection-summary',
-      stageData: { summary: content.slice(0, 100) }
+      stageData: { 
+        agentId: this.agent.id,
+        content: content,
+        summary: content.slice(0, 100) 
+      }
     };
   }
 
@@ -292,7 +308,11 @@ export abstract class BaseAgent {
       confidence: await this.generateConfidence('conflict-resolution-summary', context),
       references: ['resolution-extraction', 'summary-generation'],
       stage: 'conflict-resolution-summary',
-      stageData: { summary: content.slice(0, 100) }
+      stageData: { 
+        agentId: this.agent.id,
+        content: content,
+        summary: content.slice(0, 100) 
+      }
     };
   }
 
@@ -324,7 +344,11 @@ export abstract class BaseAgent {
       confidence: await this.generateConfidence('synthesis-attempt-summary', context),
       references: ['integration-extraction', 'summary-generation'],
       stage: 'synthesis-attempt-summary',
-      stageData: { summary: content.slice(0, 100) }
+      stageData: { 
+        agentId: this.agent.id,
+        content: content,
+        summary: content.slice(0, 100) 
+      }
     };
   }
 
@@ -358,7 +382,11 @@ export abstract class BaseAgent {
       confidence: await this.generateConfidence('finalize', context),
       references: ['final-synthesis', 'comprehensive-output'],
       stage: 'finalize',
-      stageData: { summary: content.slice(0, 100) }
+      stageData: { 
+        agentId: this.agent.id,
+        content: content,
+        summary: content.slice(0, 100) 
+      }
     };
   }
 

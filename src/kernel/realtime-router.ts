@@ -4,8 +4,32 @@ import { SessionStorage } from './session-storage.js';
 import { OutputStorage } from './output-storage.js';
 import { InteractionLogger } from './interaction-logger.js';
 import { createStageSummarizer } from './stage-summarizer.js';
+import {
+  Agent,
+  AgentInstance,
+  AgentResponse,
+  Conflict,
+  ConflictDescriptionTemplates,
+  DelayOptions,
+  DialogueStage,
+  FinalData,
+  IndividualThought,
+  Language,
+  Message,
+  ProgressCallback,
+  Session,
+  StageData,
+  StageExecutionResult,
+  StageHistory,
+  StageSummary,
+  StageSummarizerOptions,
+  SynthesisAttempt,
+  SynthesisData,
+  VotingResults
+} from '../types/index.js';
+
 // Helper function to remove circular references
-function removeCircularReferences(obj: any, seen: any = new WeakSet()): any {
+function removeCircularReferences(obj: unknown, seen: WeakSet<object> = new WeakSet()): unknown {
     if (obj === null || typeof obj !== 'object') {
         return obj;
     }
@@ -17,18 +41,18 @@ function removeCircularReferences(obj: any, seen: any = new WeakSet()): any {
     }
     seen.add(obj);
     if (Array.isArray(obj)) {
-        return obj.map((item: any) => removeCircularReferences(item, seen));
+        return obj.map((item: unknown) => removeCircularReferences(item, seen));
     }
-    const result: any = {};
+    const result: Record<string, unknown> = {};
     for (const key in obj) {
         if (obj.hasOwnProperty(key)) {
-            result[key] = removeCircularReferences(obj[key], seen);
+            result[key] = removeCircularReferences((obj as Record<string, unknown>)[key], seen);
         }
     }
     return result;
 }
 // --- 投票先抽出関数 ---
-function extractVote(content: any, agents: any) {
+function extractVote(content: string, agents: Agent[]): string | null {
     // 投票セクションを優先的に抽出
     const voteSectionMatch = content.match(/(?:まとめ役|Agent Vote|agent_vote)[^\n:：]*[:：]\s*([^\n]+)/i);
     let voteTarget = voteSectionMatch ? voteSectionMatch[1] : null;
@@ -55,8 +79,8 @@ function extractVote(content: any, agents: any) {
     return null;
 }
 // --- 投票集計関数 ---
-function tallyVotes(responses: any, agents: any): any {
-    const votes: any = {};
+function tallyVotes(responses: AgentResponse[], agents: Agent[]): string[] {
+    const votes: Record<string, number> = {};
     for (const agent of agents) {
         votes[agent.id] = 0;
     }
@@ -67,13 +91,13 @@ function tallyVotes(responses: any, agents: any): any {
         }
     }
     // 最多得票者を全て返す
-    const maxCount = Math.max(...Object.values(votes) as number[]);
+    const maxCount = Math.max(...Object.values(votes));
     if (maxCount === 0)
         return [];
-    return Object.keys(votes).filter((id: any) => votes[id] === maxCount);
+    return Object.keys(votes).filter((id: string) => votes[id] === maxCount);
 }
 // --- Summarizer selection logic ---
-function selectSummarizer(agents: any, stage: any, messages: any, agentResponses: any) {
+function selectSummarizer(agents: Agent[], stage: DialogueStage, messages: Message[], agentResponses: AgentResponse[]): string {
     // 投票があれば投票集計を優先
     if (agentResponses && agentResponses.length > 0) {
         const votedList = tallyVotes(agentResponses, agents);
@@ -86,11 +110,11 @@ function selectSummarizer(agents: any, stage: any, messages: any, agentResponses
         }
     }
     // output-generationやサマライズ時のみ動的選出
-    const agentIds = agents.filter((a: any) => a.id !== 'user').map((a: any) => a.id);
-    const counts: any = {};
+    const agentIds = agents.filter((a: Agent) => a.id !== 'user').map((a: Agent) => a.id);
+    const counts: Record<string, number> = {};
     for (const id of agentIds)
         counts[id] = 0;
-    messages.slice(-20).forEach((m: any) => {
+    messages.slice(-20).forEach((m: Message) => {
         if (agentIds.includes(m.agentId))
             counts[m.agentId]++;
     });
@@ -104,11 +128,11 @@ function selectSummarizer(agents: any, stage: any, messages: any, agentResponses
     }
     return maxId;
 }
-function sleep(ms: any) {
-    return new Promise((resolve: any) => setTimeout(resolve, ms));
+function sleep(ms: number): Promise<void> {
+    return new Promise((resolve: () => void) => setTimeout(resolve, ms));
 }
 // 配列シャッフル関数（Fisher-Yates）
-function shuffleArray(array: any) {
+function shuffleArray<T>(array: T[]): T[] {
     const arr = array.slice();
     for (let i = arr.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -117,17 +141,17 @@ function shuffleArray(array: any) {
     return arr;
 }
 export class RealtimeYuiProtocolRouter {
-    sessions = new Map();
-    agents = new Map();
-    defaultLanguage = 'en';
-    sessionStorage;
-    outputStorage;
-    interactionLogger;
-    stageSummarizer;
+    sessions = new Map<string, Session>();
+    agents = new Map<string, AgentInstance>();
+    defaultLanguage: Language = 'en';
+    sessionStorage: SessionStorage;
+    outputStorage: OutputStorage;
+    interactionLogger: InteractionLogger;
+    stageSummarizer: ReturnType<typeof createStageSummarizer>;
     sessionsLoaded = false;
-    stageSummarizerDelayMS;
-    finalSummaryDelayMS;
-    constructor(sessionStorage: any, outputStorage: any, interactionLogger: any, stageSummarizerOptions: any, delayOptions: any) {
+    stageSummarizerDelayMS: number;
+    finalSummaryDelayMS: number;
+    constructor(sessionStorage: SessionStorage, outputStorage: OutputStorage, interactionLogger: InteractionLogger, stageSummarizerOptions: StageSummarizerOptions, delayOptions: DelayOptions) {
         this.sessionStorage = sessionStorage || new SessionStorage();
         this.outputStorage = outputStorage || new OutputStorage();
         this.interactionLogger = interactionLogger || new InteractionLogger();
@@ -187,7 +211,7 @@ export class RealtimeYuiProtocolRouter {
         });
         console.log(`Initialized ${this.agents.size} agents: ${Array.from(this.agents.keys()).join(', ')}`);
     }
-    async saveSessionToStorage(session: any) {
+    async saveSessionToStorage(session: Session): Promise<void> {
         try {
             await this.sessionStorage.saveSession(session);
         }
@@ -195,15 +219,15 @@ export class RealtimeYuiProtocolRouter {
             console.error(`Error saving session ${session.id}:`, error);
         }
     }
-    getStageSpecificInputData(stage: any, session: any) {
+    getStageSpecificInputData(stage: DialogueStage, session: Session): Record<string, unknown> | null {
         switch (stage) {
             case 'individual-thought':
-                return { userPrompt: session.messages.find((m: any) => m.role === 'user')?.content };
+                return { userPrompt: session.messages.find((m: Message) => m.role === 'user')?.content };
             case 'mutual-reflection':
                 const individualThoughts = session.messages
-                    .filter((m: any) => m.stage === 'individual-thought' && m.role === 'agent')
-                    .map((m: any) => m.metadata?.stageData)
-                    .filter(Boolean);
+                    .filter((m: Message) => m.stage === 'individual-thought' && m.role === 'agent')
+                    .map((m: Message) => m.metadata?.stageData)
+                    .filter((data): data is StageData => data !== undefined);
                 return { individualThoughts };
             case 'conflict-resolution':
                 const conflicts = this.identifyConflicts(session, this.defaultLanguage);
@@ -218,7 +242,7 @@ export class RealtimeYuiProtocolRouter {
                 return null;
         }
     }
-    async createSession(title: any, agentIds: any, language: any = 'en') {
+    async createSession(title: string, agentIds: string[], language: Language = 'en'): Promise<Session> {
         // 既存セッションの最大IDを取得して+1する
         const existingSessions = await this.sessionStorage.getAllSessions();
         let maxId = 0;
@@ -230,10 +254,10 @@ export class RealtimeYuiProtocolRouter {
         }
         const sessionId = (maxId + 1).toString();
         const agents = agentIds
-            .map((id: any) => this.agents.get(id))
-            .filter((agent: any) => agent !== undefined)
-            .map((agent: any) => agent.getAgent());
-        const session = {
+            .map((id: string) => this.agents.get(id))
+            .filter((agent): agent is AgentInstance => agent !== undefined)
+            .map((agent: AgentInstance) => agent.getAgent());
+        const session: Session = {
             id: sessionId,
             title,
             agents,
@@ -250,7 +274,7 @@ export class RealtimeYuiProtocolRouter {
         return session;
     }
     // --- 新規: エージェントセットアップ ---
-    setupAgentsForStage(session: any, sessionId: any, language: any) {
+    setupAgentsForStage(session: Session, sessionId: string, language?: Language): void {
         if (language) {
             for (const agent of session.agents) {
                 const agentInstance = this.agents.get(agent.id);
@@ -270,11 +294,11 @@ export class RealtimeYuiProtocolRouter {
         }
     }
     // --- 新規: ユーザーメッセージ追加 ---
-    addUserMessageIfNeeded(session: any, userPrompt: any, stage: any) {
+    addUserMessageIfNeeded(session: Session, userPrompt: string, stage: DialogueStage): void {
         // 各ステージでユーザーメッセージを追加（既に存在しない場合のみ）
-        const existingUserMessage = session.messages.find((m: any) => m.role === 'user' && m.sequenceNumber === (session.sequenceNumber || 1));
+        const existingUserMessage = session.messages.find((m: Message) => m.role === 'user' && m.sequenceNumber === (session.sequenceNumber || 1));
         if (!existingUserMessage) {
-            const userMessage = {
+            const userMessage: Message = {
                 id: uuidv4(),
                 agentId: 'user',
                 content: userPrompt,
@@ -287,7 +311,7 @@ export class RealtimeYuiProtocolRouter {
         }
     }
     // --- 新規: エージェントレスポンス生成 ---
-    async generateAgentResponses(session: any, stage: any, userPrompt: any, agentDescriptions: any, context: any, onProgress: any) {
+    async generateAgentResponses(session: Session, stage: DialogueStage, userPrompt: string, agentDescriptions: string, context: Message[], onProgress?: ProgressCallback): Promise<{ responses: AgentResponse[]; agentResponses: AgentResponse[] }> {
         // 前のステージのサマリーを取得
         const previousStageSummaries = this.getPreviousStageSummaries(session, stage);
         let summaryContext = previousStageSummaries.length > 0
@@ -295,14 +319,14 @@ export class RealtimeYuiProtocolRouter {
             : '';
         // 新規シーケンス開始時はoutput-generationサマリーも追加
         if ((session.sequenceNumber || 1) > 1) {
-            const outputGenSummary = session.stageSummaries?.find((s: any) => s.stage === 'output-generation' && s.sequenceNumber === (session.sequenceNumber || 1) - 1);
+            const outputGenSummary = session.stageSummaries?.find((s: StageSummary) => s.stage === 'output-generation' && s.sequenceNumber === (session.sequenceNumber || 1) - 1);
             if (outputGenSummary) {
-                summaryContext += `\n\n【前プロセス全体のサマリー】\n${outputGenSummary.summary.map((s: any) => `- ${s.speaker}: ${s.position}`).join('\n')}`;
+                summaryContext += `\n\n【前プロセス全体のサマリー】\n${outputGenSummary.summary.map((s) => `- ${s.speaker}: ${s.position}`).join('\n')}`;
             }
         }
-        const agentResponses: any[] = [];
-        const responses: any[] = [];
-        const shuffledAgents = shuffleArray(session.agents);
+        const agentResponses: AgentResponse[] = [];
+        const responses: AgentResponse[] = [];
+        const shuffledAgents = shuffleArray<Agent>(session.agents);
         const delayMS = 120000; // 120秒
         for (let i = 0; i < shuffledAgents.length; i++) {
             if (i > 0)
@@ -329,12 +353,13 @@ export class RealtimeYuiProtocolRouter {
                     }
                     case 'mutual-reflection': {
                         const individualThoughts = session.messages
-                            .filter((m: any) => m.stage === 'individual-thought' && m.role === 'agent' && m.agentId !== agent.id)
-                            .map((m: any) => m.metadata?.stageData);
+                            .filter((m: Message) => m.stage === 'individual-thought' && m.role === 'agent' && m.agentId !== agent.id)
+                            .map((m: Message) => m.metadata?.stageData)
+                            .filter((data): data is StageData => data !== undefined);
                         if (individualThoughts.length === 0) {
-                            const individualThoughtStage = session.stageHistory.find((h: any) => h.stage === 'individual-thought');
+                            const individualThoughtStage = session.stageHistory.find((h: StageHistory) => h.stage === 'individual-thought');
                             if (individualThoughtStage) {
-                                individualThoughtStage.agentResponses.forEach((response: any) => {
+                                individualThoughtStage.agentResponses.forEach((response: AgentResponse) => {
                                     if (response.stageData) {
                                         individualThoughts.push(response.stageData);
                                     }
@@ -343,7 +368,15 @@ export class RealtimeYuiProtocolRouter {
                         }
                         if (individualThoughts.length === 0)
                             continue;
-                        const reflection = await agentInstance.stage2MutualReflection(agentDescriptions + '\n' + userPrompt + summaryContext, individualThoughts, context);
+                        const individualThoughtsForReflection: IndividualThought[] = individualThoughts.map((data: StageData) => ({
+                            agentId: data.agentId,
+                            content: data.content,
+                            summary: data.summary,
+                            reasoning: data.reasoning || 'No reasoning provided',
+                            assumptions: data.assumptions || [],
+                            approach: data.approach || 'No approach specified'
+                        }));
+                        const reflection = await agentInstance.stage2MutualReflection(agentDescriptions + '\n' + userPrompt + summaryContext, individualThoughtsForReflection, context);
                         response = {
                             agentId: reflection.agentId,
                             content: reflection.content,
@@ -408,12 +441,12 @@ export class RealtimeYuiProtocolRouter {
                     default:
                         throw new Error(`Unknown stage: ${stage}`);
                 }
-                const message = {
+                const message: Message = {
                     id: uuidv4(),
                     agentId: response.agentId,
                     content: response.content,
                     timestamp: new Date(),
-                    role: 'agent',
+                    role: 'agent' as const,
                     stage: stage,
                     sequenceNumber: session.sequenceNumber || 1,
                     metadata: {
@@ -428,7 +461,7 @@ export class RealtimeYuiProtocolRouter {
                     onProgress(message);
                 await this.saveSessionToStorage(session);
                 agentResponses.push({ agentId: response.agentId, content: response.content });
-                responses.push(response);
+                responses.push(response as AgentResponse);
             }
             catch (error) {
                 continue;
@@ -437,8 +470,8 @@ export class RealtimeYuiProtocolRouter {
         return { responses, agentResponses };
     }
     // --- 新規: サマライザー選出 ---
-    selectSummarizerAgents(stage: any, agentResponses: any, session: any) {
-        let summarizerIds: any[] = [];
+    selectSummarizerAgents(stage: DialogueStage, agentResponses: AgentResponse[], session: Session): string[] {
+        let summarizerIds: string[] = [];
         if (stage === 'output-generation') {
             summarizerIds = tallyVotes(agentResponses, session.agents);
             if (summarizerIds.length === 0) {
@@ -446,20 +479,20 @@ export class RealtimeYuiProtocolRouter {
                 if (fallbackId)
                     summarizerIds = [fallbackId];
             }
-            session.agents.forEach((agent: any) => {
+            session.agents.forEach((agent: Agent) => {
                 agent.isSummarizer = summarizerIds.includes(agent.id);
             });
         }
         else {
-            session.agents.forEach((agent: any) => {
+            session.agents.forEach((agent: Agent) => {
                 agent.isSummarizer = false;
             });
         }
         return summarizerIds;
     }
     // --- 新規: サマリー生成 ---
-    async generateSummaries(stage: any, summarizerIds: any, session: any, context: any, onProgress: any) {
-        let summaryList: any[] = [];
+    async generateSummaries(stage: DialogueStage, summarizerIds: string[], session: Session, context: Message[], onProgress?: ProgressCallback): Promise<AgentResponse[]> {
+        let summaryList: AgentResponse[] = [];
         if (stage === 'output-generation' && summarizerIds.length > 0) {
             const finalData = this.prepareFinalData(session);
             const summaryDelayMS = 120000;
@@ -472,12 +505,12 @@ export class RealtimeYuiProtocolRouter {
                     const summary = await summarizerAgentInstance.stage5OutputGeneration(finalData, context);
                     if (summary) {
                         summaryList.push(summary);
-                        const summaryMessage = {
+                        const summaryMessage: Message = {
                             id: uuidv4(),
                             agentId: summary.agentId,
                             content: summary.content,
                             timestamp: new Date(),
-                            role: 'agent',
+                            role: 'agent' as const,
                             stage: stage,
                             sequenceNumber: session.sequenceNumber || 1,
                             metadata: {
@@ -498,7 +531,7 @@ export class RealtimeYuiProtocolRouter {
         return summaryList;
     }
     // --- 新規: ステージ履歴・セッション状態更新 ---
-    async updateSessionStageHistory(session: any, stage: any, responses: any, stageStart: any) {
+    async updateSessionStageHistory(session: Session, stage: DialogueStage, responses: AgentResponse[], stageStart: Date): Promise<void> {
         session.stageHistory.push({
             stage,
             startTime: stageStart,
@@ -508,7 +541,7 @@ export class RealtimeYuiProtocolRouter {
         });
         // ステージ終了時にサマリーを生成
         await this.generateStageSummary(session, stage);
-        const completedStages = session.stageHistory.filter((h: any) => h.endTime);
+        const completedStages = session.stageHistory.filter((h: StageHistory) => h.endTime);
         const isAllStagesCompleted = completedStages.length >= 5;
         if (isAllStagesCompleted) {
             session.currentStage = undefined;
@@ -521,11 +554,11 @@ export class RealtimeYuiProtocolRouter {
         session.updatedAt = new Date();
     }
     // --- 新規: 前のステージサマリー取得 ---
-    getPreviousStageSummaries(session: any, stage: any) {
+    getPreviousStageSummaries(session: Session, stage: DialogueStage): StageSummary[] {
         if (!session.stageSummaries)
             return [];
         const currentSequenceNumber = session.sequenceNumber || 1;
-        const stageOrder = {
+        const stageOrder: Record<DialogueStage, number> = {
             'individual-thought': 1,
             'mutual-reflection': 2,
             'mutual-reflection-summary': 2.5,
@@ -536,16 +569,16 @@ export class RealtimeYuiProtocolRouter {
             'output-generation': 5,
             'finalize': 5.1
         };
-        const currentStageNumber = (stageOrder as any)[stage];
-        return session.stageSummaries.filter((summary: any) => summary.sequenceNumber === currentSequenceNumber &&
-            (stageOrder as any)[summary.stage] < currentStageNumber);
+        const currentStageNumber = stageOrder[stage];
+        return session.stageSummaries.filter((summary: StageSummary) => summary.sequenceNumber === currentSequenceNumber &&
+            stageOrder[summary.stage] < currentStageNumber);
     }
     // --- 新規: ステージサマリー生成 ---
-    async generateStageSummary(session: any, stage: any) {
+    async generateStageSummary(session: Session, stage: DialogueStage): Promise<void> {
         try {
             console.log(`[RealtimeRouter] Generating summary for stage: ${stage}`);
             // ステージ内のメッセージを抽出
-            const stageMessages = session.messages.filter((msg: any) => msg.stage === stage && msg.role === 'agent');
+            const stageMessages = session.messages.filter((msg: Message) => msg.stage === stage && msg.role === 'agent');
             if (stageMessages.length === 0) {
                 console.log(`[RealtimeRouter] No messages found for stage ${stage}, skipping summary`);
                 return;
@@ -562,7 +595,7 @@ export class RealtimeYuiProtocolRouter {
                 session.stageSummaries = [];
             }
             // 既存のサマリーを更新または新規追加
-            const existingIndex = session.stageSummaries.findIndex((s: any) => s.stage === stage && s.sequenceNumber === summary.sequenceNumber);
+            const existingIndex = session.stageSummaries.findIndex((s: StageSummary) => s.stage === stage && s.sequenceNumber === summary.sequenceNumber);
             if (existingIndex >= 0) {
                 session.stageSummaries[existingIndex] = summary;
             }
@@ -576,16 +609,16 @@ export class RealtimeYuiProtocolRouter {
         }
     }
     // --- 新規: 最終出力保存 ---
-    async saveFinalOutputIfNeeded(isAllStagesCompleted: any, summaryList: any, session: any, sessionId: any, language: any) {
+    async saveFinalOutputIfNeeded(isAllStagesCompleted: boolean, summaryList: AgentResponse[], session: Session, sessionId: string, language: Language): Promise<void> {
         if (isAllStagesCompleted && summaryList.length > 0) {
             try {
-                const userMessage = session.messages.find((m: any) => m.role === 'user');
+                const userMessage = session.messages.find((m: Message) => m.role === 'user');
                 const userPrompt = userMessage?.content || '';
                 // 全ステージのサマリーを統合
                 let finalContent = '';
                 if (session.stageSummaries && session.stageSummaries.length > 0) {
                     const currentSequenceNumber = session.sequenceNumber || 1;
-                    const sequenceSummaries = session.stageSummaries.filter((s: any) => s.sequenceNumber === currentSequenceNumber);
+                    const sequenceSummaries = session.stageSummaries.filter((s: StageSummary) => s.sequenceNumber === currentSequenceNumber);
                     if (sequenceSummaries.length > 0) {
                         // 最終サマリー生成前にdelayを追加
                         console.log(`[RealtimeRouter] Waiting ${this.finalSummaryDelayMS}ms before generating final summary`);
@@ -610,7 +643,7 @@ export class RealtimeYuiProtocolRouter {
         }
     }
     // --- リファクタ済み executeStageRealtime ---
-    async executeStageRealtime(sessionId: any, userPrompt: any, stage: any, language: any, onProgress: any) {
+    async executeStageRealtime(sessionId: string, userPrompt: string, stage: DialogueStage, language: Language, onProgress?: ProgressCallback): Promise<StageExecutionResult> {
         const session = this.sessions.get(sessionId);
         if (!session) {
             throw new Error(`Session ${sessionId} not found`);
@@ -626,14 +659,14 @@ export class RealtimeYuiProtocolRouter {
         // 現在のシーケンスのメッセージのみを取得
         const currentSequenceNumber = session.sequenceNumber || 1;
         const sequenceMessages = this.getMessagesForSequence(session, currentSequenceNumber);
-        const context = sequenceMessages.filter((m: any) => m.stage !== stage).slice(-20);
+        const context = sequenceMessages.filter((m: Message) => m.stage !== stage).slice(-20);
         const agentDescriptions = '【List of Participating Agents】\n' +
-            session.agents.map((a: any) => `・${a.name} ${a.furigana ? `（${a.furigana}）` : ''} id: ${a.id} : ${a.personality}`).join('  ') +
+            session.agents.map((a: Agent) => `・${a.name} ${a.furigana ? `（${a.furigana}）` : ''} id: ${a.id} : ${a.personality}`).join('  ') +
             '\n※Thereafter, always use only the above names and designations, and never use other names or fictitious agent names.';
         // 5-Stage Dialectic Process with summary stages
-        let responses: any[] = [];
-        let agentResponses: any[] = [];
-        let summaryList: any[] = [];
+        let responses: AgentResponse[] = [];
+        let agentResponses: AgentResponse[] = [];
+        let summaryList: AgentResponse[] = [];
         if (stage === 'mutual-reflection-summary') {
             // Stage 2.5: Summarize mutual reflection
             const mutualReflectionResponses = this.getStageResponses(session, 'mutual-reflection');
@@ -654,7 +687,11 @@ export class RealtimeYuiProtocolRouter {
             const outputGenerationResponses = this.getStageResponses(session, 'output-generation');
             const votingResults = this.extractVotingResults(outputGenerationResponses, session.agents);
             const selectedAgent = this.selectFinalAgent(votingResults, session.agents);
-            responses = await this.executeFinalizeStage(session, selectedAgent, votingResults, outputGenerationResponses, context, onProgress);
+            if (selectedAgent) {
+                responses = await this.executeFinalizeStage(session, selectedAgent.getAgent(), votingResults, outputGenerationResponses, context, onProgress);
+            } else {
+                responses = [];
+            }
         }
         else {
             // Regular stages (1, 2, 3, 4, 5)
@@ -670,7 +707,7 @@ export class RealtimeYuiProtocolRouter {
         if (!stage.includes('-summary') && stage !== 'finalize') {
             await this.generateStageSummary(session, stage);
         }
-        const completedStages = session.stageHistory.filter((h: any) => h.endTime);
+        const completedStages = session.stageHistory.filter((h: StageHistory) => h.endTime);
         const isAllStagesCompleted = completedStages.length >= 8; // 5 main stages + 3 summary stages
         await this.saveSessionToStorage(session);
         await this.saveFinalOutputIfNeeded(isAllStagesCompleted, summaryList, session, sessionId, language);
@@ -681,24 +718,24 @@ export class RealtimeYuiProtocolRouter {
         };
     }
     // Helper methods for conflict identification and synthesis
-    identifyConflicts(session: any, language: any = 'en') {
-        const conflicts: any[] = [];
+    identifyConflicts(session: Session, language: Language = 'en'): Conflict[] {
+        const conflicts: Conflict[] = [];
         // Get individual thoughts and mutual reflections from current session only
         const individualThoughts = session.messages
-            .find((m: any) =>m.stage === 'individual-thought' && m.role === 'agent')
-            .map((m: any) => m.metadata?.stageData)
-            .filter(Boolean);
+            .filter((m: Message) => m.stage === 'individual-thought' && m.role === 'agent')
+            .map((m: Message) => m.metadata?.stageData)
+            .filter((data): data is StageData => data !== undefined);
         const mutualReflections = session.messages
-            .find((m: any) =>m.stage === 'mutual-reflection' && m.role === 'agent')
-            .map((m: any) => m.metadata?.stageData)
-            .filter(Boolean);
+            .filter((m: Message) => m.stage === 'mutual-reflection' && m.role === 'agent')
+            .map((m: Message) => m.metadata?.stageData)
+            .filter((data): data is StageData => data !== undefined);
         // Enhanced conflict detection based on disagreement in mutual reflections
-        mutualReflections.forEach((reflection: any) => {
-            const disagreements = reflection.reflections.filter((r: any) => !r.agreement);
+        mutualReflections.forEach((reflection: StageData) => {
+            const disagreements = reflection.reflections?.filter((r) => !r.agreement) || [];
             if (disagreements.length > 0) {
                 // Create detailed conflict descriptions
-                disagreements.forEach((disagreement: any) => {
-                    const targetThought = individualThoughts.find((t: any) => t.agentId === disagreement.targetAgentId);
+                disagreements.forEach((disagreement) => {
+                    const targetThought = individualThoughts.find((t: StageData) => t.agentId === disagreement.targetAgentId);
                     const conflictDescription = this.generateDetailedConflictDescription(reflection.agentId, disagreement.targetAgentId, disagreement.reaction, targetThought?.content || 'No content available', targetThought?.approach || 'Unknown approach', language);
                     conflicts.push({
                         id: `conflict_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -711,8 +748,8 @@ export class RealtimeYuiProtocolRouter {
         });
         // If no conflicts found in reflections, create a default conflict for discussion
         if (conflicts.length === 0 && individualThoughts.length > 1) {
-            const agentNames = individualThoughts.map((t: any) => t.agentId).join(', ');
-            const approaches = individualThoughts.map((t: any) => `${t.agentId}: ${t.approach}`).join('; ');
+            const agentNames = individualThoughts.map((t: StageData) => t.agentId).join(', ');
+            const approaches = individualThoughts.map((t: StageData) => `${t.agentId}: ${t.approach}`).join('; ');
             // Analyze differences in approaches between agents in detail
             const approachAnalysis = this.analyzeApproachDifferences(individualThoughts, language);
             // Evaluate potential for conflicts
@@ -720,7 +757,7 @@ export class RealtimeYuiProtocolRouter {
             const templates = CONFLICT_DESCRIPTION_TEMPLATES;
             conflicts.push({
                 id: `conflict_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                agents: individualThoughts.map((t: any) => t.agentId),
+                agents: individualThoughts.map((t: StageData) => t.agentId),
                 description: `【${templates.diversePerspectives}】
 エージェント: ${agentNames}
 
@@ -740,7 +777,7 @@ ${templates.complementarySolutions}`,
         }
         return conflicts;
     }
-    generateDetailedConflictDescription(agent1Id: any, agent2Id: any, reaction: any, targetContent: any, targetApproach: any, language: any = 'en') {
+    generateDetailedConflictDescription(agent1Id: string, agent2Id: string, reaction: string, targetContent: string, targetApproach: string, language: Language = 'en'): string {
         const contentPreview = targetContent.length > 100
             ? targetContent.substring(0, 100) + '...'
             : targetContent;
@@ -765,7 +802,7 @@ ${resolutionDirection}
 【${templates.discussionFocus}】
 ${templates.understandingDifferences}`;
     }
-    analyzeConflictRootCause(agent1Id: any, agent2Id: any, reaction: any, targetApproach: any, language: any = 'en') {
+    analyzeConflictRootCause(agent1Id: string, agent2Id: string, reaction: string, targetApproach: string, language: Language = 'en'): string {
         // Analyze conflict causes based on agent characteristics
         const agent1Style = this.getAgentStyle(agent1Id);
         const agent2Style = this.getAgentStyle(agent2Id);
@@ -783,7 +820,7 @@ ${templates.understandingDifferences}`;
             return templates.conceptualTensions;
         }
     }
-    suggestResolutionDirection(agent1Id: any, agent2Id: any, targetApproach: any, language: any = 'en') {
+    suggestResolutionDirection(agent1Id: string, agent2Id: string, targetApproach: string, language: Language = 'en'): string {
         const agent1Style = this.getAgentStyle(agent1Id);
         const agent2Style = this.getAgentStyle(agent2Id);
         const templates = CONFLICT_DESCRIPTION_TEMPLATES;
@@ -800,7 +837,7 @@ ${templates.understandingDifferences}`;
             return templates.ideaSynthesis;
         }
     }
-    getAgentStyle(agentId: any) {
+    getAgentStyle(agentId: string): Agent['style'] {
         if (agentId.includes('hekito'))
             return 'analytical';
         if (agentId.includes('eiro'))
@@ -811,23 +848,23 @@ ${templates.understandingDifferences}`;
             return 'intuitive';
         if (agentId.includes('yui'))
             return 'meta';
-        return 'balanced';
+        return 'logical';
     }
-    analyzeApproachDifferences(individualThoughts: any, language: any = 'en') {
-        const approaches = individualThoughts.map((t: any) => ({
+    analyzeApproachDifferences(individualThoughts: StageData[], language: Language = 'en'): string {
+        const approaches = individualThoughts.map((t: StageData) => ({
             agentId: t.agentId,
-            approach: t.approach,
+            approach: t.approach || '',
             style: this.getAgentStyle(t.agentId)
         }));
         const templates = CONFLICT_DESCRIPTION_TEMPLATES;
         let analysis = '';
         // Analyze approach diversity
-        const uniqueStyles = [...new Set(approaches.map((a: any) => a.style))];
+        const uniqueStyles = [...new Set(approaches.map((a) => a.style))];
         if (uniqueStyles.length > 1) {
             analysis += templates.perspectiveIntegration + '\n';
         }
         // Analyze individual agent characteristics
-        approaches.forEach((approach: any) => {
+        approaches.forEach((approach) => {
             switch (approach.style) {
                 case 'analytical':
                     analysis += templates.coreInsights + '\n';
@@ -847,23 +884,23 @@ ${templates.understandingDifferences}`;
         });
         return analysis;
     }
-    identifyPotentialConflicts(individualThoughts: any, language: any = 'en') {
-        const approaches = individualThoughts.map((t: any) => ({
+    identifyPotentialConflicts(individualThoughts: StageData[], language: Language = 'en'): string {
+        const approaches = individualThoughts.map((t: StageData) => ({
             agentId: t.agentId,
-            approach: t.approach,
+            approach: t.approach || '',
             style: this.getAgentStyle(t.agentId)
         }));
         const templates = CONFLICT_DESCRIPTION_TEMPLATES;
-        const potentialConflicts: any[] = [];
+        const potentialConflicts: string[] = [];
         // Analytical vs Creative conflict potential
-        const hasAnalytical = approaches.some((a: any) => a.style === 'analytical');
-        const hasIntuitive = approaches.some((a: any) => a.style === 'intuitive');
+        const hasAnalytical = approaches.some((a) => a.style === 'analytical');
+        const hasIntuitive = approaches.some((a) => a.style === 'intuitive');
         if (hasAnalytical && hasIntuitive) {
             potentialConflicts.push(templates.conceptualTensions);
         }
         // Logical vs Critical conflict potential
-        const hasLogical = approaches.some((a: any) => a.style === 'logical');
-        const hasCritical = approaches.some((a: any) => a.style === 'critical');
+        const hasLogical = approaches.some((a) => a.style === 'logical');
+        const hasCritical = approaches.some((a) => a.style === 'critical');
         if (hasLogical && hasCritical) {
             potentialConflicts.push(templates.valueConflicts);
         }
@@ -876,79 +913,79 @@ ${templates.understandingDifferences}`;
         }
         return potentialConflicts.join('; ') + '. ' + templates.complementarySolutions;
     }
-    prepareSynthesisData(session: any) {
+    prepareSynthesisData(session: Session): SynthesisData {
         // Get all previous stage data from current session only
         const individualThoughts = session.messages
-            .find((m: any) =>m.stage === 'individual-thought' && m.role === 'agent')
-            .map((m: any) => {
+            .filter((m: Message) => m.stage === 'individual-thought' && m.role === 'agent')
+            .map((m: Message) => {
             const data = m.metadata?.stageData;
             return data?.summary || (typeof data?.content === 'string' ? data.content.slice(0, 100) : undefined);
         })
-            .filter(Boolean);
+            .filter((data): data is string => data !== undefined);
         const mutualReflections = session.messages
-            .find((m: any) =>m.stage === 'mutual-reflection' && m.role === 'agent')
-            .map((m: any) => {
+            .filter((m: Message) => m.stage === 'mutual-reflection' && m.role === 'agent')
+            .map((m: Message) => {
             const data = m.metadata?.stageData;
             return data?.summary || (typeof data?.content === 'string' ? data.content.slice(0, 100) : undefined);
         })
-            .filter(Boolean);
+            .filter((data): data is string => data !== undefined);
         const conflictResolutions = session.messages
-            .find((m: any) =>m.stage === 'conflict-resolution' && m.role === 'agent')
-            .map((m: any) => {
+            .filter((m: Message) => m.stage === 'conflict-resolution' && m.role === 'agent')
+            .map((m: Message) => {
             const data = m.metadata?.stageData;
             return data?.summary || (typeof data?.content === 'string' ? data.content.slice(0, 100) : undefined);
         })
-            .filter(Boolean);
+            .filter((data): data is string => data !== undefined);
         // Get the original user prompt from current session
-        const userMessage = session.messages.find((m: any) => m.role === 'user');
+        const userMessage = session.messages.find((m: Message) => m.role === 'user');
         const userPrompt = userMessage?.content || '';
         return {
             query: userPrompt,
             individualThoughts,
             mutualReflections,
             conflictResolutions,
-            context: session.messages.slice(-10).map((m: any) => `${m.agentId}: ${typeof m.content === 'string' ? m.content.slice(0, 100) : ''}`).join('\n')
+            context: session.messages.slice(-10).map((m: Message) => `${m.agentId}: ${typeof m.content === 'string' ? m.content.slice(0, 100) : ''}`).join('\n')
         };
     }
-    generateSynthesis(responses: any) {
+    generateSynthesis(responses: AgentResponse[]): SynthesisAttempt {
         // Implementation for synthesis generation
         return {
             consensus: 0.8,
             confidence: 0.7
         };
     }
-    prepareFinalData(session: any) {
+    prepareFinalData(session: Session): FinalData {
         // Get all previous stage data from current session only
         const individualThoughts = session.messages
-            .find((m: any) =>m.stage === 'individual-thought' && m.role === 'agent')
-            .map((m: any) => {
+            .filter((m: Message) => m.stage === 'individual-thought' && m.role === 'agent')
+            .map((m: Message) => {
             const data = m.metadata?.stageData;
             return data?.summary || (typeof data?.content === 'string' ? data.content.slice(0, 100) : undefined);
         })
-            .filter(Boolean);
+            .filter((data): data is string => data !== undefined);
         const mutualReflections = session.messages
-            .find((m: any) =>m.stage === 'mutual-reflection' && m.role === 'agent')
-            .map((m: any) => {
+            .filter((m: Message) => m.stage === 'mutual-reflection' && m.role === 'agent')
+            .map((m: Message) => {
             const data = m.metadata?.stageData;
             return data?.summary || (typeof data?.content === 'string' ? data.content.slice(0, 100) : undefined);
         })
-            .filter(Boolean);
+            .filter((data): data is string => data !== undefined);
         const conflictResolutions = session.messages
-            .find((m: any) =>m.stage === 'conflict-resolution' && m.role === 'agent')
-            .map((m: any) => {
+            .filter((m: Message) => m.stage === 'conflict-resolution' && m.role === 'agent')
+            .map((m: Message) => {
             const data = m.metadata?.stageData;
             return data?.summary || (typeof data?.content === 'string' ? data.content.slice(0, 100) : undefined);
         })
-            .filter(Boolean);
+            .filter((data): data is string => data !== undefined);
         const synthesisAttempts = session.messages
-            .find((m: any) =>m.stage === 'synthesis-attempt' && m.role === 'agent')
-            .map((m: any) => {
+            .filter((m: Message) => m.stage === 'synthesis-attempt' && m.role === 'agent')
+            .map((m: Message) => {
             const data = m.metadata?.stageData;
             return data?.summary || (typeof data?.content === 'string' ? data.content.slice(0, 100) : undefined);
         })
-            .filter(Boolean);
+            .filter((data): data is string => data !== undefined);
         // Get the original user prompt from current session
-        const userMessage = session.messages.find((m: any) => m.role === 'user');
+        const userMessage = session.messages.find((m: Message) => m.role === 'user');
         const userPrompt = userMessage?.content || '';
         return {
             query: userPrompt,
@@ -958,27 +995,27 @@ ${templates.understandingDifferences}`;
                 conflictResolutions,
                 synthesisAttempts
             },
-            context: session.messages.slice(-10).map((m: any) => `${m.agentId}: ${typeof m.content === 'string' ? m.content.slice(0, 100) : ''}`).join('\n')
+            context: session.messages.slice(-10).map((m: Message) => `${m.agentId}: ${typeof m.content === 'string' ? m.content.slice(0, 100) : ''}`).join('\n')
         };
     }
     // Standard session management methods
-    getSession(sessionId: any) {
+    getSession(sessionId: string): Session | undefined {
         return this.sessions.get(sessionId);
     }
-    async getAllSessions() {
+    async getAllSessions(): Promise<Session[]> {
         await this.ensureSessionsLoaded();
         const sessions = Array.from(this.sessions.values());
         // Sort by updatedAt in descending order (newest first)
-        return sessions.sort((a: any, b: any) => {
+        return sessions.sort((a: Session, b: Session) => {
             const dateA = a.updatedAt instanceof Date ? a.updatedAt : new Date(a.updatedAt);
             const dateB = b.updatedAt instanceof Date ? b.updatedAt : new Date(b.updatedAt);
             return dateB.getTime() - dateA.getTime();
         });
     }
-    getAvailableAgents() {
-        return Array.from(this.agents.values()).map((agent: any) => agent.getAgent());
+    getAvailableAgents(): Agent[] {
+        return Array.from(this.agents.values()).map((agent: AgentInstance) => agent.getAgent());
     }
-    async deleteSession(sessionId: any) {
+    async deleteSession(sessionId: string): Promise<boolean> {
         const deleted = this.sessions.delete(sessionId);
         if (deleted) {
             try {
@@ -990,27 +1027,27 @@ ${templates.understandingDifferences}`;
         }
         return deleted;
     }
-    setDefaultLanguage(language: any) {
+    setDefaultLanguage(language: Language): void {
         this.defaultLanguage = language;
     }
-    getDefaultLanguage() {
+    getDefaultLanguage(): Language {
         return this.defaultLanguage;
     }
     // Output storage methods
-    async saveFinalOutput(sessionId: any, title: any, content: any, userPrompt: any, language: any) {
+    async saveFinalOutput(sessionId: string, title: string, content: string, userPrompt: string, language: Language) {
         return await this.outputStorage.saveOutput(title, content, userPrompt, language, sessionId);
     }
     async getAllSavedOutputs() {
         return await this.outputStorage.getAllOutputs();
     }
-    async getSavedOutput(id: any) {
+    async getSavedOutput(id: string) {
         return await this.outputStorage.getOutput(id);
     }
-    async deleteSavedOutput(id: any) {
+    async deleteSavedOutput(id: string) {
         return await this.outputStorage.deleteOutput(id);
     }
     // --- 新規: セッションリセット ---
-    async resetSession(sessionId: any) {
+    async resetSession(sessionId: string): Promise<Session> {
         const session = this.sessions.get(sessionId);
         if (!session) {
             throw new Error(`Session ${sessionId} not found`);
@@ -1030,7 +1067,7 @@ ${templates.understandingDifferences}`;
         return session;
     }
     // --- 新規: セッションリセット確認 ---
-    shouldResetSession(session: any, stage: any) {
+    shouldResetSession(session: Session, stage: DialogueStage): boolean {
         // Stage 1から開始する場合で、既にメッセージやサマリーが存在する場合はリセットが必要
         if (stage === 'individual-thought') {
             return session.messages.length > 0 ||
@@ -1040,7 +1077,7 @@ ${templates.understandingDifferences}`;
         return false;
     }
     // --- 新規: 新しいシーケンス開始 ---
-    async startNewSequence(sessionId: any) {
+    async startNewSequence(sessionId: string): Promise<Session> {
         const session = this.sessions.get(sessionId);
         if (!session) {
             throw new Error(`Session ${sessionId} not found`);
@@ -1061,7 +1098,7 @@ ${templates.understandingDifferences}`;
         return session;
     }
     // --- 新規: シーケンス確認 ---
-    shouldStartNewSequence(session: any, stage: any) {
+    shouldStartNewSequence(session: Session, stage: DialogueStage): boolean {
         // Stage 1から開始する場合で、既にメッセージやサマリーが存在する場合は新しいシーケンスが必要
         if (stage === 'individual-thought') {
             return session.messages.length > 0 ||
@@ -1071,58 +1108,62 @@ ${templates.understandingDifferences}`;
         return false;
     }
     // --- 新規: シーケンス別メッセージ取得 ---
-    getMessagesForSequence(session: any, sequenceNumber: any) {
-        return session.messages.filter((msg: any) => msg.sequenceNumber === sequenceNumber);
+    getMessagesForSequence(session: Session, sequenceNumber: number): Message[] {
+        return session.messages.filter((msg: Message) => msg.sequenceNumber === sequenceNumber);
     }
     // --- 新規: シーケンス別サマリー取得 ---
-    getSummariesForSequence(session: any, sequenceNumber: any) {
+    getSummariesForSequence(session: Session, sequenceNumber: number): StageSummary[] {
         if (!session.stageSummaries)
             return [];
-        return session.stageSummaries.filter((summary: any) => summary.sequenceNumber === sequenceNumber);
+        return session.stageSummaries.filter((summary: StageSummary) => summary.sequenceNumber === sequenceNumber);
     }
     // Helper methods for 5-Stage Dialectic Process
-    getStageResponses(session: any, stage: any) {
+    getStageResponses(session: Session, stage: DialogueStage): AgentResponse[] {
         return session.stageHistory
-            .find((h: any) => h.stage === stage)
+            .find((h: StageHistory) => h.stage === stage)
             ?.agentResponses || [];
     }
-    async executeSummaryStage(session: any, stage: any, responses: any, context: any, onProgress: any) {
+    async executeSummaryStage(session: Session, stage: DialogueStage, responses: AgentResponse[], context: Message[], onProgress?: ProgressCallback): Promise<AgentResponse[]> {
         // ユーザーメッセージが含まれていることを確認
-        const userMessage = context.find((m: any) => m.role === 'user');
+        const userMessage = context.find((m: Message) => m.role === 'user');
         if (!userMessage) {
             // ユーザーメッセージが見つからない場合は、セッションから取得
-            const sessionUserMessage = session.messages.find((m: any) => m.role === 'user');
+            const sessionUserMessage = session.messages.find((m: Message) => m.role === 'user');
             if (sessionUserMessage) {
                 context.push(sessionUserMessage);
             }
         }
         // Use stage summarizer to create summary
-        const summary = await this.stageSummarizer.summarizeStage(stage, responses.map((r: any) => ({
+        const summary = await this.stageSummarizer.summarizeStage(stage, responses.map((r: AgentResponse) => ({
             id: r.agentId,
             agentId: r.agentId,
             content: r.content,
             timestamp: new Date(),
-            role: 'agent',
+            role: 'agent' as const,
             stage
         })), session.agents, session.id, session.language);
         // Create a summary response
-        const summaryResponse = {
+        const summaryResponse: AgentResponse = {
             agentId: 'stage-summarizer',
-            content: summary.summary.map((s: any) => `${s.speaker}: ${s.position}`).join('\n'),
-            summary: summary.summary.map((s: any) => `${s.speaker}: ${s.position}`).join('; '),
+            content: summary.summary.map((s) => `${s.speaker}: ${s.position}`).join('\n'),
+            summary: summary.summary.map((s) => `${s.speaker}: ${s.position}`).join('; '),
             reasoning: 'Summarized stage responses to extract key points for next stage',
             confidence: 0.8,
             references: ['stage-summary', 'conflict-extraction'],
             stage,
-            stageData: summary
+            stageData: {
+                agentId: 'stage-summarizer',
+                content: summary.summary.map((s) => `${s.speaker}: ${s.position}`).join('\n'),
+                summary: summary.summary.map((s) => `${s.speaker}: ${s.position}`).join('; ')
+            }
         };
         // Create system message for UI
-        const systemMessage = {
+        const systemMessage: Message = {
             id: `summary-${Date.now()}`,
             agentId: 'system',
             content: summaryResponse.content,
             timestamp: new Date(),
-            role: 'system',
+            role: 'system' as const,
             stage
         };
         // Send progress update as system message
@@ -1133,12 +1174,12 @@ ${templates.understandingDifferences}`;
         session.messages.push(systemMessage);
         return [summaryResponse];
     }
-    async executeFinalizeStage(session: any, selectedAgent: any, votingResults: any, responses: any, context: any, onProgress: any) {
+    async executeFinalizeStage(session: Session, selectedAgent: Agent, votingResults: VotingResults, responses: AgentResponse[], context: Message[], onProgress?: ProgressCallback): Promise<AgentResponse[]> {
         // ユーザーメッセージが含まれていることを確認
-        const userMessage = context.find((m: any) => m.role === 'user');
+        const userMessage = context.find((m: Message) => m.role === 'user');
         if (!userMessage) {
             // ユーザーメッセージが見つからない場合は、セッションから取得
-            const sessionUserMessage = session.messages.find((m: any) => m.role === 'user');
+            const sessionUserMessage = session.messages.find((m: Message) => m.role === 'user');
             if (sessionUserMessage) {
                 context.push(sessionUserMessage);
             }
@@ -1157,12 +1198,12 @@ ${templates.understandingDifferences}`;
         // Execute finalize stage
         const finalizeResponse = await agentInstance.stage5_1Finalize(votingResults, responses, context);
         // Create finalize message for UI
-        const finalizeMessage = {
+        const finalizeMessage: Message = {
             id: `finalize-${Date.now()}`,
             agentId: selectedAgent.id,
             content: finalizeResponse.content,
             timestamp: new Date(),
-            role: 'agent',
+            role: 'agent' as const,
             stage: 'finalize'
         };
         // Send progress update with the selected agent's identity
@@ -1174,9 +1215,9 @@ ${templates.understandingDifferences}`;
         console.log(`[FinalizeStage] Finalize stage completed by ${selectedAgent.id} (${selectedAgent.name})`);
         return [finalizeResponse];
     }
-    extractVotingResults(responses: any, agents: any): any {
-        const votingResults: any = {};
-        responses.forEach((response: any) => {
+    extractVotingResults(responses: AgentResponse[], agents: Agent[]): VotingResults {
+        const votingResults: VotingResults = {};
+        responses.forEach((response: AgentResponse) => {
             // First try to get vote from metadata if it exists
             if (response.metadata?.voteFor) {
                 votingResults[response.agentId] = response.metadata.voteFor;
@@ -1197,21 +1238,21 @@ ${templates.understandingDifferences}`;
         console.log(`[Voting] Final voting results:`, votingResults);
         return votingResults;
     }
-    selectFinalAgent(votingResults: any, agents: any): any {
+    selectFinalAgent(votingResults: VotingResults, agents: Agent[]): AgentInstance | undefined {
         console.log(`[SelectFinalAgent] Input voting results:`, votingResults);
         // Count votes
         const voteCounts: any = {};
         agents.forEach((agent: any) => {
             voteCounts[agent.id] = 0;
         });
-        Object.values(votingResults).forEach((votedAgent: any) => {
+        Object.values(votingResults).forEach((votedAgent: unknown) => {
             if (typeof votedAgent === 'string' && voteCounts.hasOwnProperty(votedAgent)) {
                 voteCounts[votedAgent]++;
             }
         });
         console.log(`[SelectFinalAgent] voteCounts:`, voteCounts);
         // Find the agent with the highest vote count
-        let selectedAgent: any = null;
+        let selectedAgent: AgentInstance | undefined = undefined;
         let maxVotes = -1;
         for (const agentId in voteCounts) {
             if (voteCounts[agentId] > maxVotes) {
@@ -1220,7 +1261,8 @@ ${templates.understandingDifferences}`;
             }
         }
         if (selectedAgent) {
-            console.log(`[SelectFinalAgent] Selected agent: ${selectedAgent.id} (${selectedAgent.name})`);
+            const agent = selectedAgent.getAgent();
+            console.log(`[SelectFinalAgent] Selected agent: ${agent.id} (${agent.name})`);
         }
         else {
             console.log(`[SelectFinalAgent] No valid agent selected`);
