@@ -7,7 +7,7 @@ export interface IAgentManager {
 }
 
 export interface ISessionManager {
-  getSession(sessionId: string): Session | undefined;
+  getSession(sessionId: string): Promise<Session | undefined>;
   getAllSessions(): Promise<Session[]>;
   createSession(title: string, agentIds: string[], language: Language): Promise<Session>;
   saveSession(session: Session): Promise<void>;
@@ -24,7 +24,7 @@ export interface IRealtimeRouter {
     language: Language,
     onProgress?: (message: Message) => void
   ): Promise<{ stage: string; agentResponses: AgentResponse[]; duration: number }>;
-  getSession(sessionId: string): Session | undefined;
+  getSession(sessionId: string): Promise<Session | undefined>;
   getAllSessions(): Promise<Session[]>;
   createSession(title: string, agentIds: string[], language: Language): Promise<Session>;
   deleteSession(sessionId: string): Promise<boolean>;

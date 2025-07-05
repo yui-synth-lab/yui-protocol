@@ -6,31 +6,104 @@ export class SessionManager {
   private sessionStorage: SessionStorage;
   private agentManager: IAgentManager;
   private sessions: Map<string, Session> = new Map();
+  private nextSessionId: number = 1;
 
   constructor(sessionStorage: SessionStorage, agentManager: IAgentManager) {
     this.sessionStorage = sessionStorage;
     this.agentManager = agentManager;
+    this.initializeNextSessionId();
   }
 
-  getSession(sessionId: string): Session | undefined {
-    return this.sessions.get(sessionId);
+  private async initializeNextSessionId(): Promise<void> {
+    try {
+      const allSessions = await this.sessionStorage.getAllSessions();
+      if (allSessions.length > 0) {
+        // 既存のセッションから最大のIDを取得
+        const maxId = Math.max(...allSessions.map(s => {
+          const id = parseInt(s.id, 10);
+          return isNaN(id) ? 0 : id;
+        }));
+        this.nextSessionId = maxId + 1;
+      }
+    } catch (error) {
+      console.warn('[SessionManager] Could not initialize next session ID, starting from 1:', error);
+      this.nextSessionId = 1;
+    }
+  }
+
+  async getSession(sessionId: string): Promise<Session | undefined> {
+    // メモリ内のセッションを先にチェック
+    let session = this.sessions.get(sessionId);
+    
+    // メモリ内にない場合は永続化されたセッションから読み込み
+    if (!session) {
+      const loadedSession = await this.sessionStorage.loadSession(sessionId);
+      if (loadedSession) {
+        this.sessions.set(sessionId, loadedSession);
+        session = loadedSession;
+      }
+    }
+    
+    return session;
   }
 
   async getAllSessions(): Promise<Session[]> {
-    return Array.from(this.sessions.values());
+    // 永続化されたセッションも読み込む
+    const storedSessions = await this.sessionStorage.getAllSessions();
+    
+    // メモリ内のセッションと永続化されたセッションをマージ
+    const allSessions = new Map<string, Session>();
+    
+    // 永続化されたセッションを先に読み込み
+    for (const session of storedSessions) {
+      allSessions.set(session.id, session);
+      this.sessions.set(session.id, session);
+    }
+    
+    // メモリ内のセッションを追加（永続化されたセッションを上書き）
+    for (const [id, session] of this.sessions) {
+      allSessions.set(id, session);
+    }
+    
+    return Array.from(allSessions.values());
   }
 
   async createSession(title: string, agentIds: string[], language: string): Promise<Session> {
+    // 次のセッションIDを取得
+    const sessionId = this.nextSessionId.toString();
+    this.nextSessionId++;
+
+    // エージェントの取得と検証
+    const agents: Agent[] = [];
+    for (const id of agentIds) {
+      const agentInstance = this.agentManager.getAgent(id);
+      if (!agentInstance) {
+        console.warn(`[SessionManager] Agent not found: ${id}`);
+        continue;
+      }
+      const agent = agentInstance.getAgent();
+      if (!agent) {
+        console.warn(`[SessionManager] Agent data not available: ${id}`);
+        continue;
+      }
+      agents.push(agent);
+    }
+
+    if (agents.length === 0) {
+      throw new Error('No valid agents found for session creation');
+    }
+
     const session: Session = {
-      id: Math.random().toString(36).slice(2),
+      id: sessionId,
       title,
-      agents: agentIds.map((id) => this.agentManager.getAgent(id)?.getAgent() as Agent),
+      agents,
       messages: [],
       createdAt: new Date(),
       updatedAt: new Date(),
       status: 'active',
       stageHistory: [],
-      language: language as any
+      language: language as any,
+      sequenceNumber: 1  // 新規セッションは1から始まる
     };
     this.sessions.set(session.id, session);
     await this.saveSession(session);
@@ -52,6 +125,7 @@ export class SessionManager {
     if (!session) throw new Error('Session not found');
     session.messages = [];
     session.stageHistory = [];
+    session.sequenceNumber = 1;  // リセット時も1から始める
     session.updatedAt = new Date();
     await this.saveSession(session);
     return session;

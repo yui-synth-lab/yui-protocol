@@ -257,7 +257,7 @@ app.post('/api/sessions/:sessionId/reset', (async (req: Request, res: Response) 
     const { sessionId } = req.params;
     
     // Reset stage progress information but keep messages
-    const session = realtimeRouter.getSession(sessionId);
+    const session = await realtimeRouter.getSession(sessionId);
     if (session) {
       session.status = 'active';
       session.stageHistory = []; // Clear stage history for new process
@@ -284,7 +284,7 @@ app.post('/api/realtime/sessions/:sessionId/reset', (async (req: Request, res: R
     console.log(`[Server] Resetting realtime session ${sessionId}`);
     
     // Reset stage progress information but keep messages
-    const session = realtimeRouter.getSession(sessionId);
+    const session = await realtimeRouter.getSession(sessionId);
     if (session) {
       session.status = 'active';
       session.stageHistory = []; // Clear stage history for new process
@@ -309,7 +309,7 @@ app.get('/api/sessions/:sessionId/last-summary', (async (req: Request, res: Resp
     const { sessionId } = req.params;
     
     // Get summary from last output-generation stage
-    const session = realtimeRouter.getSession(sessionId);
+    const session = await realtimeRouter.getSession(sessionId);
     if (session && session.messages) {
       const outputMessages = session.messages.filter((msg: any) => msg.stage === 'output-generation' && msg.role === 'agent');
       
@@ -340,7 +340,7 @@ app.get('/api/realtime/sessions/:sessionId/last-summary', (async (req: Request, 
     console.log(`[Server] Getting last summary for realtime session ${sessionId}`);
     
     // Get summary from last output-generation stage
-    const session = realtimeRouter.getSession(sessionId);
+    const session = await realtimeRouter.getSession(sessionId);
     if (session && session.messages) {
       const outputMessages = session.messages.filter((msg: any) => msg.stage === 'output-generation' && msg.role === 'agent');
       
@@ -363,10 +363,10 @@ app.get('/api/realtime/sessions/:sessionId/last-summary', (async (req: Request, 
   }
 }) as RequestHandler);
 
-app.get('/api/realtime/sessions/:sessionId', ((req: Request, res: Response) => {
+app.get('/api/realtime/sessions/:sessionId', (async (req: Request, res: Response) => {
   try {
     const { sessionId } = req.params;
-    const session = realtimeRouter.getSession(sessionId);
+    const session = await realtimeRouter.getSession(sessionId);
     
     if (!session) {
       return res.status(404).json({ error: 'Session not found' });

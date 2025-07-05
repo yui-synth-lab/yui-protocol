@@ -18,7 +18,6 @@ import {
   FinalData,
   StageSummary,
   StageHistory,
-  VotingResults,
   SynthesisAttempt
 } from '../types/index.js';
 import { 
@@ -32,11 +31,10 @@ import { InteractionLogger } from './interaction-logger.js';
 import { createStageSummarizer } from './stage-summarizer.js';
 import { AgentManager } from './services/agent-manager.js';
 import { SessionManager } from './services/session-manager.js';
-import { CONFLICT_DESCRIPTION_TEMPLATES } from '../templates/prompts.js';
 
 // ユーティリティ関数
 function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 function shuffleArray<T>(array: T[]): T[] {
@@ -187,7 +185,7 @@ export class YuiProtocolRouter implements IRealtimeRouter {
     language: Language, 
     onProgress?: ProgressCallback
   ): Promise<StageExecutionResult> {
-    const session = this.sessionManager.getSession(sessionId);
+    const session = await this.sessionManager.getSession(sessionId);
     if (!session) {
       throw new Error(`Session ${sessionId} not found`);
     }
@@ -225,7 +223,7 @@ export class YuiProtocolRouter implements IRealtimeRouter {
     };
   }
 
-  getSession(sessionId: string): Session | undefined {
+  async getSession(sessionId: string): Promise<Session | undefined> {
     return this.sessionManager.getSession(sessionId);
   }
 

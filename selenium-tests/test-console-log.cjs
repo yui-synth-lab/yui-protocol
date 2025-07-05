@@ -39,7 +39,7 @@ class ConsoleLogTester {
   }
 
   async navigateToApp() {
-    await this.driver.get('http://localhost:3000');
+    await this.driver.get('http://localhost:3001');
     console.log('アプリケーションに移動しました');
     await new Promise(resolve => setTimeout(resolve, 3000));
   }

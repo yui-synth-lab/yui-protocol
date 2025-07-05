@@ -44,7 +44,7 @@ class SystemMessageTester {
   }
 
   async navigateToApp() {
-    await this.driver.get('http://localhost:3000');
+    await this.driver.get('http://localhost:3001');
     console.log('アプリケーションに移動しました');
     await new Promise(resolve => setTimeout(resolve, 3000));
   }
@@ -245,7 +245,7 @@ async function captureSystemMessages() {
       .build();
     
     // Navigate to the application
-    await driver.get('http://localhost:3000');
+    await driver.get('http://localhost:3001');
     console.log('✅ Navigated to application');
     
     // Wait for page to load

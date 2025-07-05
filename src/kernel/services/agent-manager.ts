@@ -1,12 +1,17 @@
 import { Agent, AgentInstance } from '../../types/index.js';
+import { yuiAgent } from '../../agents/agent-yui.js';
+import { YogaAgent } from '../../agents/agent-yoga.js';
+import { KanshiAgent } from '../../agents/agent-kanshi.js';
+import { HekitoAgent } from '../../agents/agent-hekito.js';
+import { EiroAgent } from '../../agents/agent-eiro.js';
 import { InteractionLogger } from '../interaction-logger.js';
 
 export class AgentManager {
   private agents: Map<string, AgentInstance> = new Map();
   private interactionLogger: InteractionLogger;
 
-  constructor(interactionLogger: InteractionLogger) {
-    this.interactionLogger = interactionLogger;
+  constructor(interactionLogger?: InteractionLogger) {
+    this.interactionLogger = interactionLogger || new InteractionLogger();
   }
 
   getAgent(agentId: string): AgentInstance | undefined {
@@ -18,7 +23,13 @@ export class AgentManager {
   }
 
   initializeAgents(): void {
-    // ここでエージェントインスタンスを初期化してthis.agentsにセットする
-    // 例: this.agents.set('agent-id', new SomeAgentClass(...));
+    // 全てのエージェントを初期化
+    this.agents.set('yui-000', new yuiAgent(this.interactionLogger));
+    this.agents.set('yoga-001', new YogaAgent(this.interactionLogger));
+    this.agents.set('kanshi-002', new KanshiAgent(this.interactionLogger));
+    this.agents.set('hekito-003', new HekitoAgent(this.interactionLogger));
+    this.agents.set('eiro-004', new EiroAgent(this.interactionLogger));
+    
+    console.log(`[AgentManager] Initialized ${this.agents.size} agents`);
   }
 } 

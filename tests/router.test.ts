@@ -85,7 +85,7 @@ describe('YuiProtocolRouter (Refactored)', () => {
     };
 
     mockSessionManager = {
-      getSession: vi.fn().mockReturnValue(mockSession),
+      getSession: vi.fn().mockResolvedValue(mockSession),
       getAllSessions: vi.fn().mockResolvedValue([mockSession]),
       createSession: vi.fn().mockResolvedValue(mockSession),
       saveSession: vi.fn().mockResolvedValue(undefined),
@@ -171,8 +171,8 @@ describe('YuiProtocolRouter (Refactored)', () => {
   });
 
   describe('session management', () => {
-    it('should get session', () => {
-      const session = router.getSession('test-session');
+    it('should get session', async () => {
+      const session = await router.getSession('test-session');
       expect(session).toEqual(mockSession);
       expect(mockSessionManager.getSession).toHaveBeenCalledWith('test-session');
     });

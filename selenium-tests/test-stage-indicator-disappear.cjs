@@ -14,7 +14,7 @@ async function testStageIndicatorDisappear() {
       .build();
     
     // Navigate to the application
-    await driver.get('http://localhost:3000');
+    await driver.get('http://localhost:3001');
     console.log('✅ Navigated to application');
     
     // Wait for page to load

@@ -74,7 +74,9 @@ describe('SessionStorage', () => {
       createdAt: new Date('2023-01-01T00:00:00.000Z'),
       updatedAt: new Date('2023-01-01T00:00:00.000Z'),
       status: 'active',
-      stageHistory: []
+      stageHistory: [],
+      sequenceNumber: 1,
+      language: 'en'
     };
   });
 

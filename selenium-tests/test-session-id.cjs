@@ -14,7 +14,7 @@ async function testSessionIdIncrement() {
       .build();
     
     // Navigate to the application
-    await driver.get('http://localhost:3000');
+    await driver.get('http://localhost:3001');
     console.log('✅ Navigated to application');
     
     // Wait for page to load
@@ -58,7 +58,7 @@ async function testSessionIdIncrement() {
       }
       
       // Go back to sessions list
-      await driver.get('http://localhost:3000');
+      await driver.get('http://localhost:3001');
       await driver.wait(until.elementLocated(By.css('h1')), 10000);
       console.log(`✅ Returned to sessions list after session ${i}`);
       

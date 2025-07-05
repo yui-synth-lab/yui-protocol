@@ -116,6 +116,10 @@ export class SessionStorage {
           timestamp: new Date(msg.timestamp)
         }));
       }
+      // Set default sequenceNumber if not present (for backward compatibility)
+      if (session.sequenceNumber === undefined) {
+        session.sequenceNumber = 1;
+      }
       return session;
     } catch (error) {
       if ((error as any).code === 'ENOENT') {
