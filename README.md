@@ -141,7 +141,7 @@ src/
 │   ├── interaction-logger.ts
 │   ├── memory.ts
 │   ├── session-storage.ts
-│   ├── realtime-router.ts
+│   ├── router.ts
 │   ├── stage-summarizer.ts
 │   └── output-storage.ts
 ├── server/           # Backend server

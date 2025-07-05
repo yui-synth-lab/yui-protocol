@@ -123,6 +123,9 @@ describe('ThreadView', () => {
 
   afterEach(() => {
     vi.clearAllTimers();
+    act(() => {
+      // 残っている非同期処理を完了させる
+    });
   });
 
   describe('Rendering', () => {

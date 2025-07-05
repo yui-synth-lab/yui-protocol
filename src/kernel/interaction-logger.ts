@@ -16,19 +16,23 @@ export interface SimplifiedInteractionLog {
   error?: string;
 }
 
+export type FileSystem = typeof fs;
+
 export class InteractionLogger {
   private logDir: string;
+  private fs: FileSystem;
 
-  constructor(logDir: string = './logs') {
+  constructor(logDir: string = './logs', fileSystem?: FileSystem) {
     this.logDir = logDir;
+    this.fs = fileSystem || fs;
     this.ensureDirectories();
   }
 
   private async ensureDirectories(): Promise<void> {
     try {
-      await fs.access(this.logDir);
+      await this.fs.access(this.logDir);
     } catch {
-      await fs.mkdir(this.logDir, { recursive: true });
+      await this.fs.mkdir(this.logDir, { recursive: true });
     }
   }
 
@@ -40,8 +44,8 @@ export class InteractionLogger {
       const stageDir = path.join(sessionDir, log.stage);
       
       // Ensure directories exist
-      await fs.mkdir(sessionDir, { recursive: true });
-      await fs.mkdir(stageDir, { recursive: true });
+      await this.fs.mkdir(sessionDir, { recursive: true });
+      await this.fs.mkdir(stageDir, { recursive: true });
 
       // Save to agent-specific file
       const agentLogPath = path.join(stageDir, `${log.agentId}.json`);
@@ -59,7 +63,7 @@ export class InteractionLogger {
       
       // Try to read existing logs
       try {
-        const existingData = await fs.readFile(filePath, 'utf8');
+        const existingData = await this.fs.readFile(filePath, 'utf8');
         logs = JSON.parse(existingData);
       } catch {
         // File doesn't exist or is empty, start with empty array
@@ -69,7 +73,7 @@ export class InteractionLogger {
       logs.push(log);
 
       // Write back to file
-      await fs.writeFile(filePath, JSON.stringify(logs, null, 2), 'utf8');
+      await this.fs.writeFile(filePath, JSON.stringify(logs, null, 2), 'utf8');
     } catch (error) {
       console.error(`[InteractionLogger] Error appending to file ${filePath}:`, error);
     }
@@ -83,24 +87,24 @@ export class InteractionLogger {
       
       // Check if session directory exists
       try {
-        await fs.access(sessionDir);
+        await this.fs.access(sessionDir);
       } catch {
         return [];
       }
 
       // Read all stages
-      const stages = await fs.readdir(sessionDir);
+      const stages = await this.fs.readdir(sessionDir);
       for (const stage of stages) {
         const stageDir = path.join(sessionDir, stage);
-        const stageStat = await fs.stat(stageDir);
+        const stageStat = await this.fs.stat(stageDir);
         
         if (stageStat.isDirectory()) {
-          const agentFiles = await fs.readdir(stageDir);
+          const agentFiles = await this.fs.readdir(stageDir);
           for (const agentFile of agentFiles) {
             if (agentFile.endsWith('.json')) {
               const agentLogPath = path.join(stageDir, agentFile);
               try {
-                const data = await fs.readFile(agentLogPath, 'utf8');
+                const data = await this.fs.readFile(agentLogPath, 'utf8');
                 const agentLogs: SimplifiedInteractionLog[] = JSON.parse(data);
                 logs.push(...agentLogs);
               } catch (error) {
@@ -130,23 +134,23 @@ export class InteractionLogger {
       const logs: SimplifiedInteractionLog[] = [];
       
       // Read all sessions
-      const sessions = await fs.readdir(this.logDir);
+      const sessions = await this.fs.readdir(this.logDir);
       for (const sessionId of sessions) {
         const sessionDir = path.join(this.logDir, sessionId);
-        const sessionStat = await fs.stat(sessionDir);
+        const sessionStat = await this.fs.stat(sessionDir);
         
         if (sessionStat.isDirectory()) {
           // Read all stages in this session
-          const stages = await fs.readdir(sessionDir);
+          const stages = await this.fs.readdir(sessionDir);
           for (const stage of stages) {
             const stageDir = path.join(sessionDir, stage);
-            const stageStat = await fs.stat(stageDir);
+            const stageStat = await this.fs.stat(stageDir);
             
             if (stageStat.isDirectory()) {
               const agentLogPath = path.join(stageDir, `${agentId}.json`);
               try {
-                await fs.access(agentLogPath);
-                const data = await fs.readFile(agentLogPath, 'utf8');
+                await this.fs.access(agentLogPath);
+                const data = await this.fs.readFile(agentLogPath, 'utf8');
                 const agentLogs: SimplifiedInteractionLog[] = JSON.parse(data);
                 logs.push(...agentLogs);
               } catch {
@@ -176,21 +180,21 @@ export class InteractionLogger {
       const logs: SimplifiedInteractionLog[] = [];
       
       // Read all sessions
-      const sessions = await fs.readdir(this.logDir);
+      const sessions = await this.fs.readdir(this.logDir);
       for (const sessionId of sessions) {
         const sessionDir = path.join(this.logDir, sessionId);
-        const sessionStat = await fs.stat(sessionDir);
+        const sessionStat = await this.fs.stat(sessionDir);
         
         if (sessionStat.isDirectory()) {
           const stageDir = path.join(sessionDir, stage);
           try {
-            await fs.access(stageDir);
-            const agentFiles = await fs.readdir(stageDir);
+            await this.fs.access(stageDir);
+            const agentFiles = await this.fs.readdir(stageDir);
             for (const agentFile of agentFiles) {
               if (agentFile.endsWith('.json')) {
                 const agentLogPath = path.join(stageDir, agentFile);
                 try {
-                  const data = await fs.readFile(agentLogPath, 'utf8');
+                  const data = await this.fs.readFile(agentLogPath, 'utf8');
                   const agentLogs: SimplifiedInteractionLog[] = JSON.parse(data);
                   logs.push(...agentLogs);
                 } catch (error) {

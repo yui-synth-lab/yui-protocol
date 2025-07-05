@@ -13,7 +13,7 @@ import {
 } from 'react-router-dom';
 import imgUrl from './images/YuiProtocol.png'
 
-function AppRoutes() {
+export function AppRoutes() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [availableAgents, setAvailableAgents] = useState<Agent[]>([]);
   const [showProcessInfo, setShowProcessInfo] = useState(false);

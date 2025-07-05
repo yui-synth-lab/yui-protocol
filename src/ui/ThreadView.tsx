@@ -149,7 +149,7 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userPrompt.trim() || isProcessing || !realtimeSessionId) return;
+    if (!userPrompt.trim() || isProcessing || !realtimeSessionId || isCreatingSession) return;
 
     const promptToSend = userPrompt;
     setUserPrompt('');

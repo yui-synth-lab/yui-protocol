@@ -2,7 +2,7 @@ import express, { Request, Response, RequestHandler } from 'express';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { RealtimeYuiProtocolRouter } from '../kernel/realtime-router.js';
+import { YuiProtocolRouter } from '../kernel/router.js';
 import { SessionStorage, removeCircularReferences } from '../kernel/session-storage.js';
 import { Session } from '../types/index.js';
 import { OutputStorage } from '../kernel/output-storage.js';
@@ -39,7 +39,7 @@ const stageSummarizerOptions = {};
 const delayOptions = { stageSummarizerDelayMS: 30000, finalSummaryDelayMS: 60000 };
 
 // Initialize realtime router with shared session storage, output storage, interaction logger, stage summarizer options, and delay options
-const realtimeRouter = new RealtimeYuiProtocolRouter(
+const realtimeRouter = new YuiProtocolRouter(
   sharedSessionStorage,
   sharedOutputStorage,
   sharedInteractionLogger,
@@ -110,13 +110,11 @@ app.get('/api/sessions', (async (req: Request, res: Response) => {
 
 app.post('/api/sessions', (async (req: Request, res: Response) => {
   try {
-    const { title, agentIds } = req.body;
-    
+    const { title, agentIds, language } = req.body;
     if (!title || !agentIds || !Array.isArray(agentIds)) {
       return res.status(400).json({ error: 'Title and agentIds array are required' });
     }
-
-    const session = await realtimeRouter.createSession(title, agentIds);
+    const session = await realtimeRouter.createSession(title, agentIds, language || 'en');
     res.status(201).json(session);
   } catch (error) {
     console.error('Error creating session:', error);
@@ -145,23 +143,20 @@ app.get('/api/sessions/:sessionId', ((req: Request, res: Response) => {
 // Real-time collaboration endpoints
 app.post('/api/realtime/sessions', (async (req: Request, res: Response) => {
   try {
-    const { title, agentIds } = req.body;
-    
+    const { title, agentIds, language } = req.body;
     if (!title || !agentIds || !Array.isArray(agentIds)) {
       return res.status(400).json({ error: 'Title and agentIds array are required' });
     }
-
     // Check if a session with this title already exists
     const existingSessions = await realtimeRouter.getAllSessions();
     const existingSession = existingSessions.find(s => s.title === title);
-    
     if (existingSession) {
       // Return the existing session instead of creating a new one
       console.log(`Using existing session with title "${title}": ${existingSession.id}`);
       res.status(200).json(existingSession);
     } else {
       // Create new session only if one doesn't exist
-      const session = await realtimeRouter.createSession(title, agentIds);
+      const session = await realtimeRouter.createSession(title, agentIds, language || 'en');
       res.status(201).json(session);
     }
   } catch (error) {
@@ -270,7 +265,7 @@ app.post('/api/sessions/:sessionId/reset', (async (req: Request, res: Response) 
       // Keep existing messages to maintain conversation history
       
       // Save to session storage
-      await realtimeRouter['saveSessionToStorage'](session);
+      await realtimeRouter.saveSession(session);
       res.json({ success: true, message: 'Session reset successfully' });
     } else {
       res.status(404).json({ error: 'Session not found' });
@@ -297,7 +292,7 @@ app.post('/api/realtime/sessions/:sessionId/reset', (async (req: Request, res: R
       // Keep existing messages to maintain conversation history
       
       // Save to session storage
-      await realtimeRouter['saveSessionToStorage'](session);
+      await realtimeRouter.saveSession(session);
       res.json({ success: true, message: 'Session reset successfully' });
     } else {
       res.status(404).json({ error: 'Session not found' });
@@ -402,14 +397,13 @@ app.delete('/api/sessions/:sessionId', (async (req: Request, res: Response) => {
 }) as RequestHandler);
 
 // Output storage endpoints
+/*
 app.post('/api/outputs/save', (async (req: Request, res: Response) => {
   try {
     const { sessionId, title, content, userPrompt, language } = req.body;
-    
     if (!sessionId || !title || !content || !userPrompt || !language) {
       return res.status(400).json({ error: 'sessionId, title, content, userPrompt, and language are required' });
     }
-
     const savedOutput = await realtimeRouter.saveFinalOutput(sessionId, title, content, userPrompt, language);
     res.status(201).json(savedOutput);
   } catch (error) {
@@ -432,7 +426,6 @@ app.get('/api/outputs/:id', (async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const output = await realtimeRouter.getSavedOutput(id);
-    
     if (!output) {
       return res.status(404).json({ error: 'Output not found' });
     }
@@ -452,17 +445,16 @@ app.delete('/api/outputs/:id', (async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const deleted = await realtimeRouter.deleteSavedOutput(id);
-    
     if (!deleted) {
       return res.status(404).json({ error: 'Output not found' });
     }
-
     res.status(204).send();
   } catch (error) {
     console.error('Error deleting output:', error);
     res.status(500).json({ error: 'Failed to delete output' });
   }
 }) as RequestHandler);
+*/
 
 // Health check endpoint
 app.get('/api/health', ((req: Request, res: Response) => {

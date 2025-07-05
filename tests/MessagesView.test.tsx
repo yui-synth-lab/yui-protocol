@@ -9,6 +9,7 @@ describe('MessagesView', () => {
     {
       id: 'agent-1',
       name: 'Test Agent 1',
+      furigana: 'テストエージェント1',
       style: 'logical',
       priority: 'precision',
       memoryScope: 'session',
@@ -21,6 +22,7 @@ describe('MessagesView', () => {
     {
       id: 'yui-000',
       name: 'yui',
+      furigana: 'ゆい',
       style: 'meta',
       priority: 'balance',
       memoryScope: 'session',
@@ -40,7 +42,8 @@ describe('MessagesView', () => {
     createdAt: new Date('2024-01-01T10:00:00Z'),
     updatedAt: new Date('2024-01-01T10:00:00Z'),
     status: 'active',
-    stageHistory: []
+    stageHistory: [],
+    language: 'en'
   };
 
   const mockMessages: Message[] = [
@@ -199,7 +202,7 @@ describe('MessagesView', () => {
       },
       {
         id: 'msg-2',
-        agentId: 'agent-2',
+        agentId: 'agent-1',
         content: 'Stage 2 message',
         timestamp: new Date('2024-01-01T10:01:00Z'),
         role: 'agent',
@@ -215,8 +218,215 @@ describe('MessagesView', () => {
         shouldAutoScroll={true}
       />
     );
-    
+
     expect(screen.getByText('🧠 Individual Thought')).toBeInTheDocument();
     expect(screen.getByText('🔄 Mutual Reflection')).toBeInTheDocument();
+  });
+
+  it('handles messages with metadata correctly', () => {
+    const messagesWithMetadata: Message[] = [
+      {
+        id: 'msg-1',
+        agentId: 'agent-1',
+        content: 'Message with metadata',
+        timestamp: new Date('2024-01-01T10:00:00Z'),
+        role: 'agent',
+        stage: 'individual-thought',
+        metadata: {
+          reasoning: 'Test reasoning',
+          confidence: 0.8,
+          references: ['ref1', 'ref2'],
+          voteFor: 'agent-2',
+          voteReasoning: 'Test vote reasoning',
+          voteSection: 'Test vote section'
+        }
+      }
+    ];
+
+    render(
+      <MessagesView
+        session={mockSession}
+        messages={messagesWithMetadata}
+        currentStage={null}
+        shouldAutoScroll={true}
+      />
+    );
+
+    expect(screen.getByText('Message with metadata')).toBeInTheDocument();
+  });
+
+  it('handles messages with sequence numbers', () => {
+    const messagesWithSequence: Message[] = [
+      {
+        id: 'msg-1',
+        agentId: 'agent-1',
+        content: 'Message with sequence',
+        timestamp: new Date('2024-01-01T10:00:00Z'),
+        role: 'agent',
+        stage: 'individual-thought',
+        sequenceNumber: 1
+      }
+    ];
+
+    render(
+      <MessagesView
+        session={mockSession}
+        messages={messagesWithSequence}
+        currentStage={null}
+        shouldAutoScroll={true}
+      />
+    );
+
+    expect(screen.getByText('Message with sequence')).toBeInTheDocument();
+  });
+
+  it('handles current stage highlighting', () => {
+    render(
+      <MessagesView
+        session={mockSession}
+        messages={mockMessages}
+        currentStage="individual-thought"
+        shouldAutoScroll={true}
+      />
+    );
+
+    expect(screen.getByText('🧠 Individual Thought')).toBeInTheDocument();
+  });
+
+  it('handles shouldAutoScroll prop correctly', () => {
+    render(
+      <MessagesView
+        session={mockSession}
+        messages={mockMessages}
+        currentStage={null}
+        shouldAutoScroll={false}
+      />
+    );
+
+    expect(screen.getByText('Hello, this is a test message')).toBeInTheDocument();
+  });
+
+  it('handles session without agents gracefully', () => {
+    const sessionWithoutAgents: Session = {
+      ...mockSession,
+      agents: []
+    };
+
+    render(
+      <MessagesView
+        session={sessionWithoutAgents}
+        messages={mockMessages}
+        currentStage={null}
+        shouldAutoScroll={true}
+      />
+    );
+
+    expect(screen.getByText('Hello, this is a test message')).toBeInTheDocument();
+  });
+
+  it('handles messages with unknown agent IDs', () => {
+    const messagesWithUnknownAgent: Message[] = [
+      {
+        id: 'msg-1',
+        agentId: 'unknown-agent',
+        content: 'Message from unknown agent',
+        timestamp: new Date('2024-01-01T10:00:00Z'),
+        role: 'agent',
+        stage: 'individual-thought'
+      }
+    ];
+
+    render(
+      <MessagesView
+        session={mockSession}
+        messages={messagesWithUnknownAgent}
+        currentStage={null}
+        shouldAutoScroll={true}
+      />
+    );
+
+    expect(screen.getByText('Message from unknown agent')).toBeInTheDocument();
+  });
+
+  it('handles messages with different roles', () => {
+    const messagesWithDifferentRoles: Message[] = [
+      {
+        id: 'msg-1',
+        agentId: 'user',
+        content: 'User message',
+        timestamp: new Date('2024-01-01T10:00:00Z'),
+        role: 'user'
+      },
+      {
+        id: 'msg-2',
+        agentId: 'system',
+        content: 'System message',
+        timestamp: new Date('2024-01-01T10:01:00Z'),
+        role: 'system'
+      }
+    ];
+
+    render(
+      <MessagesView
+        session={mockSession}
+        messages={messagesWithDifferentRoles}
+        currentStage={null}
+        shouldAutoScroll={true}
+      />
+    );
+
+    expect(screen.getByText('User message')).toBeInTheDocument();
+    expect(screen.getByText('System message')).toBeInTheDocument();
+  });
+
+  it('handles empty session gracefully', () => {
+    const emptySession: Session = {
+      id: 'empty-session',
+      title: 'Empty Session',
+      agents: [],
+      messages: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      status: 'active',
+      stageHistory: [],
+      language: 'en'
+    };
+
+    render(
+      <MessagesView
+        session={emptySession}
+        messages={[]}
+        currentStage={null}
+        shouldAutoScroll={true}
+      />
+    );
+
+    expect(screen.getByText('No messages yet. Start a conversation!')).toBeInTheDocument();
+  });
+
+  it('handles null currentStage prop', () => {
+    render(
+      <MessagesView
+        session={mockSession}
+        messages={mockMessages}
+        currentStage={null}
+        shouldAutoScroll={true}
+      />
+    );
+
+    expect(screen.getByText('Hello, this is a test message')).toBeInTheDocument();
+  });
+
+  it('handles undefined onScroll prop', () => {
+    render(
+      <MessagesView
+        session={mockSession}
+        messages={mockMessages}
+        currentStage={null}
+        shouldAutoScroll={true}
+      />
+    );
+
+    expect(screen.getByText('Hello, this is a test message')).toBeInTheDocument();
   });
 }); 
