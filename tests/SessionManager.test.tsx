@@ -8,21 +8,27 @@ const mockAgents: Agent[] = [
   {
     id: '1',
     name: 'Agent 1',
+    furigana: 'エージェント1',
     style: 'logical',
     priority: 'precision',
     memoryScope: 'local',
     personality: 'Logical agent',
     preferences: [],
+    tone: 'professional',
+    communicationStyle: 'formal',
     avatar: '🧠'
   },
   {
     id: '2',
     name: 'Agent 2',
+    furigana: 'エージェント2',
     style: 'intuitive',
     priority: 'breadth',
     memoryScope: 'session',
     personality: 'Intuitive agent',
     preferences: [],
+    tone: 'creative',
+    communicationStyle: 'expressive',
     avatar: '🎨'
   }
 ];
@@ -37,7 +43,7 @@ const mockSessions: Session[] = [
     updatedAt: new Date(),
     status: 'active',
     stageHistory: [],
-    stageProgress: []
+    language: 'en'
   },
   {
     id: 's2',
@@ -48,7 +54,7 @@ const mockSessions: Session[] = [
     updatedAt: new Date(),
     status: 'completed',
     stageHistory: [],
-    stageProgress: []
+    language: 'en'
   }
 ];
 
@@ -94,7 +100,6 @@ describe('SessionManager', () => {
     );
     fireEvent.click(screen.getByText('New'));
     expect(screen.getByText('Session Title')).toBeInTheDocument();
-    expect(screen.getByText('Select Agents')).toBeInTheDocument();
     expect(screen.getByText('Create Session')).toBeInTheDocument();
   });
 
@@ -112,7 +117,7 @@ describe('SessionManager', () => {
     fireEvent.click(screen.getByText('New'));
     fireEvent.change(screen.getByPlaceholderText('Enter session title...'), { target: { value: 'New Session' } });
     fireEvent.click(screen.getByText('Create Session'));
-    expect(onCreateSession).toHaveBeenCalledWith('New Session', expect.any(Array));
+    expect(onCreateSession).toHaveBeenCalledWith('New Session', expect.any(Array), expect.any(String));
   });
 
   it('calls onSelectSession when a session is clicked', () => {

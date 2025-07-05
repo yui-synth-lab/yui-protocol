@@ -52,7 +52,7 @@ describe('AIExecutor', () => {
       
       expect(executor['maxTokens']).toBe(4000);
       expect(executor['model']).toBe('default');
-      expect(executor['provider']).toBe('custom');
+      expect(executor['provider']).toBe('gemini');
     });
   });
 
@@ -124,9 +124,9 @@ describe('createAIExecutor', () => {
 
   it('should create executor with custom options', async () => {
     const executor = await createAIExecutor('CustomAgent', {
-      maxTokens: 8000,
       model: 'custom-model',
-      provider: 'custom'
+      provider: 'custom',
+      customConfig: { maxTokens: 8000 }
     });
     
     expect(executor['maxTokens']).toBe(8000);

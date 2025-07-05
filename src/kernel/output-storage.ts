@@ -35,7 +35,7 @@ export class OutputStorage {
   ): Promise<SavedOutput> {
     const id = `output_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const timestamp = new Date();
-    
+
     const output: SavedOutput = {
       id,
       title,
@@ -60,7 +60,7 @@ export class OutputStorage {
 
   private createMarkdownContent(output: SavedOutput): string {
     const { title, content, userPrompt, language, createdAt, sessionId } = output;
-    
+
     return `# ${title}
 
 **Session ID:** ${sessionId}  
@@ -82,14 +82,14 @@ ${content}
     try {
       const files = await readdir(this.outputDir, { withFileTypes: true });
       const outputFiles = files.filter(file => file.isFile() && file.name.endsWith('.md'));
-      
+
       const outputs: SavedOutput[] = [];
-      
+
       for (const file of outputFiles) {
         try {
           const filepath = join(this.outputDir, file.name);
           const content = await readFile(filepath, 'utf-8');
-          
+
           // Extract metadata from markdown content
           const output = this.parseMarkdownContent(content, file.name.replace('.md', ''));
           if (output) {
@@ -99,7 +99,7 @@ ${content}
           console.error(`[OutputStorage] Error reading file ${file.name}:`, error);
         }
       }
-      
+
       // Sort by creation date (newest first)
       return outputs.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
     } catch (error) {
@@ -112,20 +112,20 @@ ${content}
     try {
       const lines = content.split('\n');
       const title = lines[0].replace('# ', '');
-      
+
       // Extract metadata
       const sessionIdMatch = content.match(/\*\*Session ID:\*\* (.+)/);
       const languageMatch = content.match(/\*\*Language:\*\* (.+)/);
       const createdMatch = content.match(/\*\*Created:\*\* (.+)/);
-      
+
       // Extract user query and content
       const userQueryMatch = content.match(/## User Query\n([\s\S]*?)\n## AI Collaboration Output/);
       const contentMatch = content.match(/## AI Collaboration Output\n([\s\S]*?)\n---/);
-      
+
       if (!sessionIdMatch || !languageMatch || !createdMatch || !userQueryMatch || !contentMatch) {
         return null;
       }
-      
+
       return {
         id,
         title,
@@ -141,12 +141,20 @@ ${content}
     }
   }
 
-  public async getOutput(id: string): Promise<SavedOutput | null> {
+  public async getOutput(id: string): Promise<SavedOutput | string |null> {
     try {
       const filepath = join(this.outputDir, `${id}.md`);
       const content = await readFile(filepath, 'utf-8');
       return this.parseMarkdownContent(content, id);
     } catch (error) {
+      try {
+        const filepath = join(this.outputDir, id);
+        const content = await readFile(filepath, 'utf-8');
+        return content;
+      }
+      catch {
+        console.error(`[OutputStorage] Error reading output ${id}:`, error);
+      }
       console.error(`[OutputStorage] Error reading output ${id}:`, error);
       return null;
     }

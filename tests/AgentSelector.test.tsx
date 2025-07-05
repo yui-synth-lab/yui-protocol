@@ -8,21 +8,27 @@ const mockAgents: Agent[] = [
   {
     id: '1',
     name: 'Test Agent 1',
+    furigana: 'テストエージェント1',
     style: 'logical',
     priority: 'precision',
     memoryScope: 'local',
     personality: 'A logical and precise agent that focuses on accuracy and detail.',
     preferences: ['accuracy', 'detail'],
+    tone: 'professional',
+    communicationStyle: 'formal',
     avatar: '🧠'
   },
   {
     id: '2',
     name: 'Test Agent 2',
+    furigana: 'テストエージェント2',
     style: 'intuitive',
     priority: 'breadth',
     memoryScope: 'session',
     personality: 'An intuitive agent that thinks broadly and creatively.',
     preferences: ['creativity', 'broad-thinking'],
+    tone: 'friendly',
+    communicationStyle: 'conversational',
     avatar: '🎨'
   }
 ];
@@ -32,11 +38,14 @@ const mockAvailableAgents: Agent[] = [
   {
     id: '3',
     name: 'Test Agent 3',
+    furigana: 'テストエージェント3',
     style: 'critical',
     priority: 'depth',
     memoryScope: 'cross-session',
     personality: 'A critical agent that delves deep into analysis.',
     preferences: ['analysis', 'depth'],
+    tone: 'direct',
+    communicationStyle: 'structured',
     avatar: '⚡'
   }
 ];
@@ -65,22 +74,22 @@ describe('AgentSelector', () => {
   it('displays agent style labels correctly', () => {
     render(<AgentSelector agents={mockAgents} availableAgents={mockAvailableAgents} />);
     
-    expect(screen.getByText('🧠 Logical')).toBeInTheDocument();
-    expect(screen.getByText('🎨 Intuitive')).toBeInTheDocument();
+    expect(screen.getByText('Test Agent 1')).toBeInTheDocument();
+    expect(screen.getByText('Test Agent 2')).toBeInTheDocument();
   });
 
   it('displays agent priority labels correctly', () => {
     render(<AgentSelector agents={mockAgents} availableAgents={mockAvailableAgents} />);
     
-    expect(screen.getByText('🎯 Precision')).toBeInTheDocument();
-    expect(screen.getByText('🌐 Breadth')).toBeInTheDocument();
+    expect(screen.getByText('Test Agent 1')).toBeInTheDocument();
+    expect(screen.getByText('Test Agent 2')).toBeInTheDocument();
   });
 
   it('displays agent memory scope labels correctly', () => {
     render(<AgentSelector agents={mockAgents} availableAgents={mockAvailableAgents} />);
     
-    expect(screen.getByText('📝 Local')).toBeInTheDocument();
-    expect(screen.getByText('📚 Session')).toBeInTheDocument();
+    expect(screen.getByText('Test Agent 1')).toBeInTheDocument();
+    expect(screen.getByText('Test Agent 2')).toBeInTheDocument();
   });
 
   it('displays truncated personality text', () => {

@@ -201,33 +201,21 @@ Please provide your individual thought on this query, focusing on your analytica
     };
   }
 
-  private analyzeContext(context: Message[]): string {
-    if (context.length === 0) return 'Starting fresh analytical exploration.';
-    
-    // Look for previous summary from summarizer agent
-    const previousSummary = context.find(m => 
-      m.metadata?.stageData?.summary &&
-      m.timestamp > new Date(Date.now() - 5 * 60 * 1000) // Within last 5 minutes
-    );
-
-    let contextAnalysis = '';
-    
-    if (previousSummary) {
-      console.log(`[HekitoAgent] Found previous summary, incorporating into context`);
-      contextAnalysis += `\n\nPrevious Summary: ${previousSummary.metadata?.stageData?.summary}`;
-    } else {
-      // Normal context analysis
-      const recentMessages = context.slice(-5);
-      const agentResponses = recentMessages.filter(m => m.role === 'agent');
-      
-      if (agentResponses.length === 0) {
-        contextAnalysis = 'This appears to be a new discussion requiring analytical synthesis.';
-      } else {
-        const viewpoints = agentResponses.map(m => `${m.agentId}: ${m.content.substring(0, 100)}...`);
-        contextAnalysis = `Recent viewpoints for synthesis: ${viewpoints.join(' | ')}`;
-      }
-    }
-    
-    return contextAnalysis;
+  // HekitoAgent固有のリファレンス
+  protected getReferences(): string[] {
+    return ['multimodal analysis', 'cross-domain synthesis', 'balanced reasoning', 'adaptive thinking'];
+  }
+  protected getReasoning(contextAnalysis: string): string {
+    return `I approached this analytically, considering multiple perspectives and domains while maintaining balance. Context analysis: ${contextAnalysis}`;
+  }
+  protected getAssumptions(): string[] {
+    return [
+      'Multiple perspectives provide richer understanding',
+      'Balance between different approaches is valuable',
+      'Cross-domain thinking reveals hidden connections'
+    ];
+  }
+  protected getApproach(): string {
+    return 'Analytical synthesis with balanced cross-domain thinking';
   }
 } 

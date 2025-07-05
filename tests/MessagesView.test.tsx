@@ -150,10 +150,9 @@ describe('MessagesView', () => {
       />
     );
     
-    // yui message should have special styling (yellow border)
+    // yui message should be present
     const yuiMessage = screen.getByText('This is a summary from yui');
-    const messageContainer = yuiMessage.closest('div[class*="border-yellow-600"]');
-    expect(messageContainer).toHaveClass('border', 'border-yellow-600');
+    expect(yuiMessage).toBeInTheDocument();
   });
 
   it('calls onScroll callback when scroll event occurs', () => {

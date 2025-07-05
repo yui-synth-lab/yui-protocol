@@ -5,30 +5,47 @@ interface StageIndicatorProps {
   stageHistory: StageHistory[];
   currentStage?: DialogueStage | null;
   complete?: boolean;
+  sequenceNumber?: number;
 }
 
-const StageIndicator: React.FC<StageIndicatorProps> = ({ stageHistory, currentStage, complete = false }) => {
+const StageIndicator: React.FC<StageIndicatorProps> = ({ 
+  stageHistory, 
+  currentStage, 
+  complete = false,
+  sequenceNumber = 1
+}) => {
+  // Main stages for UI display (summary stages are hidden)
   const stages: DialogueStage[] = [
     'individual-thought',
     'mutual-reflection', 
     'conflict-resolution',
     'synthesis-attempt',
-    'output-generation'
+    'output-generation',
+    'finalize'
   ];
 
   const getStageInfo = (stage: DialogueStage) => {
     const stageInfo = {
       'individual-thought': { label: 'Individual', icon: '🧠', color: 'blue' },
       'mutual-reflection': { label: 'Reflection', icon: '🔄', color: 'green' },
+      'mutual-reflection-summary': { label: 'Summary', icon: '📝', color: 'gray' },
       'conflict-resolution': { label: 'Conflict', icon: '⚖️', color: 'yellow' },
+      'conflict-resolution-summary': { label: 'Summary', icon: '📝', color: 'gray' },
       'synthesis-attempt': { label: 'Synthesis', icon: '🔗', color: 'purple' },
-      'output-generation': { label: 'Output', icon: '📤', color: 'indigo' }
+      'synthesis-attempt-summary': { label: 'Summary', icon: '📝', color: 'gray' },
+      'output-generation': { label: 'Output', icon: '📤', color: 'indigo' },
+      'finalize': { label: 'Finalize', icon: '✅', color: 'green' }
     };
     return stageInfo[stage];
   };
 
+  // Filter stageHistory to only include current sequence
+  const currentSequenceStageHistory = stageHistory.filter(h => 
+    h.sequenceNumber === sequenceNumber
+  );
+
   const isStageCompleted = (stage: DialogueStage) => {
-    return stageHistory.some(h => h.stage === stage && h.endTime);
+    return currentSequenceStageHistory.some(h => h.stage === stage && h.endTime);
   };
 
   const isCurrentStage = (stage: DialogueStage) => {
@@ -74,13 +91,20 @@ const StageIndicator: React.FC<StageIndicatorProps> = ({ stageHistory, currentSt
   };
 
   const getCompletedStagesCount = () => {
-    return stageHistory.filter(h => h.endTime).length;
+    return currentSequenceStageHistory.filter(h => h.endTime).length;
   };
 
+  const getTotalStagesCount = () => {
+    // Always return the total number of main stages, not the stageHistory length
+    return stages.length;
+  };
+
+  // Always render the stage indicator, even if stageHistory is empty
+  // This prevents the indicator from disappearing during state updates
   return (
-    <div className="flex items-center space-x-1 px-2 py-1">
+    <div className="flex items-center space-x-1 px-2 py-1 min-h-[24px]">
       <span className="text-xs text-gray-400 mr-2">
-        {getCompletedStagesCount()}/5
+        {getCompletedStagesCount()}/{getTotalStagesCount()}
       </span>
       {stages.map((stage, index) => {
         const stageInfo = getStageInfo(stage);
@@ -93,12 +117,13 @@ const StageIndicator: React.FC<StageIndicatorProps> = ({ stageHistory, currentSt
               w-4 h-4 rounded-full flex items-center justify-center text-xs
               ${colorClasses}
               ${status === 'completed' ? 'text-white' : 'text-gray-300'}
+              transition-all duration-200 ease-in-out
             `}>
               {status === 'completed' ? '✓' : stageInfo.icon}
             </div>
             {index < stages.length - 1 && (
               <div className={`
-                w-2 h-0.5 mx-1
+                w-2 h-0.5 mx-1 transition-colors duration-200 ease-in-out
                 ${isStageCompleted(stage) ? 'bg-blue-500' : 'bg-gray-600'}
               `} />
             )}

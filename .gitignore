@@ -110,3 +110,6 @@ sessions/
 src/kernel/ai-executor-impl.ts 
 /.cursor
 package-lock.json
+
+# Selenium test logs
+selenium-tests/logs/

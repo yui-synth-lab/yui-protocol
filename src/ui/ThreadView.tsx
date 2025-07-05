@@ -36,9 +36,37 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
 
   useEffect(() => {
     if (JSON.stringify(session.messages) !== JSON.stringify(messages)) {
-      console.log(`[UI] Updating messages from session: ${session.messages.length} messages`);
+      console.log(`[UI] Updating messages from session: ${session.messages.length} messages, current local: ${messages.length} messages`);
+      
+      // メッセージをマージして、リアルタイムメッセージを保持
       if (messages.length === 0 || session.messages.length > messages.length) {
-        setMessages(session.messages);
+        // セッションメッセージとローカルメッセージをマージ
+        const messageMap = new Map();
+        
+        // まずセッションメッセージを追加
+        session.messages.forEach((msg: Message) => {
+          messageMap.set(msg.id, msg);
+          console.log(`[UI] Adding session message: ${msg.id} (${msg.role}) from ${msg.agentId}`);
+        });
+        
+        // 次にローカルメッセージを追加（重複を避ける）
+        messages.forEach((msg: Message) => {
+          if (!messageMap.has(msg.id)) {
+            messageMap.set(msg.id, msg);
+            console.log(`[UI] Adding local message: ${msg.id} (${msg.role}) from ${msg.agentId}`);
+          } else {
+            console.log(`[UI] Skipping duplicate local message: ${msg.id}`);
+          }
+        });
+        
+        // タイムスタンプでソート
+        const mergedMessages = Array.from(messageMap.values()).sort((a, b) => 
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        );
+        
+        console.log(`[UI] Merged messages: session=${session.messages.length}, local=${messages.length}, merged=${mergedMessages.length}`);
+        console.log(`[UI] Merged message IDs: ${mergedMessages.map((m: Message) => `${m.id}(${m.role})`).join(', ')}`);
+        setMessages(mergedMessages);
       } else {
         console.log(`[UI] Keeping current messages (${messages.length}) over session messages (${session.messages.length})`);
       }
@@ -92,6 +120,7 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
   }, [userPrompt]);
 
   const createRealtimeSession = async () => {
+    setLanguage('ja'); // 新規セッション作成時も日本語に初期化
     if (isCreatingSession) {
       console.log('[UI] Already creating session, skipping...');
       return;
@@ -149,12 +178,12 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
     });
     
     try {
-      // Check if all 5 stages are completed
+      // Check if all 8 stages are completed (5 main + 3 summary stages)
       const completedStages = session.stageHistory?.filter(h => h.endTime) || [];
-      const isAllStagesCompleted = completedStages.length >= 5;
+      const isAllStagesCompleted = completedStages.length >= 8;
       
       if (isAllStagesCompleted) {
-        console.log(`[UI] All 5 stages completed, starting new process`);
+        console.log(`[UI] All 8 stages completed, starting new process`);
         
         try {
           const resetResponse = await fetch(`/api/sessions/${realtimeSessionId}/reset`, {
@@ -174,7 +203,20 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
         
         setCurrentStage(null);
         
-        for (const stage of stages) {
+        // Execute 5-Stage Dialectic Process with summary stages
+        const dialecticStages: DialogueStage[] = [
+          'individual-thought',
+          'mutual-reflection',
+          'mutual-reflection-summary',
+          'conflict-resolution',
+          'conflict-resolution-summary',
+          'synthesis-attempt',
+          'synthesis-attempt-summary',
+          'output-generation',
+          'finalize'
+        ];
+        
+        for (const stage of dialecticStages) {
           console.log(`[UI] Starting new process stage: ${stage}`);
           setCurrentStage(stage);
           try {
@@ -183,16 +225,27 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
           } catch (error) {
             console.error(`[UI] Error in new process stage ${stage}:`, error);
           }
-          if (stage !== 'output-generation') {
+          if (stage !== 'finalize') {
             await new Promise(resolve => setTimeout(resolve, 1000));
           }
         }
       } else {
         // Continue with remaining stages
         const currentProgress = completedStages.length;
-        const remainingStages = stages.slice(currentProgress);
+        const dialecticStages: DialogueStage[] = [
+          'individual-thought',
+          'mutual-reflection',
+          'mutual-reflection-summary',
+          'conflict-resolution',
+          'conflict-resolution-summary',
+          'synthesis-attempt',
+          'synthesis-attempt-summary',
+          'output-generation',
+          'finalize'
+        ];
+        const remainingStages = dialecticStages.slice(currentProgress);
 
-        console.log(`[UI] Current progress: ${currentProgress}/${stages.length}, remaining stages: ${remainingStages.join(', ')}`);
+        console.log(`[UI] Current progress: ${currentProgress}/${dialecticStages.length}, remaining stages: ${remainingStages.join(', ')}`);
 
         for (const stage of remainingStages) {
           console.log(`[UI] Starting stage: ${stage}`);
@@ -203,7 +256,7 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
           } catch (error) {
             console.error(`[UI] Error in stage ${stage}:`, error);
           }
-          if (stage !== 'output-generation') {
+          if (stage !== 'finalize') {
             await new Promise(resolve => setTimeout(resolve, 1000));
           }
         }
@@ -216,6 +269,7 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
       setIsWaitingForFirstResponse(false);
       setPendingUserMessage(null);
       resetTextareaHeight();
+      setLanguage('ja'); // セッション完了後に日本語に初期化
     }
   };
 
@@ -292,7 +346,8 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
                   
                   setMessages(prev => {
                     const newMessages = [...prev, data.message];
-                    console.log(`[UI] Progress message ${messageCount} from ${data.message.agentId}, total messages: ${newMessages.length}`);
+                    console.log(`[UI] Progress message ${messageCount} from ${data.message.agentId} (role: ${data.message.role}), total messages: ${newMessages.length}`);
+                    console.log(`[UI] Message content preview: ${data.message.content?.substring(0, 100)}...`);
                     
                     // Batch session updates to reduce UI flicker
                     setTimeout(() => {
@@ -308,7 +363,9 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
                   console.log(`[UI] Stage completed: ${data.result}`);
                   setCurrentStage(stage);
                   stageCompleted = true;
+                  console.log(`[UI] About to reload session data after stage completion`);
                   await reloadSessionData();
+                  console.log(`[UI] Session data reload completed`);
                   break;
                 } else if (data.type === 'error') {
                   console.error('[UI] Realtime error:', data.error);
@@ -329,7 +386,9 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
       if (!stageCompleted) {
         console.log(`[UI] Stage ${stage} completed (no explicit completion signal), received ${messageCount} messages`);
         setCurrentStage(stage);
+        console.log(`[UI] About to reload session data after stage completion (no explicit signal)`);
         await reloadSessionData();
+        console.log(`[UI] Session data reload completed (no explicit signal)`);
       }
 
     } catch (error) {
@@ -343,6 +402,9 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
     
     try {
       console.log(`[UI] Reloading session data for: ${realtimeSessionId}`);
+      console.log(`[UI] Current messages before reload: ${messages.length} messages`);
+              console.log(`[UI] Current message IDs: ${messages.map((m: Message) => `${m.id}(${m.role})`).join(', ')}`);
+      
       const response = await fetch(`/api/realtime/sessions/${realtimeSessionId}`);
       if (response.ok) {
         const sessionData = await response.json();
@@ -350,15 +412,22 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
         const serverMessages = sessionData.messages || [];
         const currentMessages = messages;
         
+        console.log(`[UI] Server messages: ${serverMessages.length} messages`);
+        console.log(`[UI] Server message IDs: ${serverMessages.map((m: Message) => `${m.id}(${m.role})`).join(', ')}`);
+        
         const messageMap = new Map();
         
         currentMessages.forEach((msg: Message) => {
           messageMap.set(msg.id, msg);
+          console.log(`[UI] Adding current message to map: ${msg.id} (${msg.role})`);
         });
         
         serverMessages.forEach((msg: Message) => {
           if (!messageMap.has(msg.id)) {
             messageMap.set(msg.id, msg);
+            console.log(`[UI] Adding server message to map: ${msg.id} (${msg.role})`);
+          } else {
+            console.log(`[UI] Skipping duplicate server message: ${msg.id}`);
           }
         });
         
@@ -367,11 +436,16 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
         );
         
         console.log(`[UI] Merged messages: current=${currentMessages.length}, server=${serverMessages.length}, merged=${mergedMessages.length}`);
+        console.log(`[UI] Final merged message IDs: ${mergedMessages.map((m: Message) => `${m.id}(${m.role})`).join(', ')}`);
         
         setMessages(mergedMessages);
         setCurrentStage(sessionData.currentStage);
         
-        notifySessionUpdate(sessionData);
+        // マージされたメッセージを含むセッションデータを通知
+        notifySessionUpdate({
+          ...sessionData,
+          messages: mergedMessages // マージされたメッセージを使用
+        });
       }
     } catch (error) {
       console.error('[UI] Error reloading session data:', error);
@@ -395,8 +469,9 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
             title: session.title,
             agents: session.agents,
             createdAt: session.createdAt,
-            // Only update the fields that actually changed
-            messages: updatedSessionData.messages || session.messages,
+            language: session.language,
+            // Use the current local messages (which include realtime messages) instead of server messages
+            messages: messages, // マージされたローカルメッセージを使用
             updatedAt: updatedSessionData.updatedAt || new Date(),
             currentStage: updatedSessionData.currentStage !== undefined ? updatedSessionData.currentStage : session.currentStage,
             stageHistory: updatedSessionData.stageHistory || session.stageHistory,
@@ -411,37 +486,35 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
     }
   };
 
-  const debouncedNotifySessionUpdate = React.useCallback(
-    React.useMemo(() => {
-      let timeoutId: NodeJS.Timeout;
-      let pendingUpdate: any = null;
-      
-      return (updatedSessionData: any) => {
-        // Merge pending updates with care to prevent cross-session contamination
-        if (pendingUpdate) {
-          pendingUpdate = {
-            // Preserve the most recent values for each field
-            messages: updatedSessionData.messages || pendingUpdate.messages,
-            updatedAt: updatedSessionData.updatedAt || pendingUpdate.updatedAt,
-            currentStage: updatedSessionData.currentStage !== undefined ? updatedSessionData.currentStage : pendingUpdate.currentStage,
-            stageHistory: updatedSessionData.stageHistory || pendingUpdate.stageHistory,
-            status: updatedSessionData.status || pendingUpdate.status,
-            complete: updatedSessionData.complete !== undefined ? updatedSessionData.complete : pendingUpdate.complete
-          };
-        } else {
-          pendingUpdate = updatedSessionData;
-        }
-        
-        clearTimeout(timeoutId);
-        timeoutId = setTimeout(() => {
-          if (pendingUpdate) {
-            notifySessionUpdate(pendingUpdate);
-            pendingUpdate = null;
-          }
-        }, 100);
+  const debouncedNotifySessionUpdate = React.useCallback((updatedSessionData: any) => {
+    let timeoutId: NodeJS.Timeout | undefined;
+    let pendingUpdate: any = null;
+    
+    // Merge pending updates with care to prevent cross-session contamination
+    if (pendingUpdate) {
+      pendingUpdate = {
+        // Preserve the most recent values for each field
+        messages: updatedSessionData.messages || pendingUpdate.messages,
+        updatedAt: updatedSessionData.updatedAt || pendingUpdate.updatedAt,
+        currentStage: updatedSessionData.currentStage !== undefined ? updatedSessionData.currentStage : pendingUpdate.currentStage,
+        stageHistory: updatedSessionData.stageHistory || pendingUpdate.stageHistory,
+        status: updatedSessionData.status || pendingUpdate.status,
+        complete: updatedSessionData.complete !== undefined ? updatedSessionData.complete : pendingUpdate.complete
       };
-    }, [notifySessionUpdate])
-  );
+    } else {
+      pendingUpdate = updatedSessionData;
+    }
+    
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+    timeoutId = setTimeout(() => {
+      if (pendingUpdate) {
+        notifySessionUpdate(pendingUpdate);
+        pendingUpdate = null;
+      }
+    }, 100);
+  }, [notifySessionUpdate]);
 
   const stages: DialogueStage[] = [
     'individual-thought',
@@ -544,13 +617,14 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
       setIsWaitingForFirstResponse(false);
       setPendingUserMessage(null);
       resetTextareaHeight();
+      setLanguage('ja'); // セッション完了後に日本語に初期化
     }
   };
 
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <ThreadHeader session={session} currentStage={currentStage} />
+      <ThreadHeader session={session} />
 
       {/* Main content area */}
       <div className="flex-1 min-h-0">

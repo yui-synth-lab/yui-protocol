@@ -14,11 +14,14 @@ describe('MemoryStore', () => {
       testAgent = {
         id: 'test-agent-1',
         name: 'Test Agent',
+        furigana: 'テストエージェント',
         style: 'analytical',
         personality: 'Analytical and precise',
         priority: 'precision',
         memoryScope: 'session',
-        preferences: ['reasoning', 'analysis']
+        preferences: ['reasoning', 'analysis'],
+        tone: 'professional',
+        communicationStyle: 'formal'
       };
       testSession = {
         id: 'test-session-123',

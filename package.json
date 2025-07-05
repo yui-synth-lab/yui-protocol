@@ -10,9 +10,19 @@
     "test": "vitest --run",
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
+    "test:coverage": "vitest --coverage --run",
+    "test:console": "node selenium-tests/test-console-log.cjs",
+    "test:system": "node selenium-tests/test-system-messages.cjs",
+    "test:progression": "node selenium-tests/test-session-progression.cjs",
+    "test:stage-indicator": "node selenium-tests/test-stage-indicator.cjs",
+    "test:stage-disappear": "node selenium-tests/test-stage-indicator-disappear.cjs",
+    "test:reset-sequence": "node selenium-tests/test-reset-sequence.cjs",
+    "test:session-id": "node selenium-tests/test-session-id.cjs",
+    "test:stage-indicator-sequence": "node selenium-tests/test-stage-indicator-sequence.cjs",
     "server": "node dist/server/index.js"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.2.1",
     "@tailwindcss/line-clamp": "^0.4.4",
     "@tailwindcss/typography": "^0.5.16",
     "@types/katex": "^0.16.7",
@@ -40,14 +50,18 @@
     "@types/node": "^20.11.30",
     "@types/react": "^18.2.14",
     "@types/react-dom": "^18.2.7",
+    "@types/supertest": "^6.0.3",
     "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^4.2.0",
+    "@vitest/coverage-v8": "^3.2.4",
     "autoprefixer": "^10.4.14",
     "jsdom": "^26.1.0",
     "postcss": "^8.4.21",
+    "selenium-webdriver": "^4.18.1",
+    "supertest": "^7.1.1",
     "tailwindcss": "^3.3.2",
     "typescript": "^5.3.3",
-    "vite": "^4.4.9",
-    "vitest": "^0.34.6"
+    "vite": "^6.3.5",
+    "vitest": "^3.2.4"
   }
 }

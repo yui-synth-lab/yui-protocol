@@ -4,29 +4,31 @@ import StageIndicator from './StageIndicator';
 
 interface ThreadHeaderProps {
   session: Session;
-  currentStage?: DialogueStage | null;
 }
 
-const ThreadHeader: React.FC<ThreadHeaderProps> = ({ session, currentStage }) => {
-  const formatTimestamp = (timestamp: Date) => {
-    return new Date(timestamp).toLocaleTimeString();
-  };
+const ThreadHeader: React.FC<ThreadHeaderProps> = ({ session }) => {
+  const completedStages = session.stageHistory.filter(h => h.endTime).length;
+  const totalStages = 6;
+  const currentSequenceNumber = session.sequenceNumber || 1;
 
   return (
-    <div className="bg-gray-900 border-b border-gray-700 px-4 py-2">
-      <div className="flex justify-between items-center">
-        <div className="flex-1 min-w-0">
-          <h2 className="text-lg font-semibold text-gray-100 truncate">{session.title}</h2>
-          <p className="text-xs text-gray-400">
-            {session.agents.length} agents • {formatTimestamp(session.createdAt)}
-          </p>
+    <div className="bg-gray-900 border-b border-gray-700 p-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-4">
+          <div>
+            <h2 className="text-xl font-bold text-white">{session.title}</h2>
+            <p className="text-sm text-gray-400">
+              {session.agents.length} agents • {completedStages}/{totalStages} stages completed
+              {currentSequenceNumber > 1 && ` • Sequence ${currentSequenceNumber}`}
+            </p>
+          </div>
         </div>
         
-        {/* Stage progress indicator - always show */}
         <StageIndicator 
-          stageHistory={session.stageHistory || []} 
-          currentStage={currentStage}
+          stageHistory={session.stageHistory} 
+          currentStage={session.currentStage}
           complete={session.complete}
+          sequenceNumber={session.sequenceNumber}
         />
       </div>
     </div>

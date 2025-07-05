@@ -5,6 +5,9 @@ import { fileURLToPath } from 'url';
 import { RealtimeYuiProtocolRouter } from '../kernel/realtime-router.js';
 import { SessionStorage, removeCircularReferences } from '../kernel/session-storage.js';
 import { Session } from '../types/index.js';
+import { OutputStorage } from '../kernel/output-storage.js';
+import { InteractionLogger } from '../kernel/interaction-logger.js';
+import { createStageSummarizer } from '../kernel/stage-summarizer.js';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -23,8 +26,26 @@ app.use(express.static(path.join(__dirname, '..')));
 // Initialize shared session storage
 const sharedSessionStorage = new SessionStorage();
 
-// Initialize realtime router with shared session storage
-const realtimeRouter = new RealtimeYuiProtocolRouter(sharedSessionStorage);
+// Initialize shared output storage
+const sharedOutputStorage = new OutputStorage();
+
+// Initialize shared interaction logger
+const sharedInteractionLogger = new InteractionLogger();
+
+// Initialize stage summarizer options
+const stageSummarizerOptions = {};
+
+// Initialize delay options
+const delayOptions = { stageSummarizerDelayMS: 30000, finalSummaryDelayMS: 60000 };
+
+// Initialize realtime router with shared session storage, output storage, interaction logger, stage summarizer options, and delay options
+const realtimeRouter = new RealtimeYuiProtocolRouter(
+  sharedSessionStorage,
+  sharedOutputStorage,
+  sharedInteractionLogger,
+  stageSummarizerOptions,
+  delayOptions
+);
 
 // Helper function to clean up duplicate sessions
 async function cleanupDuplicateSessions(): Promise<void> {
@@ -295,12 +316,10 @@ app.get('/api/sessions/:sessionId/last-summary', (async (req: Request, res: Resp
     // Get summary from last output-generation stage
     const session = realtimeRouter.getSession(sessionId);
     if (session && session.messages) {
-      const outputGenerationMessages = session.messages.filter(
-        msg => msg.stage === 'output-generation' && msg.role === 'agent'
-      );
+      const outputMessages = session.messages.filter((msg: any) => msg.stage === 'output-generation' && msg.role === 'agent');
       
-      if (outputGenerationMessages.length > 0) {
-        const lastSummary = outputGenerationMessages[outputGenerationMessages.length - 1];
+      if (outputMessages.length > 0) {
+        const lastSummary = outputMessages[outputMessages.length - 1];
         res.json({ 
           success: true, 
           summary: lastSummary.content,
@@ -328,12 +347,10 @@ app.get('/api/realtime/sessions/:sessionId/last-summary', (async (req: Request, 
     // Get summary from last output-generation stage
     const session = realtimeRouter.getSession(sessionId);
     if (session && session.messages) {
-      const outputGenerationMessages = session.messages.filter(
-        msg => msg.stage === 'output-generation' && msg.role === 'agent'
-      );
+      const outputMessages = session.messages.filter((msg: any) => msg.stage === 'output-generation' && msg.role === 'agent');
       
-      if (outputGenerationMessages.length > 0) {
-        const lastSummary = outputGenerationMessages[outputGenerationMessages.length - 1];
+      if (outputMessages.length > 0) {
+        const lastSummary = outputMessages[outputMessages.length - 1];
         res.json({ 
           success: true, 
           summary: lastSummary.content,
@@ -419,7 +436,11 @@ app.get('/api/outputs/:id', (async (req: Request, res: Response) => {
     if (!output) {
       return res.status(404).json({ error: 'Output not found' });
     }
-
+    if (id.endsWith('.md')) {
+      res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+      res.send(output);
+      return;
+    }
     res.json(output);
   } catch (error) {
     console.error('Error getting output:', error);
@@ -458,6 +479,7 @@ app.get('*', ((req: Request, res: Response) => {
   // Serve the main HTML file for all other routes
   res.sendFile(path.join(__dirname, '../index.html'));
 }) as RequestHandler);
+
 
 // Start server
 const server = app.listen(port, () => {

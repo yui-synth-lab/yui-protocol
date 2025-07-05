@@ -45,11 +45,28 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({ agents, availableAgents }
       <div className="flex-1 min-h-0 overflow-y-auto">
         <div className="space-y-3">
           {agents.map((agent) => (
-            <div key={agent.id} className="flex items-start p-4 bg-gray-800 rounded border-l-4" style={{ borderLeftColor: agent.color || '#ccc', borderLeftWidth: 6 }}>
-              <span className="text-2xl mr-4 mt-1 flex-shrink-0">{agent.avatar}</span>
+            <div
+              key={agent.id}
+              className="flex items-start p-4 mb-2 rounded-xl shadow-lg border-l-8"
+              style={{
+                borderLeftColor: agent.color || '#ccc',
+                background: `linear-gradient(135deg, ${agent.color || '#374151'}22 0%, #23272f 100%)`,
+                boxShadow: `0 4px 16px 0 ${agent.color || '#222'}33`,
+              }}
+            >
+              <span className="text-2xl mr-4 mt-1 flex-shrink-0 drop-shadow-sm">
+                {agent.avatar}
+              </span>
               <div className="flex-1 min-w-0">
-                <div className="font-bold text-lg" style={{ color: agent.color || undefined }}>{agent.name + (agent.furigana ? `（${agent.furigana}）` : '')}</div>
-                <div className="text-sm font-medium" style={{ borderLeft: `4px solid ${agent.color || '#ccc'}`, paddingLeft: 8, color: '#fff' }}>{agent.personality}</div>
+                <div className="font-bold text-base tracking-wide flex items-center gap-2" style={{ color: agent.color || '#fff', textShadow: '0 1px 4px #0008' }}>
+                  {agent.name}
+                  {agent.furigana && (
+                    <span className="ml-1 text-xs font-medium text-gray-300/80" style={{ letterSpacing: '0.05em' }}>（{agent.furigana}）</span>
+                  )}
+                </div>
+                <div className="text-xs mt-2 font-normal text-gray-100">
+                  {agent.personality}
+                </div>
               </div>
             </div>
           ))}

@@ -198,33 +198,17 @@ export class yuiAgent extends BaseAgent {
     };
   }
 
-  private analyzeContext(context: Message[]): string {
-    if (context.length === 0) return 'No previous context available.';
-    
-    // Look for previous summary from summarizer agent
-    const previousSummary = context.find(m => 
-      m.metadata?.stageData?.summary &&
-      m.timestamp > new Date(Date.now() - 5 * 60 * 1000) // Within last 5 minutes
-    );
-
-    let contextAnalysis = '';
-    
-    if (previousSummary) {
-      console.log(`[YuiAgent] Found previous summary, incorporating into context`);
-      contextAnalysis += `\n\nPrevious Summary: ${previousSummary.metadata?.stageData?.summary}`;
-    } else {
-      // Normal context analysis
-      const recentMessages = context.slice(-5);
-      const agentResponses = recentMessages.filter(m => m.role === 'agent');
-      
-      if (agentResponses.length === 0) {
-        contextAnalysis = 'This appears to be a new discussion.';
-      } else {
-        const viewpoints = agentResponses.map(m => `${m.agentId}: ${m.content.substring(0, 100)}...`);
-        contextAnalysis = `Recent viewpoints: ${viewpoints.join(' | ')}`;
-      }
-    }
-    
-    return contextAnalysis;
+  // yuiAgent固有のリファレンス
+  protected getReferences(): string[] {
+    return ['scientific curiosity', 'emotional intelligence', 'pattern analysis', 'empathic reasoning', 'your alter ego', 'innocent wonder'];
+  }
+  protected getReasoning(contextAnalysis: string): string {
+    return 'I analyzed this from both emotional and analytical perspectives, seeking to understand the underlying patterns while remaining sensitive to the human experience, like a curious child exploring the world.';
+  }
+  protected getAssumptions(): string[] {
+    return ['Your feelings and thoughts are paramount, and scientific understanding can enhance our emotional intelligence.'];
+  }
+  protected getApproach(): string {
+    return 'A balanced approach that combines empathetic listening with curious exploration of the facts and patterns involved, maintaining the innocent wonder of discovery.';
   }
 } 

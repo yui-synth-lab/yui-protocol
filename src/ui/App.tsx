@@ -75,7 +75,7 @@ function AppRoutes() {
     }
   };
 
-  const createNewSession = async (title: string, selectedAgentIds: string[]) => {
+  const createNewSession = async (title: string, selectedAgentIds: string[], language: string) => {
     try {
       console.log('App: Creating session with:', { title, selectedAgentIds });
       
@@ -84,14 +84,29 @@ function AppRoutes() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ title, agentIds: selectedAgentIds }),
+        body: JSON.stringify({ title, agentIds: selectedAgentIds, language }),
       });
       
       const newSession = await response.json();
       console.log('App: Received new session:', newSession);
       
       // Add new session to the beginning of the list (most recent first)
-      setSessions(prev => [newSession, ...prev]);
+      setSessions(prev => [
+        {
+          id: newSession.id,
+          title: newSession.title,
+          agents: newSession.agents,
+          createdAt: new Date(newSession.createdAt),
+          messages: [],
+          updatedAt: new Date(newSession.updatedAt),
+          currentStage: undefined,
+          stageHistory: [],
+          status: 'active',
+          complete: false,
+          language: newSession.language || language || 'en',
+        },
+        ...prev.map(s => ({ ...s, language: s.language || 'en' }))
+      ]);
       navigate(`/session/${newSession.id}`);
     } catch (error) {
       console.error('Failed to create session:', error);
@@ -245,7 +260,7 @@ function AppRoutes() {
                           selectSession(session);
                           setShowSidebar(false); // Close sidebar on mobile after selection
                         }}
-                        onCreateSession={createNewSession}
+                        onCreateSession={(title, agentIds, language) => createNewSession(title, agentIds, language)}
                         availableAgents={availableAgents}
                       />
                     </div>

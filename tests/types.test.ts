@@ -13,8 +13,7 @@ import {
   IndividualThought,
   MutualReflection,
   ConflictResolution,
-  DialogueLog,
-  AgentStyle
+  DialogueLog
 } from '../src/types/index.js';
 
 describe('Type Definitions', () => {
@@ -23,20 +22,26 @@ describe('Type Definitions', () => {
       const agent: Agent = {
         id: 'test-agent',
         name: 'Test Agent',
+        furigana: 'テストエージェント',
         style: 'logical',
         priority: 'precision',
         memoryScope: 'session',
         personality: 'Test personality',
-        preferences: ['test']
+        preferences: ['test'],
+        tone: 'professional',
+        communicationStyle: 'formal'
       };
 
       expect(agent.id).toBe('test-agent');
       expect(agent.name).toBe('Test Agent');
+      expect(agent.furigana).toBe('テストエージェント');
       expect(agent.style).toBe('logical');
       expect(agent.priority).toBe('precision');
       expect(agent.memoryScope).toBe('session');
       expect(agent.personality).toBe('Test personality');
       expect(agent.preferences).toEqual(['test']);
+      expect(agent.tone).toBe('professional');
+      expect(agent.communicationStyle).toBe('formal');
     });
 
     it('should accept valid style values', () => {
@@ -45,11 +50,14 @@ describe('Type Definitions', () => {
         const agent: Agent = {
           id: 'test-agent',
           name: 'Test Agent',
+          furigana: 'テストエージェント',
           style,
           priority: 'precision',
           memoryScope: 'session',
           personality: 'Test personality',
-          preferences: ['test']
+          preferences: ['test'],
+          tone: 'professional',
+          communicationStyle: 'formal'
         };
         expect(agent.style).toBe(style);
       });
@@ -61,11 +69,14 @@ describe('Type Definitions', () => {
         const agent: Agent = {
           id: 'test-agent',
           name: 'Test Agent',
+          furigana: 'テストエージェント',
           style: 'logical',
           priority,
           memoryScope: 'session',
           personality: 'Test personality',
-          preferences: ['test']
+          preferences: ['test'],
+          tone: 'professional',
+          communicationStyle: 'formal'
         };
         expect(agent.priority).toBe(priority);
       });
@@ -77,11 +88,14 @@ describe('Type Definitions', () => {
         const agent: Agent = {
           id: 'test-agent',
           name: 'Test Agent',
+          furigana: 'テストエージェント',
           style: 'logical',
           priority: 'precision',
           memoryScope,
           personality: 'Test personality',
-          preferences: ['test']
+          preferences: ['test'],
+          tone: 'professional',
+          communicationStyle: 'formal'
         };
         expect(agent.memoryScope).toBe(memoryScope);
       });
@@ -269,27 +283,6 @@ describe('Type Definitions', () => {
       expect(synthesis.unifiedPerspective).toBe('Test unified perspective');
       expect(synthesis.remainingDisagreements).toEqual(['disagreement1', 'disagreement2']);
       expect(synthesis.confidence).toBe(0.9);
-    });
-  });
-
-  describe('AgentStyle', () => {
-    it('should have valid style values', () => {
-      const styles: AgentStyle[] = [
-        'gentle-philosopher',
-        'pragmatic-engineer',
-        'creative-artist',
-        'analytical-scientist',
-        'strategic-planner',
-        'critical-thinker'
-      ];
-
-      expect(styles).toHaveLength(6);
-      expect(styles).toContain('gentle-philosopher');
-      expect(styles).toContain('pragmatic-engineer');
-      expect(styles).toContain('creative-artist');
-      expect(styles).toContain('analytical-scientist');
-      expect(styles).toContain('strategic-planner');
-      expect(styles).toContain('critical-thinker');
     });
   });
 }); 

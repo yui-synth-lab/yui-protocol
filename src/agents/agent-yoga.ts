@@ -199,33 +199,21 @@ export class YogaAgent extends BaseAgent {
     };
   }
 
-  private analyzeContext(context: Message[]): string {
-    if (context.length === 0) return 'No previous context available.';
-    
-    // Look for previous summary from summarizer agent
-    const previousSummary = context.find(m => 
-      m.metadata?.stageData?.summary &&
-      m.timestamp > new Date(Date.now() - 5 * 60 * 1000) // Within last 5 minutes
-    );
-
-    let contextAnalysis = '';
-    
-    if (previousSummary) {
-      console.log(`[YogaAgent] Found previous summary, incorporating into context`);
-      contextAnalysis += `\n\nPrevious Summary: ${previousSummary.metadata?.stageData?.summary}`;
-    } else {
-      // Normal context analysis
-      const recentMessages = context.slice(-5);
-      const agentResponses = recentMessages.filter(m => m.role === 'agent');
-      
-      if (agentResponses.length === 0) {
-        contextAnalysis = 'This appears to be a new discussion.';
-      } else {
-        const viewpoints = agentResponses.map(m => `${m.agentId}: ${m.content.substring(0, 100)}...`);
-        contextAnalysis = `Recent viewpoints: ${viewpoints.join(' | ')}`;
-      }
-    }
-    
-    return contextAnalysis;
+  // YogaAgent固有のリファレンス
+  protected getReferences(): string[] {
+    return ['creative reasoning', 'intuitive analysis', 'innovative thinking'];
+  }
+  protected getReasoning(contextAnalysis: string): string {
+    return `I approached this with creative problem-solving, focusing on innovative and practical solutions. Context analysis: ${contextAnalysis}`;
+  }
+  protected getAssumptions(): string[] {
+    return [
+      'Creative solutions often emerge from unconventional thinking',
+      'Practical implementation is as important as theoretical understanding',
+      'Innovation requires balancing creativity with feasibility'
+    ];
+  }
+  protected getApproach(): string {
+    return 'Creative problem-solving with practical implementation focus';
   }
 } 

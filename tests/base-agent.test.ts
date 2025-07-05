@@ -28,6 +28,22 @@ class TestAgent extends BaseAgent {
   async stage5OutputGeneration(finalData: any, context: Message[]): Promise<any> {
     return { content: 'Output generation' };
   }
+
+  async stage2_5MutualReflectionSummary(responses: any[], context: Message[]): Promise<any> {
+    return { content: 'Mutual reflection summary' };
+  }
+
+  async stage3_5ConflictResolutionSummary(responses: any[], context: Message[]): Promise<any> {
+    return { content: 'Conflict resolution summary' };
+  }
+
+  async stage4_5SynthesisAttemptSummary(responses: any[], context: Message[]): Promise<any> {
+    return { content: 'Synthesis attempt summary' };
+  }
+
+  async stage5_1Finalize(votingResults: any, responses: any[], context: Message[]): Promise<any> {
+    return { content: 'Finalize' };
+  }
 }
 
 // Mock AI Executor for testing
@@ -59,6 +75,7 @@ describe('BaseAgent', () => {
     testAgent = {
       id: 'test-agent-1',
       name: 'Test Agent',
+      furigana: 'テストエージェント',
       style: 'analytical',
       personality: 'Analytical and precise',
       priority: 'precision',
@@ -160,26 +177,6 @@ describe('BaseAgent', () => {
       // Even more calls return the same instance
       const executor3 = await agent2['ensureAIExecutor']();
       expect(executor3).toBe(executor1);
-    });
-  });
-
-  describe('Legacy AI methods', () => {
-    beforeEach(() => {
-      // Mock the AI executor to avoid real API calls
-      const mockExecutor = new MockAIExecutor();
-      agent['aiExecutor'] = mockExecutor;
-    });
-
-    it('should maintain backward compatibility with callGeminiCli', async () => {
-      const result = await agent['callGeminiCli']('Legacy prompt');
-      expect(result).toContain('TestAgent');
-      expect(result).toContain('Legacy prompt');
-    });
-
-    it('should maintain backward compatibility with callGeminiCliWithTruncation', async () => {
-      const result = await agent['callGeminiCliWithTruncation']('Legacy prompt');
-      expect(result).toContain('TestAgent');
-      expect(result).toContain('Legacy prompt');
     });
   });
 

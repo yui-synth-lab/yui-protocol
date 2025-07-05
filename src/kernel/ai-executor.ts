@@ -18,17 +18,32 @@ export abstract class AIExecutor {
   protected agentName: string;
   protected model: string;
   protected provider: string;
+  protected maxTokens: number;
   protected customConfig: Record<string, any>;
 
   constructor(options: AIExecutorOptions) {
     this.agentName = options.agentName;
     this.model = options.model || 'default';
-    this.provider = options.provider || 'custom';
+    this.provider = options.provider || 'gemini';
+    this.maxTokens = options.customConfig?.maxTokens || 4000;
     this.customConfig = options.customConfig || {};
   }
 
   abstract execute(prompt: string): Promise<AIExecutionResult>;
   
+  protected truncatePrompt(prompt: string, maxTokens: number): string {
+    const maxChars = maxTokens * 4; // Rough estimate: 1 token ≈ 4 characters
+    
+    if (prompt.length <= maxChars) {
+      return prompt;
+    }
+    
+    const halfChars = Math.floor(maxChars / 2);
+    const beginning = prompt.substring(0, halfChars);
+    const end = prompt.substring(prompt.length - halfChars);
+    
+    return `${beginning}\n\n[Content truncated for token limit]\n\n${end}`;
+  }
 
   protected generateFallbackResponse(prompt: string): string {
     return `[${this.agentName}] Fallback response: I understand your query about "${prompt.substring(0, 50)}...". However, I'm currently experiencing technical difficulties with my primary AI service. Please try again later or contact support if the issue persists.`;
@@ -81,7 +96,7 @@ export async function createAIExecutor(agentName: string, options?: Partial<AIEx
         const duration = Date.now() - startTime;
         
         return {
-          content: `[${this.agentName}] Mock response: This is a simulated response to your query about "${prompt.substring(0, 50)}...". Please configure your AI implementation.`,
+          content: `[${this.agentName}] Mock response: This is a simulated response to your query is "${prompt}". Please configure your AI implementation.`,
           model: this.model,
           duration,
           success: true

@@ -199,33 +199,21 @@ export class KanshiAgent extends BaseAgent {
     };
   }
 
-  private analyzeContext(context: Message[]): string {
-    if (context.length === 0) return 'No previous context available.';
-    
-    // Look for previous summary from summarizer agent
-    const previousSummary = context.find(m => 
-      m.metadata?.stageData?.summary &&
-      m.timestamp > new Date(Date.now() - 5 * 60 * 1000) // Within last 5 minutes
-    );
-
-    let contextAnalysis = '';
-    
-    if (previousSummary) {
-      console.log(`[KanshiAgent] Found previous summary, incorporating into context`);
-      contextAnalysis += `\n\nPrevious Summary: ${previousSummary.metadata?.stageData?.summary}`;
-    } else {
-      // Normal context analysis
-      const recentMessages = context.slice(-5);
-      const agentResponses = recentMessages.filter(m => m.role === 'agent');
-      
-      if (agentResponses.length === 0) {
-        contextAnalysis = 'This appears to be a new discussion.';
-      } else {
-        const viewpoints = agentResponses.map(m => `${m.agentId}: ${m.content.substring(0, 100)}...`);
-        contextAnalysis = `Recent viewpoints: ${viewpoints.join(' | ')}`;
-      }
-    }
-    
-    return contextAnalysis;
+  // KanshiAgent固有のリファレンス
+  protected getReferences(): string[] {
+    return ['practical reasoning', 'step-by-step analysis', 'solution-oriented thinking'];
+  }
+  protected getReasoning(contextAnalysis: string): string {
+    return `I took a critical, step-by-step approach focusing on actionable solutions and deep analysis. Context analysis: ${contextAnalysis}`;
+  }
+  protected getAssumptions(): string[] {
+    return [
+      'Problems can be broken down into manageable parts',
+      'Practical solutions are preferable to theoretical ones',
+      'Clear communication is essential for implementation'
+    ];
+  }
+  protected getApproach(): string {
+    return 'Critical analysis with practical step-by-step problem solving';
   }
 } 

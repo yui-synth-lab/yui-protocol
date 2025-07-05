@@ -4,7 +4,7 @@ import {
   getStagePrompt,
   formatPrompt,
   PERSONALITY_PROMPT_TEMPLATE,
-  LANGUAGE_INSTRUCTIONS,
+  UNIFIED_LANGUAGE_INSTRUCTION,
   STAGE_PROMPTS
 } from '../src/templates/prompts.js';
 import { DialogueStage } from '../src/types/index.js';
@@ -22,13 +22,9 @@ describe('Prompt Templates', () => {
     });
   });
 
-  describe('LANGUAGE_INSTRUCTIONS', () => {
-    it('should contain English instruction', () => {
-      expect(LANGUAGE_INSTRUCTIONS.en).toContain('English');
-    });
-
-    it('should contain Japanese instruction', () => {
-      expect(LANGUAGE_INSTRUCTIONS.ja).toContain('日本語');
+  describe('UNIFIED_LANGUAGE_INSTRUCTION', () => {
+    it('should contain language instruction', () => {
+      expect(UNIFIED_LANGUAGE_INSTRUCTION).toContain('respond in the specified language');
     });
   });
 
@@ -44,33 +40,20 @@ describe('Prompt Templates', () => {
       
       stages.forEach(stage => {
         expect(STAGE_PROMPTS[stage]).toBeDefined();
-        expect(STAGE_PROMPTS[stage].en).toBeDefined();
-        expect(STAGE_PROMPTS[stage].ja).toBeDefined();
+        expect(typeof STAGE_PROMPTS[stage]).toBe('string');
       });
     });
 
     it('should contain English stage 1 prompt', () => {
-      const prompt = STAGE_PROMPTS['individual-thought'].en;
+      const prompt = STAGE_PROMPTS['individual-thought'];
       expect(prompt).toContain('STAGE 1 - INDIVIDUAL THOUGHT');
       expect(prompt).toContain('Think independently');
     });
 
-    it('should contain Japanese stage 1 prompt', () => {
-      const prompt = STAGE_PROMPTS['individual-thought'].ja;
-      expect(prompt).toContain('ステージ1 - 個別思考');
-      expect(prompt).toContain('独立して考えてください');
-    });
-
-    it('should contain English stage 2 prompt', () => {
-      const prompt = STAGE_PROMPTS['mutual-reflection'].en;
+    it('should contain stage 2 prompt', () => {
+      const prompt = STAGE_PROMPTS['mutual-reflection'];
       expect(prompt).toContain('STAGE 2 - MUTUAL REFLECTION');
-      expect(prompt).toContain('React to other agents');
-    });
-
-    it('should contain Japanese stage 2 prompt', () => {
-      const prompt = STAGE_PROMPTS['mutual-reflection'].ja;
-      expect(prompt).toContain('ステージ2 - 相互反省');
-      expect(prompt).toContain('他のエージェントの思考');
+      expect(prompt).toContain('Engage deeply');
     });
   });
 
@@ -78,6 +61,7 @@ describe('Prompt Templates', () => {
     it('should generate English personality prompt', () => {
       const agent = {
         name: 'Test Agent',
+        furigana: 'テストエージェント',
         style: 'logical',
         priority: 'precision',
         personality: 'Test personality',
@@ -94,12 +78,13 @@ describe('Prompt Templates', () => {
       expect(prompt).toContain('Test personality');
       expect(prompt).toContain('test');
       expect(prompt).toContain('session');
-      expect(prompt).toContain('English');
+      expect(prompt).toContain('en');
     });
 
     it('should generate Japanese personality prompt', () => {
       const agent = {
         name: 'テストエージェント',
+        furigana: 'テストエージェント',
         style: '論理的',
         priority: '精密性',
         personality: 'テスト性格',
@@ -116,12 +101,13 @@ describe('Prompt Templates', () => {
       expect(prompt).toContain('テスト性格');
       expect(prompt).toContain('テスト');
       expect(prompt).toContain('セッション');
-      expect(prompt).toContain('日本語');
+      expect(prompt).toContain('Japanese');
     });
 
     it('should default to English for unknown language', () => {
       const agent = {
         name: 'Test Agent',
+        furigana: 'テストエージェント',
         style: 'logical',
         priority: 'precision',
         personality: 'Test personality',
@@ -150,7 +136,7 @@ describe('Prompt Templates', () => {
       expect(prompt).toContain('Test query');
     });
 
-    it('should generate Japanese stage prompt', () => {
+    it('should generate stage prompt', () => {
       const personalityPrompt = 'あなたはテストエージェントです';
       const variables = {
         query: 'テストクエリ',
@@ -159,7 +145,7 @@ describe('Prompt Templates', () => {
 
       const prompt = getStagePrompt('individual-thought', personalityPrompt, variables, 'ja');
       expect(prompt).toContain('あなたはテストエージェントです');
-      expect(prompt).toContain('ステージ1 - 個別思考');
+      expect(prompt).toContain('STAGE 1 - INDIVIDUAL THOUGHT');
       expect(prompt).toContain('テストクエリ');
     });
 

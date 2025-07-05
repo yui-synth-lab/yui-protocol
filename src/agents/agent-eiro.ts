@@ -199,33 +199,21 @@ export class EiroAgent extends BaseAgent {
     };
   }
 
-  private analyzeContext(context: Message[]): string {
-    if (context.length === 0) return 'No previous context available.';
-    
-    // Look for previous summary from summarizer agent
-    const previousSummary = context.find(m => 
-      m.metadata?.stageData?.summary &&
-      m.timestamp > new Date(Date.now() - 5 * 60 * 1000) // Within last 5 minutes
-    );
-
-    let contextAnalysis = '';
-    
-    if (previousSummary) {
-      console.log(`[EiroAgent] Found previous summary, incorporating into context`);
-      contextAnalysis += `\n\nPrevious Summary: ${previousSummary.metadata?.stageData?.summary}`;
-    } else {
-      // Normal context analysis
-      const recentMessages = context.slice(-5);
-      const agentResponses = recentMessages.filter(m => m.role === 'agent');
-      
-      if (agentResponses.length === 0) {
-        contextAnalysis = 'This appears to be a new discussion.';
-      } else {
-        const viewpoints = agentResponses.map(m => `${m.agentId}: ${m.content.substring(0, 100)}...`);
-        contextAnalysis = `Recent viewpoints: ${viewpoints.join(' | ')}`;
-      }
-    }
-    
-    return contextAnalysis;
+  // EiroAgent固有のリファレンス
+  protected getReferences(): string[] {
+    return ['logical reasoning', 'systematic analysis', 'structured thinking'];
+  }
+  protected getReasoning(contextAnalysis: string): string {
+    return `I approached this from a logical angle, considering the broader implications and ethical dimensions. The context shows ${contextAnalysis}`;
+  }
+  protected getAssumptions(): string[] {
+    return [
+      'Logical consistency is paramount',
+      'Ethical considerations should be included',
+      'Multiple perspectives should be considered'
+    ];
+  }
+  protected getApproach(): string {
+    return 'Systematic logical analysis with ethical consideration';
   }
 } 

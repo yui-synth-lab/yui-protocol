@@ -25,12 +25,15 @@ export interface Message {
   timestamp: Date;
   role: 'user' | 'agent' | 'system';
   stage?: DialogueStage;
+  sequenceNumber?: number;
   metadata?: {
     reasoning?: string;
     confidence?: number;
     references?: string[];
     stageData?: any;
     voteFor?: string;
+    voteReasoning?: string;
+    voteSection?: string;
   };
 }
 
@@ -44,17 +47,27 @@ export interface Session {
   status: 'active' | 'completed' | 'paused';
   currentStage?: DialogueStage;
   stageHistory: StageHistory[];
+  stageSummaries?: StageSummary[];
   complete?: boolean;
+  outputFileName?: string;
+  sequenceNumber?: number;
+  language: Language;
 }
 
 export interface AgentResponse {
   agentId: string;
   content: string;
+  summary?: string;
   reasoning?: string;
   confidence?: number;
   references?: string[];
   stage?: DialogueStage;
   stageData?: any;
+  metadata?: {
+    voteFor?: string;
+    voteReasoning?: string;
+    voteSection?: string;
+  };
 }
 
 export interface CollaborationResult {
@@ -70,9 +83,13 @@ export interface CollaborationResult {
 export type DialogueStage = 
   | 'individual-thought'
   | 'mutual-reflection'
+  | 'mutual-reflection-summary'
   | 'conflict-resolution'
+  | 'conflict-resolution-summary'
   | 'synthesis-attempt'
-  | 'output-generation';
+  | 'synthesis-attempt-summary'
+  | 'output-generation'
+  | 'finalize';
 
 export interface StageHistory {
   stage: DialogueStage;
@@ -81,6 +98,7 @@ export interface StageHistory {
   agentResponses: AgentResponse[];
   conflicts?: Conflict[];
   synthesis?: SynthesisAttempt;
+  sequenceNumber?: number;
 }
 
 export interface StageResult {
@@ -115,6 +133,7 @@ export interface SynthesisAttempt {
 export interface IndividualThought {
   agentId: string;
   content: string;
+  summary?: string;
   reasoning: string;
   assumptions: string[];
   approach: string;
@@ -123,6 +142,7 @@ export interface IndividualThought {
 export interface MutualReflection {
   agentId: string;
   content: string;
+  summary?: string;
   reflections: {
     targetAgentId: string;
     reaction: string;
@@ -147,4 +167,23 @@ export interface DialogueLog {
     duration: number;
     consensusLevel: number;
   };
+}
+
+export interface StageSummary {
+  stage: DialogueStage;
+  summary: {
+    speaker: string;
+    position: string;
+  }[];
+  timestamp: Date;
+  stageNumber: number;
+  sequenceNumber?: number;
+}
+
+export interface SummaryStage {
+  stage: DialogueStage;
+  summary: string;
+  timestamp: Date;
+  stageNumber: number;
+  sequenceNumber?: number;
 } 

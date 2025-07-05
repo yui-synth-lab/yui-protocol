@@ -1,5 +1,5 @@
 import { Agent, Message, AgentResponse, DialogueStage, IndividualThought, MutualReflection } from '../types/index.js';
-import { getPersonalityPrompt, getStagePrompt, Language } from '../templates/prompts.js';
+import { getPersonalityPrompt, getStagePrompt, Language, SUMMARIZER_STAGE_PROMPT, formatPrompt, parseVotes, extractVoteDetails } from '../templates/prompts.js';
 import { InteractionLogger, SimplifiedInteractionLog } from '../kernel/interaction-logger.js';
 import { AIExecutor, createAIExecutor } from '../kernel/ai-executor.js';
 
@@ -29,14 +29,338 @@ export abstract class BaseAgent {
   }
 
   // Main response method for the full dialogue process
-  abstract respond(prompt: string, context: Message[]): Promise<AgentResponse>;
+  async respond(prompt: string, context: Message[]): Promise<AgentResponse> {
+    const individualThought = await this.stage1IndividualThought(prompt, context);
+    return {
+      agentId: this.agent.id,
+      content: individualThought.content,
+      reasoning: individualThought.reasoning,
+      confidence: await this.generateConfidence('individual-thought', context),
+      references: this.getReferences(),
+      stage: 'individual-thought',
+      stageData: individualThought
+    };
+  }
 
   // Stage-specific methods for Yui Protocol
-  abstract stage1IndividualThought(prompt: string, context: Message[]): Promise<IndividualThought>;
-  abstract stage2MutualReflection(prompt: string, otherThoughts: IndividualThought[], context: Message[]): Promise<MutualReflection>;
-  abstract stage3ConflictResolution(conflicts: any[], context: Message[]): Promise<AgentResponse>;
-  abstract stage4SynthesisAttempt(synthesisData: any, context: Message[]): Promise<AgentResponse>;
-  abstract stage5OutputGeneration(finalData: any, context: Message[]): Promise<AgentResponse>;
+  async stage1IndividualThought(prompt: string, context: Message[]): Promise<IndividualThought> {
+    const userMessage = context.find(m => m.role === 'user');
+    const query = userMessage?.content || prompt || 'No user query provided';
+    
+    // サマリーコンテキストを抽出（Stage 1では通常ないが、将来的な拡張のため）
+    const summaryContext = context.find(m => m.role === 'system' && m.content.includes('前ステージの要約'));
+    const history = summaryContext ? summaryContext.content : '';
+    
+    const stagePrompt = this.getStagePrompt('individual-thought', {
+      query,
+      history
+    });
+    
+    const content = await this.executeAIWithErrorHandling(
+      stagePrompt,
+      this.sessionId || 'unknown-session',
+      'individual-thought',
+      'individual thought processing'
+    );
+    
+    return {
+      agentId: this.agent.id,
+      content,
+      summary: content.slice(0, 100),
+      reasoning: 'I analyzed the query from my unique perspective and approach.',
+      approach: this.getApproach(),
+      assumptions: this.getAssumptions()
+    };
+  }
+
+  async stage2MutualReflection(prompt: string, otherThoughts: IndividualThought[], context: Message[]): Promise<MutualReflection> {
+    const userMessage = context.find(m => m.role === 'user');
+    const query = userMessage?.content || prompt || 'No user query provided';
+    
+    // サマリーコンテキストを抽出
+    const summaryContext = context.find(m => m.role === 'system' && m.content.includes('前ステージの要約'));
+    const history = summaryContext ? summaryContext.content : '';
+    
+    const otherThoughtsText = otherThoughts.map(thought => 
+      `${thought.agentId}: ${thought.content}`
+    ).join('\n\n');
+    
+    const stagePrompt = this.getStagePrompt('mutual-reflection', {
+      query,
+      otherThoughts: otherThoughtsText,
+      history
+    });
+    
+    const content = await this.executeAIWithErrorHandling(
+      stagePrompt,
+      this.sessionId || 'unknown-session',
+      'mutual-reflection',
+      'mutual reflection processing'
+    );
+    
+    const reflections = otherThoughts.map(thought => ({
+      targetAgentId: thought.agentId,
+      reaction: 'Engaged with the perspective',
+      agreement: true,
+      questions: []
+    }));
+    
+    return {
+      agentId: this.agent.id,
+      content,
+      summary: content.slice(0, 100),
+      reflections
+    };
+  }
+
+  async stage3ConflictResolution(conflicts: any[], context: Message[]): Promise<AgentResponse> {
+    const userMessage = context.find(m => m.role === 'user');
+    const query = userMessage?.content || 'No user query provided';
+    
+    // サマリーコンテキストを抽出
+    const summaryContext = context.find(m => m.role === 'system' && m.content.includes('前ステージの要約'));
+    const history = summaryContext ? summaryContext.content : '';
+    
+    const stagePrompt = this.getStagePrompt('conflict-resolution', {
+      query,
+      conflicts: JSON.stringify(conflicts, null, 2),
+      history
+    });
+    
+    const content = await this.executeAIWithErrorHandling(
+      stagePrompt,
+      this.sessionId || 'unknown-session',
+      'conflict-resolution',
+      'conflict resolution processing'
+    );
+    
+    return {
+      agentId: this.agent.id,
+      content,
+      summary: content.slice(0, 100),
+      reasoning: 'I analyzed conflicts and worked toward resolution through direct dialogue.',
+      confidence: await this.generateConfidence('conflict-resolution', context),
+      references: ['conflict-analysis', 'resolution-strategy'],
+      stage: 'conflict-resolution',
+      stageData: { summary: content.slice(0, 100) }
+    };
+  }
+
+  async stage4SynthesisAttempt(synthesisData: any, context: Message[]): Promise<AgentResponse> {
+    const userMessage = context.find(m => m.role === 'user');
+    const query = userMessage?.content || 'No user query provided';
+    
+    // サマリーコンテキストを抽出
+    const summaryContext = context.find(m => m.role === 'system' && m.content.includes('前ステージの要約'));
+    const history = summaryContext ? summaryContext.content : '';
+    
+    const stagePrompt = this.getStagePrompt('synthesis-attempt', {
+      query,
+      synthesisData: JSON.stringify(synthesisData, null, 2),
+      history
+    });
+    
+    const content = await this.executeAIWithErrorHandling(
+      stagePrompt,
+      this.sessionId || 'unknown-session',
+      'synthesis-attempt',
+      'synthesis attempt processing'
+    );
+    
+    return {
+      agentId: this.agent.id,
+      content,
+      summary: content.slice(0, 100),
+      reasoning: 'I attempted to unify perspectives by synthesizing diverse insights.',
+      confidence: await this.generateConfidence('synthesis-attempt', context),
+      references: ['synthesis', 'integration'],
+      stage: 'synthesis-attempt',
+      stageData: { summary: content.slice(0, 100) }
+    };
+  }
+
+  async stage5OutputGeneration(finalData: any, context: Message[]): Promise<AgentResponse> {
+    const userMessage = context.find(m => m.role === 'user');
+    const query = userMessage?.content || 'No user query provided';
+    
+    // サマリーコンテキストを抽出
+    const summaryContext = context.find(m => m.role === 'system' && m.content.includes('前ステージの要約'));
+    const history = summaryContext ? summaryContext.content : '';
+
+    let stagePrompt: string;
+    if (this.isSummarizer) {
+      // サマライザー専用プロンプトを使用
+      stagePrompt = formatPrompt(SUMMARIZER_STAGE_PROMPT, {
+        query,
+        finalData: JSON.stringify(finalData, null, 2),
+        history
+      });
+    } else {
+      // 通常のプロンプト
+      stagePrompt = this.getStagePrompt('output-generation', {
+        query,
+        finalData: JSON.stringify(finalData, null, 2),
+        history
+      });
+    }
+    
+    const content = await this.executeAIWithErrorHandling(
+      stagePrompt,
+      this.sessionId || 'unknown-session',
+      'output-generation',
+      'output generation processing'
+    );
+    
+    // Parse and validate vote, excluding self-votes
+    const voteDetails = extractVoteDetails(content, this.agent.id);
+    
+    return {
+      agentId: this.agent.id,
+      content,
+      summary: content.slice(0, 100),
+      reasoning: 'I generated the final output incorporating all perspectives and insights.',
+      confidence: await this.generateConfidence('output-generation', context),
+      references: ['final-synthesis', 'comprehensive-output'],
+      stage: 'output-generation',
+      stageData: { summary: content.slice(0, 100) },
+      metadata: {
+        voteFor: voteDetails.votedAgent || undefined,
+        voteReasoning: voteDetails.reasoning || undefined,
+        voteSection: voteDetails.voteSection || undefined
+      }
+    };
+  }
+
+  // Summary stage methods
+  async stage2_5MutualReflectionSummary(responses: AgentResponse[], context: Message[]): Promise<AgentResponse> {
+    const userMessage = context.find(m => m.role === 'user');
+    const query = userMessage?.content || 'No user query provided';
+    
+    const responsesText = responses.map(response => 
+      `${response.agentId}: ${response.content}`
+    ).join('\n\n');
+    
+    const stagePrompt = this.getStagePrompt('mutual-reflection-summary', {
+      query,
+      responses: responsesText
+    });
+    
+    const content = await this.executeAIWithErrorHandling(
+      stagePrompt,
+      this.sessionId || 'unknown-session',
+      'mutual-reflection-summary',
+      'mutual reflection summary processing'
+    );
+    
+    return {
+      agentId: this.agent.id,
+      content,
+      summary: content.slice(0, 100),
+      reasoning: 'I summarized the mutual reflection stage to extract key conflicts.',
+      confidence: await this.generateConfidence('mutual-reflection-summary', context),
+      references: ['conflict-extraction', 'summary-generation'],
+      stage: 'mutual-reflection-summary',
+      stageData: { summary: content.slice(0, 100) }
+    };
+  }
+
+  async stage3_5ConflictResolutionSummary(responses: AgentResponse[], context: Message[]): Promise<AgentResponse> {
+    const userMessage = context.find(m => m.role === 'user');
+    const query = userMessage?.content || 'No user query provided';
+    
+    const responsesText = responses.map(response => 
+      `${response.agentId}: ${response.content}`
+    ).join('\n\n');
+    
+    const stagePrompt = this.getStagePrompt('conflict-resolution-summary', {
+      query,
+      responses: responsesText
+    });
+    
+    const content = await this.executeAIWithErrorHandling(
+      stagePrompt,
+      this.sessionId || 'unknown-session',
+      'conflict-resolution-summary',
+      'conflict resolution summary processing'
+    );
+    
+    return {
+      agentId: this.agent.id,
+      content,
+      summary: content.slice(0, 100),
+      reasoning: 'I summarized the conflict resolution stage to extract key proposals.',
+      confidence: await this.generateConfidence('conflict-resolution-summary', context),
+      references: ['resolution-extraction', 'summary-generation'],
+      stage: 'conflict-resolution-summary',
+      stageData: { summary: content.slice(0, 100) }
+    };
+  }
+
+  async stage4_5SynthesisAttemptSummary(responses: AgentResponse[], context: Message[]): Promise<AgentResponse> {
+    const userMessage = context.find(m => m.role === 'user');
+    const query = userMessage?.content || 'No user query provided';
+    
+    const responsesText = responses.map(response => 
+      `${response.agentId}: ${response.content}`
+    ).join('\n\n');
+    
+    const stagePrompt = this.getStagePrompt('synthesis-attempt-summary', {
+      query,
+      responses: responsesText
+    });
+    
+    const content = await this.executeAIWithErrorHandling(
+      stagePrompt,
+      this.sessionId || 'unknown-session',
+      'synthesis-attempt-summary',
+      'synthesis attempt summary processing'
+    );
+    
+    return {
+      agentId: this.agent.id,
+      content,
+      summary: content.slice(0, 100),
+      reasoning: 'I summarized the synthesis attempt stage to extract key integration points.',
+      confidence: await this.generateConfidence('synthesis-attempt-summary', context),
+      references: ['integration-extraction', 'summary-generation'],
+      stage: 'synthesis-attempt-summary',
+      stageData: { summary: content.slice(0, 100) }
+    };
+  }
+
+  async stage5_1Finalize(votingResults: any, responses: AgentResponse[], context: Message[]): Promise<AgentResponse> {
+    const userMessage = context.find(m => m.role === 'user');
+    const query = userMessage?.content || 'No user query provided';
+    
+    const votingResultsText = JSON.stringify(votingResults, null, 2);
+    const responsesText = responses.map(response => 
+      `${response.agentId}: ${response.content}`
+    ).join('\n\n');
+    
+    const stagePrompt = this.getStagePrompt('finalize', {
+      query,
+      votingResults: votingResultsText,
+      responses: responsesText
+    });
+    
+    const content = await this.executeAIWithErrorHandling(
+      stagePrompt,
+      this.sessionId || 'unknown-session',
+      'finalize',
+      'finalize processing'
+    );
+    
+    return {
+      agentId: this.agent.id,
+      content,
+      summary: content.slice(0, 100),
+      reasoning: 'I created the final comprehensive output based on voting results.',
+      confidence: await this.generateConfidence('finalize', context),
+      references: ['final-synthesis', 'comprehensive-output'],
+      stage: 'finalize',
+      stageData: { summary: content.slice(0, 100) }
+    };
+  }
 
   // Generic AI execution methods for all agents
   protected async executeAI(prompt: string): Promise<string> {
@@ -56,7 +380,6 @@ export abstract class BaseAgent {
     }
     return result.content;
   }
-
 
   // Log interaction method for agents to use
   protected async logInteraction(
@@ -435,5 +758,46 @@ export abstract class BaseAgent {
       prompt,
       operationName
     );
+  }
+
+  // 共通のコンテキスト分析メソッド
+  protected analyzeContext(context: Message[]): string {
+    if (!context || context.length === 0) return 'No previous context available.';
+    // Look for previous summary from summarizer agent
+    const previousSummary = context.find(m =>
+      m.metadata?.stageData?.summary &&
+      m.timestamp > new Date(Date.now() - 5 * 60 * 1000)
+    );
+    let contextAnalysis = '';
+    if (previousSummary) {
+      contextAnalysis += `\n\nPrevious Summary: ${previousSummary.metadata?.stageData?.summary}`;
+    } else {
+      const recentMessages = context.slice(-5);
+      const agentResponses = recentMessages.filter(m => m.role === 'agent');
+      if (agentResponses.length === 0) {
+        contextAnalysis = 'This appears to be a new discussion.';
+      } else {
+        const viewpoints = agentResponses.map(m => `${m.agentId}: ${m.content.substring(0, 100)}...`);
+        contextAnalysis = `Recent viewpoints: ${viewpoints.join(' | ')}`;
+      }
+    }
+    return contextAnalysis;
+  }
+
+  // Agent固有のリファレンス
+  protected getReferences(): string[] {
+    return [];
+  }
+  // Agent固有のreasoning
+  protected getReasoning(contextAnalysis: string): string {
+    return `I analyzed the context: ${contextAnalysis}`;
+  }
+  // Agent固有のassumptions
+  protected getAssumptions(): string[] {
+    return [];
+  }
+  // Agent固有のapproach
+  protected getApproach(): string {
+    return 'General approach.';
   }
 } 

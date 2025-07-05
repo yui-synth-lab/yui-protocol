@@ -105,7 +105,7 @@ function selectSummarizer(agents: any, stage: any, messages: any, agentResponses
     return maxId;
 }
 function sleep(ms: any) {
-    return new Promise((resolve: any) => setTimeout(resolve, 0));
+    return new Promise((resolve: any) => setTimeout(resolve, ms));
 }
 // 配列シャッフル関数（Fisher-Yates）
 function shuffleArray(array: any) {

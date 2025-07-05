@@ -5,7 +5,7 @@ interface SessionManagerProps {
   sessions: Session[];
   currentSession: Session | null;
   onSelectSession: (session: Session) => void;
-  onCreateSession: (title: string, agentIds: string[]) => void;
+  onCreateSession: (title: string, agentIds: string[], language: 'ja' | 'en') => void;
   availableAgents: Agent[];
 }
 
@@ -21,6 +21,7 @@ const SessionManager: React.FC<SessionManagerProps> = ({
   const [selectedAgentIds, setSelectedAgentIds] = useState<string[]>(
     availableAgents.map(agent => agent.id) // Default to all agents selected
   );
+  const [language, setLanguage] = useState<'ja' | 'en'>('ja');
 
   // Reset to all agents selected when form is shown
   useEffect(() => {
@@ -32,7 +33,7 @@ const SessionManager: React.FC<SessionManagerProps> = ({
   const handleCreateSession = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSessionTitle.trim()) return;
-    onCreateSession(newSessionTitle, availableAgents.map(agent => agent.id));
+    onCreateSession(newSessionTitle, availableAgents.map(agent => agent.id), language);
     setNewSessionTitle('');
     setShowCreateForm(false);
   };
@@ -69,6 +70,14 @@ const SessionManager: React.FC<SessionManagerProps> = ({
               className="w-full px-3 py-2 text-sm border border-gray-700 bg-gray-800 text-gray-100 focus:ring-2 focus:ring-blue-800 focus:border-transparent rounded"
               placeholder="Enter session title..."
             />
+          </div>
+
+          <div style={{ marginBottom: 8 }}>
+            <label>言語: </label>
+            <select value={language} onChange={e => setLanguage(e.target.value as 'ja' | 'en')}>
+              <option value="ja">日本語</option>
+              <option value="en">English</option>
+            </select>
           </div>
 
           <button

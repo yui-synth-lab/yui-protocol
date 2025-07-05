@@ -26,6 +26,8 @@ The YUI Protocol is a structured multi-agent AI collaboration framework designed
 4. **Transparency**: Full logging and traceability of all interactions and decisions
 5. **Scalability**: Modular architecture supports addition of new agents and capabilities
 6. **Flexibility**: Support for multiple AI providers and customizable configurations
+7. **Efficiency**: Intelligent stage summarization reduces token usage and costs
+8. **Context Management**: Smart context preservation across dialogue stages
 
 ## Protocol Architecture
 
@@ -46,6 +48,12 @@ The YUI Protocol is a structured multi-agent AI collaboration framework designed
                        ┌─────────────────┐    ┌─────────────────┐
                        │ Output Storage  │    │  AI Executor    │
                        │                 │    │  (Multi-Provider)│
+                       └─────────────────┘    └─────────────────┘
+                                │                       │
+                                ▼                       ▼
+                       ┌─────────────────┐    ┌─────────────────┐
+                       │ Stage           │    │  Realtime       │
+                       │ Summarizer      │    │  Router         │
                        └─────────────────┘    └─────────────────┘
 ```
 
@@ -311,6 +319,26 @@ interface SynthesisAttempt {
   remainingDisagreements?: string[];
   confidence: number;
 }
+
+// Stage summarization
+interface StageSummary {
+  stage: DialogueStage;
+  summary: {
+    speaker: string;
+    position: string;
+  }[];
+  timestamp: Date;
+  stageNumber: number;
+  sequenceNumber?: number;
+}
+
+interface StageSummarizerOptions {
+  maxTokens?: number;
+  model?: string;
+  provider?: string;
+  language?: string;
+  interactionLogger?: InteractionLogger;
+}
 ```
 
 ### Simplified Interaction Logging
@@ -339,7 +367,8 @@ interface SimplifiedInteractionLog {
 2. **Session Manager** → Dialogue Orchestrator
 3. **Dialogue Orchestrator** → Agent Pool (Stage 1)
 4. **Agent Responses** → Memory Manager
-5. **Stage Completion** → Next Stage or Final Output
+5. **Stage Completion** → Stage Summarizer
+6. **Stage Summary** → Next Stage or Final Output
 
 ### Error Handling
 
@@ -387,6 +416,15 @@ interface ErrorResponse {
 3. **Stage-based**: Prioritize current stage context
 4. **Agent-specific**: Respect agent memory scope preferences
 
+### Stage Summarization
+
+The system includes intelligent stage summarization to reduce token usage:
+
+1. **Automatic Summarization**: Each stage is automatically summarized upon completion
+2. **Context Preservation**: Previous stage summaries are used as context for subsequent stages
+3. **Language Support**: Summaries can be generated in multiple languages (English, Japanese)
+4. **Configurable**: Summarization parameters can be customized per session
+
 ## Error Handling
 
 ### Error Types
@@ -429,6 +467,7 @@ interface ErrorLog {
 3. **Streaming**: Stream responses for better user experience
 4. **Resource Management**: Efficient memory and CPU usage
 5. **State Optimization**: Minimize unnecessary re-renders and state updates
+6. **Stage Summarization**: Reduce context length through intelligent summarization
 
 ### Performance Metrics
 
@@ -436,6 +475,7 @@ interface ErrorLog {
 - **Throughput**: Messages processed per second
 - **Accuracy**: User satisfaction and solution quality
 - **Resource Usage**: Memory and CPU consumption
+- **Token Efficiency**: Tokens used per session
 
 ### Scalability
 
@@ -478,10 +518,12 @@ src/
 │   └── agent-*.ts    # Specific agent implementations
 ├── kernel/           # Core system components
 │   ├── ai-executor.ts
+│   ├── ai-executor-impl.ts
 │   ├── interaction-logger.ts
 │   ├── memory.ts
 │   ├── session-storage.ts
 │   ├── realtime-router.ts
+│   ├── stage-summarizer.ts
 │   └── output-storage.ts
 ├── templates/        # Prompt templates
 │   └── prompts.ts
@@ -528,7 +570,7 @@ Supported providers:
 
 1. **Unit Tests**: Test individual components in isolation
 2. **Integration Tests**: Test component interactions
-3. **End-to-End Tests**: Test complete user workflows
+3. **End-to-End Tests**: Test complete user workflows with Selenium
 4. **Performance Tests**: Test system under load
 
 ### Deployment
@@ -547,16 +589,19 @@ Supported providers:
 
 ## Version History
 
-### v1.1.0 (Current)
-- **UI Improvements**: Compact design for maximum message display area
-- **URL Routing**: Direct session access via URL with React Router
-- **Error Handling**: Enhanced error handling and fallback mechanisms
-- **Simplified Logging**: Streamlined interaction logging system
-- **Performance**: Optimized state management and reduced flickering
-- **Testing**: Comprehensive test coverage with all tests passing
-- **AI Provider Flexibility**: Support for multiple AI providers
+### v1.0.0 (Current)
+- **Stage Summarization**: Intelligent stage summary generation to reduce token usage
+- **Configurable Language Support**: Stage summaries can be generated in multiple languages
+- **Enhanced Context Management**: Previous stage summaries are used as context for subsequent stages
+- **Improved Efficiency**: Reduced AI API costs through intelligent summarization
+- **Selenium Testing**: Comprehensive end-to-end testing with automated browser tests
+- **TypeScript Improvements**: Enhanced type safety and error handling
+- **Performance Optimizations**: Better state management and reduced flickering
+- **Comprehensive Testing**: All tests passing with improved coverage (24.34% overall)
+- **Bug Fixes**: Fixed realtime router issues and session management problems
+- **AI Provider Flexibility**: Support for multiple AI providers with unified interface
 
-### v1.0.0
+### v0.9.0
 - Initial implementation of 5-stage dialogue protocol
 - 5 specialized agents with distinct personalities
 - Real-time interaction logging
@@ -569,4 +614,6 @@ Supported providers:
 - Machine learning for agent optimization
 - Enhanced visualization and analytics
 - Multi-language support expansion
-- Advanced AI provider integrations 
+- Advanced AI provider integrations
+- Real-time collaboration features
+- Advanced analytics and insights 
