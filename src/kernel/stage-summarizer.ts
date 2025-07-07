@@ -295,26 +295,6 @@ export class StageSummarizer {
     }
   }
 
-  /**
-   * サマリーをプロンプト形式に変換
-   */
-  formatSummaryForPrompt(stageSummaries: StageSummary[]): string {
-    if (stageSummaries.length === 0) {
-      return "前のステージの要約はありません。";
-    }
-
-    return stageSummaries
-      .sort((a, b) => a.stageNumber - b.stageNumber)
-      .map(summary => {
-        const stageName = this.getStageDisplayName(summary.stage);
-        const agentSummaries = summary.summary
-          .map(s => `- ${s.speaker}: ${s.position}`)
-          .join('\n');
-        return `## ${stageName}\n${agentSummaries}`;
-      })
-      .join('\n\n');
-  }
-
   private getStageNumber(stage: DialogueStage): number {
     const stageOrder: Record<DialogueStage, number> = {
       'individual-thought': 1,

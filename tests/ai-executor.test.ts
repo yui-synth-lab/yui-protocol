@@ -183,7 +183,7 @@ describe('createAIExecutor', () => {
     expect(executor['maxTokens']).toBe(4000);
     // The actual model might vary based on the implementation, so we just check it's a string
     expect(typeof executor['model']).toBe('string');
-    expect(executor['provider']).toBe('ollama');
+    expect(executor['provider']).toBe('gemini');
   });
 });
 

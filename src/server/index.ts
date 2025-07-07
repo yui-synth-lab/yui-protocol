@@ -37,10 +37,10 @@ const stageSummarizerOptions = {};
 
 // Initialize delay options - 統一的なdelay設定
 const delayOptions = {
-  agentResponseDelayMS: 15000,      // エージェント間の応答間隔: 15秒
-  stageSummarizerDelayMS: 15000,    // ステージサマリー生成前の待機時間: 45秒
-  finalSummaryDelayMS: 15000,       // 最終サマリー生成前の待機時間: 90秒
-  defaultDelayMS: 15000             // デフォルト値: 15秒
+  agentResponseDelayMS: 120000,      // エージェント間の応答間隔: 120秒
+  stageSummarizerDelayMS: 120000,    // ステージサマリー生成前の待機時間: 120秒
+  finalSummaryDelayMS: 120000,       // 最終サマリー生成前の待機時間: 120秒
+  defaultDelayMS: 120000             // デフォルト値: 120秒
 };
 
 // Initialize realtime router with shared session storage, output storage, interaction logger, stage summarizer options, and delay options

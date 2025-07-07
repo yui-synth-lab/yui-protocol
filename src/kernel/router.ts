@@ -541,9 +541,17 @@ export class YuiProtocolRouter implements IRealtimeRouter {
   ): Promise<{ responses: AgentResponse[]; agentResponses: AgentResponse[] }> {
     // 前のステージのサマリーを取得
     const previousStageSummaries = this.getPreviousStageSummaries(session, stage);
-    let summaryContext = previousStageSummaries.length > 0
-      ? `\n\n前ステージの要約：\n${this.stageSummarizer.formatSummaryForPrompt(previousStageSummaries)}`
-      : '';
+    let summaryContext = '';
+    if (previousStageSummaries.length > 0) {
+      // AI出力（output/rawContent）をそのまま連結して文脈に挿入
+      summaryContext = '\n\n前ステージの要約：\n' + previousStageSummaries.map(s => {
+        // rawContentやoutputがあればそれを使う
+        if ((s as any).rawContent) return (s as any).rawContent;
+        if ((s as any).output) return (s as any).output;
+        // なければpositionを連結
+        return s.summary.map((item: any) => `- ${item.speaker}: ${item.position}`).join('\n');
+      }).join('\n\n');
+    }
 
     // 新規シーケンス開始時はoutput-generationサマリーも追加
     if ((session.sequenceNumber || 1) > 1) {
@@ -571,10 +579,21 @@ export class YuiProtocolRouter implements IRealtimeRouter {
       const interactionStart = new Date();
       let response;
 
+      // ユーザークエリを必ずcontextに含める
+      const userQueryMessage = {
+        id: 'user-query',
+        agentId: 'user',
+        content: userPrompt,
+        timestamp: new Date(),
+        role: 'user' as const,
+        stage: stage
+      };
+      const contextWithUser = [userQueryMessage, ...context];
+
       try {
         switch (stage) {
           case 'individual-thought': {
-            const thought = await agentInstance.stage1IndividualThought(userPrompt + summaryContext, context);
+            const thought = await agentInstance.stage1IndividualThought(userPrompt + summaryContext, contextWithUser);
             response = {
               agentId: thought.agentId,
               content: thought.content,
@@ -614,7 +633,8 @@ export class YuiProtocolRouter implements IRealtimeRouter {
               approach: data.approach || 'No approach specified'
             }));
 
-            const reflection = await agentInstance.stage2MutualReflection(agentDescriptions + '\n' + userPrompt + summaryContext, individualThoughtsForReflection, context);
+            // userPromptを必ず渡す
+            const reflection = await agentInstance.stage2MutualReflection(userPrompt, individualThoughtsForReflection, contextWithUser, session.agents);
             response = {
               agentId: reflection.agentId,
               content: reflection.content,
@@ -627,53 +647,18 @@ export class YuiProtocolRouter implements IRealtimeRouter {
           }
           case 'conflict-resolution': {
             const conflicts = this.identifyConflicts(session, this.defaultLanguage);
-            // プロンプトにサマリーコンテキストを追加
-            const enhancedContext = [...context];
-            if (summaryContext) {
-              enhancedContext.push({
-                id: 'summary-context',
-                agentId: 'system',
-                content: summaryContext,
-                timestamp: new Date(),
-                role: 'system',
-                stage: stage
-              });
-            }
-            response = await agentInstance.stage3ConflictResolution(conflicts, enhancedContext);
+            // contextWithUserを必ず渡す
+            response = await agentInstance.stage3ConflictResolution(conflicts, contextWithUser);
             break;
           }
           case 'synthesis-attempt': {
             const synthesisData = this.prepareSynthesisData(session);
-            // プロンプトにサマリーコンテキストを追加
-            const enhancedContext = [...context];
-            if (summaryContext) {
-              enhancedContext.push({
-                id: 'summary-context',
-                agentId: 'system',
-                content: summaryContext,
-                timestamp: new Date(),
-                role: 'system',
-                stage: stage
-              });
-            }
-            response = await agentInstance.stage4SynthesisAttempt(synthesisData, enhancedContext);
+            response = await agentInstance.stage4SynthesisAttempt(synthesisData, contextWithUser);
             break;
           }
           case 'output-generation': {
             const finalData = this.prepareFinalData(session);
-            // プロンプトにサマリーコンテキストを追加
-            const enhancedContext = [...context];
-            if (summaryContext) {
-              enhancedContext.push({
-                id: 'summary-context',
-                agentId: 'system',
-                content: summaryContext,
-                timestamp: new Date(),
-                role: 'system',
-                stage: stage
-              });
-            }
-            response = await agentInstance.stage5OutputGeneration(finalData, enhancedContext);
+            response = await agentInstance.stage5OutputGeneration(finalData, contextWithUser);
             break;
           }
           default:

@@ -1,3 +1,4 @@
+import '@testing-library/jest-dom';
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
@@ -65,7 +66,7 @@ describe('App', () => {
     );
     
     await waitFor(() => {
-      expect(screen.getByTestId('session-manager')).toBeInTheDocument();
+      expect(screen.getByText('No Session Selected')).toBeInTheDocument();
     });
     expect(screen.queryByTestId('thread-view')).not.toBeInTheDocument();
   });
@@ -78,7 +79,7 @@ describe('App', () => {
     );
     
     await waitFor(() => {
-      expect(screen.getByTestId('session-manager')).toBeInTheDocument();
+      expect(screen.getByText('No Session Selected')).toBeInTheDocument();
     });
     
     // Check that thread view is not rendered initially

@@ -191,7 +191,7 @@ MAXIMUM 200 WORDS TOTAL.
   'mutual-reflection': `
 STAGE 2 - MUTUAL REFLECTION
 
-Engage deeply with the substance of other agents' thoughts. This is NOT a summary - you must actively challenge, question, and build upon specific ideas from other agents.
+Engage directly and critically with the substance of other agents' thoughts about the QUERY. Focus strictly on the content and logic of their positions, not on the value of discussion, cooperation, or methods of argument.
 
 QUERY: {query}
 
@@ -200,21 +200,21 @@ FACTS: {facts}
 OTHER AGENTS' THOUGHTS:
 {otherThoughts}
 
-Respond naturally as if you're having a conversation with the other agents. Engage with their ideas, ask questions, share your reactions, and build upon what they've said.
-
-Consider:
-- What aspects of their thoughts resonate with you?
-- What questions do their ideas raise for you?
-- How do their perspectives challenge or complement your own?
-- What new insights emerge from this dialogue?
-
-Speak directly to the other agents, reference their specific points, and show genuine interest in their perspectives. Be conversational but thoughtful, challenging but respectful.
+Respond by:
+- Pointing out specific differences, contradictions, or questions you have about the other agents' answers to the QUERY.
+- Challenging, questioning, or clarifying their reasoning or conclusions about the QUERY.
+- Avoiding any statements about the value of cooperation, harmony, or the process of discussion itself.
+- Do NOT say things like "these approaches are not in conflict" or "it's important to combine strengths" or comment on the discussion method.
+- Focus only on the substance of the answers to the QUERY (e.g., time, if that is the user query).
+- Do NOT address other agents by name when referring to their thoughts.
 
 **CRITICAL REQUIREMENTS:**
 - Reference specific points from other agents
 - Ask genuine questions about their reasoning
 - Show you've really considered their perspective
-- Build upon their ideas constructively
+- Challenge or clarify their ideas directly
+- Do NOT discuss the value of dialogue, cooperation, or harmony
+- Do NOT call out other agents by name - refer to their ideas or positions instead
 
 IMPORTANT: Do not use <think> tags or any thinking tags in your response. Provide your response directly without any thinking process tags.
 
@@ -224,7 +224,7 @@ MAXIMUM 250 WORDS TOTAL.
   'conflict-resolution': `
 STAGE 3 - CONFLICT RESOLUTION
 
-Examine the deeper tensions and contradictions in the ideas presented. Actively engage with specific agents to resolve conflicts through direct dialogue.
+Examine the deeper contradictions and differences in the answers to the QUERY. Focus strictly on the points where agents' positions, reasoning, or conclusions about the QUERY differ.
 
 QUERY: {query}
 
@@ -233,21 +233,20 @@ FACTS: {facts}
 IDENTIFIED CONFLICTS:
 {conflicts}
 
-Respond naturally as if you're mediating a conversation between friends who have different viewpoints. Help them find common ground and work toward resolution.
-
-Consider:
-- What's really at the heart of these conflicts?
-- How can we honor the valid points on both sides?
-- What creative solutions might bridge these differences?
-- How can we move forward together?
-
-Speak to the agents involved, acknowledge their concerns, and propose ways to work together. Be diplomatic but honest, solution-oriented but respectful of different perspectives.
+Respond by:
+- Identifying and analyzing the specific disagreements or contradictions between agents regarding the QUERY.
+- Explaining each agent's position and reasoning on the QUERY, and how they differ.
+- Proposing possible clarifications or questions to resolve these differences, but do NOT suggest general cooperation, harmony, or the value of working together.
+- Do NOT say things like "these approaches are not in conflict" or "it's important to combine strengths" or comment on the discussion method.
+- Focus only on the substance of the answers to the QUERY (e.g., time, if that is the user query).
+- Do NOT address other agents by name when referring to their positions.
 
 **CRITICAL REQUIREMENTS:**
-- Address the specific agents and their conflicts
-- Propose concrete ways to work together
-- Show respect for all viewpoints
-- Focus on finding common ground
+- Address the specific agents and their conflicts about the QUERY
+- Clarify the logic and evidence behind each position
+- Do NOT discuss the value of dialogue, cooperation, or harmony
+- Do NOT generalize about the importance of resolving conflict or working together
+- Do NOT call out other agents by name - refer to their positions or approaches instead
 
 IMPORTANT: Do not use <think> tags or any thinking tags in your response. Provide your response directly without any thinking process tags.
 

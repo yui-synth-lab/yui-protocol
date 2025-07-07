@@ -53,7 +53,7 @@ describe('Prompt Templates', () => {
     it('should contain stage 2 prompt', () => {
       const prompt = STAGE_PROMPTS['mutual-reflection'];
       expect(prompt).toContain('STAGE 2 - MUTUAL REFLECTION');
-      expect(prompt).toContain('Engage deeply');
+      expect(prompt).toContain("Engage directly and critically with the substance of other agents' thoughts about the QUERY");
     });
   });
 

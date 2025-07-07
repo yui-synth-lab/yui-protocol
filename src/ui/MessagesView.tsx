@@ -62,6 +62,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
     return agent?.name || agentId;
   };
 
+
   const getUserAvatar = () => '🧑‍💻';
 
   const getStageLabel = (stage?: DialogueStage) => {
@@ -299,7 +300,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                 )}
                 {group.messages.map((message) => {
                   // 表示用プロパティをrole/agentIdで切り替え
-                  let avatar, name, nameColor, bubbleBorder, avatarBg, nameClass;
+                  let avatar, name, nameColor, bubbleBorder, avatarBg, nameClass, nameStyle, bubbleBorderStyle, avatarBgStyle;
                   if (message.role === 'system') {
                     avatar = <span className="text-sm">⚙️</span>;
                     name = 'System';
@@ -310,10 +311,14 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                   } else if (message.role === 'agent') {
                     avatar = getAgentAvatar(message.agentId);
                     name = getAgentName(message.agentId);
+                    const agentColor = getAgentColor(message.agentId);
                     nameColor = '';
                     bubbleBorder = '';
                     avatarBg = '';
                     nameClass = 'font-medium';
+                    nameStyle = { color: agentColor };
+                    bubbleBorderStyle = { borderLeftColor: agentColor };
+                    avatarBgStyle = { backgroundColor: agentColor };
                   } else if (message.role === 'user') {
                     avatar = getUserAvatar();
                     name = 'You';
@@ -334,14 +339,14 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                       className={`flex items-start space-x-3 mb-4 ${isUser ? 'flex-row-reverse justify-end' : 'justify-start'}`}
                     >
                       <div className="flex-shrink-0">
-                        <div className={avatarClass}>{avatar}</div>
+                        <div className={avatarClass} style={avatarBgStyle}>{avatar}</div>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className={`flex items-center space-x-2 mb-2 ${isUser ? 'flex-row-reverse justify-end' : ''}`}> 
-                          <span className={`text-sm ${nameClass}`}>{name}</span>
-                          <span className="text-xs text-gray-500">{formatTimestamp(message.timestamp)}</span>
+                        <div className={`flex items-center mb-2 ${isUser ? 'flex-row-reverse justify-end space-x-reverse space-x-2' : 'space-x-2'}`}> 
+                          <span className={`text-sm ${nameClass} ${isUser ? 'text-right' : ''}`} style={nameStyle}>{name}</span>
+                          <span className={`text-xs text-gray-500 ${isUser ? 'text-right' : ''}`}>{formatTimestamp(message.timestamp)}</span>
                         </div>
-                        <div className={bubbleClass}>
+                        <div className={bubbleClass} style={bubbleBorderStyle}>
                           {renderMessageContent(message.content ?? '')}
                           {/* 投票情報 */}
                           {message.metadata?.voteFor && (

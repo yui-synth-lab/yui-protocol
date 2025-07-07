@@ -46,7 +46,7 @@ const Menu: React.FC<{
       />
       
       {/* Menu Panel */}
-      <div className="fixed right-0 top-0 h-full w-80 bg-gray-800 border-l border-gray-700 z-50 overflow-hidden">
+      <div className="fixed inset-0 w-full h-full bg-gray-800 border-l border-gray-700 z-50 overflow-hidden">
         <div className="p-4 h-full flex flex-col">
           {/* Header */}
           <div className="flex items-center justify-between mb-4">
@@ -329,6 +329,7 @@ export function AppRoutes() {
         ...prev.map(s => ({ ...s, language: s.language || 'en' }))
       ]);
       navigate(`/session/${newSession.id}`);
+      setShowMenu(false);
     } catch (error) {
       console.error('Failed to create session:', error);
     }

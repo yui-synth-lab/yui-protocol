@@ -42,10 +42,12 @@ export abstract class BaseAgent {
   // Main response method for the full dialogue process
   async respond(prompt: string, context: Message[]): Promise<AgentResponse> {
     const individualThought = await this.stage1IndividualThought(prompt, context);
+    const relevantContext = this.getRelevantContext(context);
+    const contextAnalysis = this.analyzeContext(relevantContext);
     return {
       agentId: this.agent.id,
       content: individualThought.content,
-      reasoning: individualThought.reasoning,
+      reasoning: this.getReasoning(contextAnalysis),
       confidence: await this.generateConfidence('individual-thought', context),
       references: this.getReferences(),
       stage: 'individual-thought',
@@ -57,51 +59,47 @@ export abstract class BaseAgent {
   async stage1IndividualThought(prompt: string, context: Message[]): Promise<IndividualThought> {
     const userMessage = context.find(m => m.role === 'user');
     const query = userMessage?.content || prompt || 'No user query provided';
-    
+    const relevantContext = this.getRelevantContext(context);
+    const contextAnalysis = this.analyzeContext(relevantContext);
     const stagePrompt = this.getStagePrompt('individual-thought', {
-      query
+      query,
+      context: contextAnalysis
     });
-    
     const content = await this.executeAIWithErrorHandling(
       stagePrompt,
       this.sessionId || 'unknown-session',
       'individual-thought',
       'individual thought processing'
     );
-    
     return {
       agentId: this.agent.id,
       content,
       summary: content.slice(0, 100),
-      reasoning: 'I analyzed the query from my unique perspective and approach.',
+      reasoning: this.getReasoning(contextAnalysis),
       approach: this.getApproach(),
       assumptions: this.getAssumptions()
     };
   }
 
-  async stage2MutualReflection(prompt: string, otherThoughts: IndividualThought[], context: Message[]): Promise<MutualReflection> {
+  async stage2MutualReflection(prompt: string, otherThoughts: IndividualThought[], context: Message[], AgentList: Agent[]): Promise<MutualReflection> {
     const userMessage = context.find(m => m.role === 'user');
     const query = userMessage?.content || prompt || 'No user query provided';
-    
     const otherThoughtsText = otherThoughts.map(thought => 
       `${thought.agentId}: ${thought.content}`
     ).join('\n\n');
-    
+    const contextAnalysis = this.analyzeContext(context);
     const stagePrompt = this.getStagePrompt('mutual-reflection', {
       query,
-      otherThoughts: otherThoughtsText
+      otherThoughts: otherThoughtsText,
+      context: contextAnalysis
     });
-    
     const content = await this.executeAIWithErrorHandling(
       stagePrompt,
       this.sessionId || 'unknown-session',
       'mutual-reflection',
       'mutual reflection processing'
     );
-    
-    // AIの実際の出力からreflectionsを解析
-    const reflections = this.parseReflectionsFromContent(content, otherThoughts);
-    
+    const reflections = this.parseReflectionsFromContent(content, otherThoughts, AgentList);
     return {
       agentId: this.agent.id,
       content,
@@ -110,167 +108,28 @@ export abstract class BaseAgent {
     };
   }
 
-  // AIの出力からreflectionsを解析するメソッド
-  protected parseReflectionsFromContent(content: string, otherThoughts: IndividualThought[]): {
-    targetAgentId: string;
-    reaction: string;
-    agreement: boolean;
-    questions: string[];
-  }[] {
-    const reflections: {
-      targetAgentId: string;
-      reaction: string;
-      agreement: boolean;
-      questions: string[];
-    }[] = [];
-    
-    for (const thought of otherThoughts) {
-      const agentName = thought.agentId;
-      const agentNamePatterns = [
-        new RegExp(`${agentName}`, 'gi'),
-        new RegExp(`${this.getAgentDisplayName(agentName)}`, 'gi'),
-        new RegExp(`${this.getAgentDisplayName(agentName).replace(/[^\w\s]/g, '')}`, 'gi')
-      ];
-      
-      // エージェントへの言及があるかチェック
-      const hasMention = agentNamePatterns.some(pattern => pattern.test(content));
-      
-      if (hasMention) {
-        // 否定的・対立的な表現を優先的に検出
-        const negativePatterns = [
-          /異なります|疑問|しかし|反対|異議|批判|違う|問題|懸念|不適切|否定|ただし|一方|but|however|disagree|oppose|question|concern|problem|inappropriate|different|criticize/gi
-        ];
-        const agentMention = new RegExp(`${agentName}|${this.getAgentDisplayName(agentName)}`, 'gi');
-        // エージェント名を含む行だけ抽出
-        const lines = content.split('\n').filter(line => agentMention.test(line));
-        const negative = lines.some(line => negativePatterns.some(pattern => pattern.test(line)));
-        // 同意/不同意を判定
-        const agreement = negative ? false : this.detectAgreement(content, agentName);
-        // 質問を抽出
-        const questions = this.extractQuestions(content, agentName);
-        // 反応を抽出
-        const reaction = this.extractReaction(content, agentName);
-        reflections.push({
-          targetAgentId: agentName,
-          reaction: reaction || 'Engaged with the perspective',
-          agreement,
-          questions
-        });
-      } else {
-        // 言及がない場合はデフォルト値
-        reflections.push({
-          targetAgentId: agentName,
-          reaction: 'No specific engagement detected',
-          agreement: false,
-          questions: []
-        });
-      }
-    }
-    
-    return reflections;
-  }
-
-  // エージェントの表示名を取得
-  private getAgentDisplayName(agentId: string): string {
-    const agentMap: Record<string, string> = {
-      'eiro-001': '慧露',
-      'kanshi-001': '観至',
-      'yoga-001': '陽雅',
-      'hekito-001': '碧統',
-      'yui-000': '結心'
-    };
-    return agentMap[agentId] || agentId;
-  }
-
-  // 同意/不同意を判定
-  private detectAgreement(content: string, agentName: string): boolean {
-    const agreementPatterns = [
-      /同意|賛成|同感|理解|共感|良い|素晴らしい|興味深い|説得力|妥当|適切/gi,
-      /agree|support|understand|good|great|interesting|convincing|valid|appropriate/gi
-    ];
-    
-    const disagreementPatterns = [
-      /不同意|反対|異議|疑問|懸念|問題|不適切|違う|異なる|批判|否定|しかし|ただし|一方|but|however|disagree|oppose|question|concern|problem|inappropriate|different|criticize/gi
-    ];
-    
-    const agentMention = new RegExp(`${agentName}|${this.getAgentDisplayName(agentName)}`, 'gi');
-    const lines = content.split('\n').filter(line => agentMention.test(line));
-    if (lines.length === 0) return false;
-    // 否定的表現があればfalse
-    if (lines.some(line => disagreementPatterns.some(pattern => pattern.test(line)))) return false;
-    // 肯定的表現があればtrue
-    if (lines.some(line => agreementPatterns.some(pattern => pattern.test(line)))) return true;
-    // どちらもなければfalse
-    return false;
-  }
-
-  // 質問を抽出
-  private extractQuestions(content: string, agentName: string): string[] {
-    const questions: string[] = [];
-    const agentPattern = new RegExp(`${agentName}|${this.getAgentDisplayName(agentName)}`, 'gi');
-    
-    // 質問文を検出
-    const questionPatterns = [
-      /([^。！？]*[ですか？？？])/g,
-      /([^.!?]*[?？])/g
-    ];
-    
-    const lines = content.split('\n');
-    for (const line of lines) {
-      if (agentPattern.test(line)) {
-        for (const pattern of questionPatterns) {
-          const matches = line.match(pattern);
-          if (matches) {
-            questions.push(...matches.map(q => q.trim()).filter(q => q.length > 5));
-          }
-        }
-      }
-    }
-    
-    return questions.slice(0, 3); // 最大3つまで
-  }
-
-  // 反応を抽出
-  private extractReaction(content: string, agentName: string): string {
-    const agentPattern = new RegExp(`${agentName}|${this.getAgentDisplayName(agentName)}`, 'gi');
-    const lines = content.split('\n');
-    
-    for (const line of lines) {
-      if (agentPattern.test(line)) {
-        // その行から反応を抽出
-        const reaction = line.trim();
-        if (reaction.length > 10 && reaction.length < 200) {
-          return reaction;
-        }
-      }
-    }
-    
-    return 'No specific engagement detected';
-  }
-
   async stage3ConflictResolution(conflicts: any[], context: Message[]): Promise<AgentResponse> {
     const userMessage = context.find(m => m.role === 'user');
     const query = userMessage?.content || 'No user query provided';
-    
+    const contextAnalysis = this.analyzeContext(context);
     const stagePrompt = this.getStagePrompt('conflict-resolution', {
       query,
-      conflicts: JSON.stringify(conflicts, null, 2)
+      conflicts: JSON.stringify(conflicts, null, 2),
+      context: contextAnalysis
     });
-    
     const content = await this.executeAIWithErrorHandling(
       stagePrompt,
       this.sessionId || 'unknown-session',
       'conflict-resolution',
       'conflict resolution processing'
     );
-    
     return {
       agentId: this.agent.id,
       content,
       summary: content.slice(0, 100),
-      reasoning: 'I analyzed conflicts and worked toward resolution through direct dialogue.',
+      reasoning: this.getReasoning(contextAnalysis),
       confidence: await this.generateConfidence('conflict-resolution', context),
-      references: ['conflict-analysis', 'resolution-strategy'],
+      references: this.getReferences(),
       stage: 'conflict-resolution',
       stageData: { 
         agentId: this.agent.id,
@@ -283,26 +142,25 @@ export abstract class BaseAgent {
   async stage4SynthesisAttempt(synthesisData: any, context: Message[]): Promise<AgentResponse> {
     const userMessage = context.find(m => m.role === 'user');
     const query = userMessage?.content || 'No user query provided';
-    
+    const contextAnalysis = this.analyzeContext(context);
     const stagePrompt = this.getStagePrompt('synthesis-attempt', {
       query,
-      synthesisData: JSON.stringify(synthesisData, null, 2)
+      synthesisData: JSON.stringify(synthesisData, null, 2),
+      context: contextAnalysis
     });
-    
     const content = await this.executeAIWithErrorHandling(
       stagePrompt,
       this.sessionId || 'unknown-session',
       'synthesis-attempt',
       'synthesis attempt processing'
     );
-    
     return {
       agentId: this.agent.id,
       content,
       summary: content.slice(0, 100),
-      reasoning: 'I attempted to unify perspectives by synthesizing diverse insights.',
+      reasoning: this.getReasoning(contextAnalysis),
       confidence: await this.generateConfidence('synthesis-attempt', context),
-      references: ['synthesis', 'integration'],
+      references: this.getReferences(),
       stage: 'synthesis-attempt',
       stageData: { 
         agentId: this.agent.id,
@@ -315,39 +173,35 @@ export abstract class BaseAgent {
   async stage5OutputGeneration(finalData: any, context: Message[]): Promise<AgentResponse> {
     const userMessage = context.find(m => m.role === 'user');
     const query = userMessage?.content || 'No user query provided';
-
+    const contextAnalysis = this.analyzeContext(context);
     let stagePrompt: string;
     if (this.isSummarizer) {
-      // サマライザー専用プロンプトを使用
       stagePrompt = formatPrompt(SUMMARIZER_STAGE_PROMPT, {
         query,
-        finalData: JSON.stringify(finalData, null, 2)
+        finalData: JSON.stringify(finalData, null, 2),
+        context: contextAnalysis
       });
     } else {
-      // 通常のプロンプト
       stagePrompt = this.getStagePrompt('output-generation', {
         query,
-        finalData: JSON.stringify(finalData, null, 2)
+        finalData: JSON.stringify(finalData, null, 2),
+        context: contextAnalysis
       });
     }
-    
     const content = await this.executeAIWithErrorHandling(
       stagePrompt,
       this.sessionId || 'unknown-session',
       'output-generation',
       'output generation processing'
     );
-    
-    // Parse and validate vote, excluding self-votes
     const voteDetails = extractVoteDetails(content, this.agent.id);
-    
     return {
       agentId: this.agent.id,
       content,
       summary: content.slice(0, 100),
-      reasoning: 'I generated the final output incorporating all perspectives and insights.',
+      reasoning: this.getReasoning(contextAnalysis),
       confidence: await this.generateConfidence('output-generation', context),
-      references: ['final-synthesis', 'comprehensive-output'],
+      references: this.getReferences(),
       stage: 'output-generation',
       stageData: { 
         agentId: this.agent.id,
@@ -1426,18 +1280,139 @@ export abstract class BaseAgent {
 
   // Agent固有のリファレンス
   protected getReferences(): string[] {
-    return [];
+    return this.agent.references ?? [];
   }
   // Agent固有のreasoning
   protected getReasoning(contextAnalysis: string): string {
-    return `I analyzed the context: ${contextAnalysis}`;
+    return this.agent.reasoning ?? '';
   }
   // Agent固有のassumptions
   protected getAssumptions(): string[] {
-    return [];
+    return this.agent.assumptions ?? [];
   }
   // Agent固有のapproach
   protected getApproach(): string {
-    return 'General approach.';
+    return this.agent.approach ?? '';
+  }
+
+  // AIの出力からreflectionsを解析するメソッド
+  protected parseReflectionsFromContent(
+    content: string,
+    otherThoughts: IndividualThought[],
+    agents: Agent[]
+  ): {
+    targetAgentId: string;
+    reaction: string;
+    agreement: boolean;
+    questions: string[];
+  }[] {
+    const reflections: {
+      targetAgentId: string;
+      reaction: string;
+      agreement: boolean;
+      questions: string[];
+    }[] = [];
+    // Fallback for undefined agents
+    const agentList = agents || [];
+    function toKatakana(hiragana: string): string {
+      return hiragana.replace(/[ぁ-ん]/g, ch => String.fromCharCode(ch.charCodeAt(0) + 0x60));
+    }
+    for (const thought of otherThoughts) {
+      const agentId = thought.agentId;
+      const agentObj = agentList.find(a => a.id === agentId);
+      const displayName = agentObj?.name || agentId;
+      const furigana = agentObj?.furigana || '';
+      const katakana = furigana ? toKatakana(furigana) : '';
+      const agentNamePatterns = [
+        new RegExp(`${agentId}`, 'gi'),
+        new RegExp(`${displayName}`, 'gi'),
+        new RegExp(`${displayName.replace(/[^\u0000-\u007F\u3040-\u30FF\u4E00-\u9FFF]/g, '')}`, 'gi'),
+      ];
+      if (furigana) agentNamePatterns.push(new RegExp(`${furigana}`, 'gi'));
+      if (katakana) agentNamePatterns.push(new RegExp(`${katakana}`, 'gi'));
+      // エージェントへの言及があるかチェック
+      const hasMention = agentNamePatterns.some(pattern => pattern.test(content));
+      if (hasMention) {
+        // 否定的・対立的な表現を優先的に検出
+        const negativePatterns = [
+          /異なります|疑問|しかし|反対|異議|批判|違う|問題|懸念|不適切|否定|ただし|一方|but|however|disagree|oppose|question|concern|problem|inappropriate|different|criticize/gi
+        ];
+        const agentMention = new RegExp(`${agentId}|${displayName}|${furigana}|${katakana}`, 'gi');
+        // エージェント名を含む行だけ抽出
+        const lines = content.split('\n').filter(line => agentMention.test(line));
+        const negative = lines.some(line => negativePatterns.some(pattern => pattern.test(line)));
+        const agreement = negative ? false : this.detectAgreement(content, agentId, displayName);
+        const questions = this.extractQuestions(content, agentId, displayName);
+        const reaction = this.extractReaction(content, agentId, displayName);
+        reflections.push({
+          targetAgentId: agentId,
+          reaction: reaction || 'Engaged with the perspective',
+          agreement,
+          questions
+        });
+      } else {
+        reflections.push({
+          targetAgentId: agentId,
+          reaction: 'No specific engagement detected',
+          agreement: false,
+          questions: []
+        });
+      }
+    }
+    return reflections;
+  }
+
+  // 同意/不同意を判定
+  protected detectAgreement(content: string, agentId: string, displayName?: string): boolean {
+    const agreementPatterns = [
+      /同意|賛成|同感|理解|共感|良い|素晴らしい|興味深い|説得力|妥当|適切/gi,
+      /agree|support|understand|good|great|interesting|convincing|valid|appropriate/gi
+    ];
+    const disagreementPatterns = [
+      /不同意|反対|異議|疑問|懸念|問題|不適切|違う|異なる|批判|否定|しかし|ただし|一方|but|however|disagree|oppose|question|concern|problem|inappropriate|different|criticize/gi
+    ];
+    const agentMention = new RegExp(`${agentId}${displayName ? `|${displayName}` : ''}`, 'gi');
+    const lines = content.split('\n').filter(line => agentMention.test(line));
+    if (lines.length === 0) return false;
+    if (lines.some(line => disagreementPatterns.some(pattern => pattern.test(line)))) return false;
+    if (lines.some(line => agreementPatterns.some(pattern => pattern.test(line)))) return true;
+    return false;
+  }
+
+  // 質問を抽出
+  protected extractQuestions(content: string, agentId: string, displayName?: string): string[] {
+    const questions: string[] = [];
+    const agentPattern = new RegExp(`${agentId}${displayName ? `|${displayName}` : ''}`, 'gi');
+    const questionPatterns = [
+      /([^。！？]*[ですか？？？])/g,
+      /([^.!?]*[?？])/g
+    ];
+    const lines = content.split('\n');
+    for (const line of lines) {
+      if (agentPattern.test(line)) {
+        for (const pattern of questionPatterns) {
+          const matches = line.match(pattern);
+          if (matches) {
+            questions.push(...matches.map(q => q.trim()).filter(q => q.length > 5));
+          }
+        }
+      }
+    }
+    return questions.slice(0, 3);
+  }
+
+  // 反応を抽出
+  protected extractReaction(content: string, agentId: string, displayName?: string): string {
+    const agentPattern = new RegExp(`${agentId}${displayName ? `|${displayName}` : ''}`, 'gi');
+    const lines = content.split('\n');
+    for (const line of lines) {
+      if (agentPattern.test(line)) {
+        const reaction = line.trim();
+        if (reaction.length > 10 && reaction.length < 200) {
+          return reaction;
+        }
+      }
+    }
+    return 'No specific engagement detected';
   }
 } 

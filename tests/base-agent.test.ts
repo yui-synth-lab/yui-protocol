@@ -13,7 +13,7 @@ class TestAgent extends BaseAgent {
     return { content: 'Individual thought' };
   }
 
-  async stage2MutualReflection(prompt: string, otherThoughts: any[], context: Message[]): Promise<any> {
+  async stage2MutualReflection(prompt: string, otherThoughts: any[], context: Message[], AgentList: any[] = []): Promise<any> {
     return { content: 'Mutual reflection' };
   }
 
@@ -29,19 +29,19 @@ class TestAgent extends BaseAgent {
     return { content: 'Output generation' };
   }
 
-  async stage2_5MutualReflectionSummary(responses: any[], context: Message[]): Promise<any> {
+  async stage2_5MutualReflectionSummary(responses: any[], context: Message[] = []): Promise<any> {
     return { content: 'Mutual reflection summary' };
   }
 
-  async stage3_5ConflictResolutionSummary(responses: any[], context: Message[]): Promise<any> {
+  async stage3_5ConflictResolutionSummary(responses: any[], context: Message[] = []): Promise<any> {
     return { content: 'Conflict resolution summary' };
   }
 
-  async stage4_5SynthesisAttemptSummary(responses: any[], context: Message[]): Promise<any> {
+  async stage4_5SynthesisAttemptSummary(responses: any[], context: Message[] = []): Promise<any> {
     return { content: 'Synthesis attempt summary' };
   }
 
-  async stage5_1Finalize(votingResults: any, responses: any[], context: Message[]): Promise<any> {
+  async stage5_1Finalize(votingResults: any, responses: any[], context: Message[] = []): Promise<any> {
     return { content: 'Finalize' };
   }
 }
@@ -63,6 +63,22 @@ class MockAIExecutor extends AIExecutor {
       duration: 100,
       success: true
     };
+  }
+}
+
+// Add a custom agent for override test
+class CustomAgent extends BaseAgent {
+  protected getReferences(): string[] {
+    return ['custom-ref'];
+  }
+  protected getReasoning(contextAnalysis: string): string {
+    return `custom-reasoning: ${contextAnalysis}`;
+  }
+  protected getAssumptions(): string[] {
+    return ['custom-assumption'];
+  }
+  protected getApproach(): string {
+    return 'custom-approach';
   }
 }
 
@@ -502,7 +518,12 @@ describe('BaseAgent', () => {
         }
       ];
       
-      const reflections = agent['parseReflectionsFromContent'](content, otherThoughts);
+      const agents = [
+        { ...testAgent, id: 'eiro-001', name: '慧露' },
+        { ...testAgent, id: 'kanshi-001', name: '観至' }
+      ];
+      
+      const reflections = agent['parseReflectionsFromContent'](content, otherThoughts, agents);
       
       expect(reflections).toHaveLength(2);
       expect(reflections[0].targetAgentId).toBe('eiro-001');
@@ -535,9 +556,13 @@ describe('BaseAgent', () => {
         }
       ];
       
-      const reflections = agent['parseReflectionsFromContent'](content, otherThoughts);
+      const agents = [
+        { ...testAgent, id: 'hekito-001', name: '慧露' },
+        { ...testAgent, id: 'yoga-001', name: '陽雅' }
+      ];
       
-      expect(reflections).toHaveLength(2);
+      const reflections = agent['parseReflectionsFromContent'](content, otherThoughts, agents);
+      
       expect(reflections[0].targetAgentId).toBe('hekito-001');
       expect(reflections[0].agreement).toBe(false); // 異なります
       expect(reflections[1].targetAgentId).toBe('yoga-001');
@@ -545,29 +570,16 @@ describe('BaseAgent', () => {
     });
 
     it('should extract questions from content', () => {
-      const content = `
-        観至さんのMistral DeepSeek選択は興味深いですが、その数学的推論力について具体的にどのような場面で活用することを想定していますか？
-        碧統さんの分析は論理的ですが、実用性とのバランスはどう考えていますか？
-      `;
-      
+      const content = '慧露さん、どのような場面で役立つと思いますか？\n観至さん、バランスはどう考えていますか？';
       const otherThoughts = [
-        { 
-          agentId: 'kanshi-001', 
-          content: 'Mistral DeepSeekを選びます',
-          reasoning: '数学的推論力が優れているため',
-          assumptions: ['Mistral DeepSeekが最適'],
-          approach: '数学的なアプローチ'
-        },
-        { 
-          agentId: 'hekito-001', 
-          content: '分析的なアプローチを重視します',
-          reasoning: '論理的思考が重要',
-          assumptions: ['分析が最適'],
-          approach: '分析的なアプローチ'
-        }
+        { agentId: 'hekito-001', content: 'test', reasoning: '', assumptions: [], approach: '' },
+        { agentId: 'kanshi-001', content: 'test', reasoning: '', assumptions: [], approach: '' }
       ];
-      
-      const reflections = agent['parseReflectionsFromContent'](content, otherThoughts);
+      const agents = [
+        { ...testAgent, id: 'hekito-001', name: '慧露' },
+        { ...testAgent, id: 'kanshi-001', name: '観至' }
+      ];
+      const reflections = agent['parseReflectionsFromContent'](content, otherThoughts, agents);
       
       expect(reflections[0].questions.length).toBeGreaterThan(0);
       expect(reflections[0].questions[0]).toContain('どのような場面');
@@ -588,7 +600,11 @@ describe('BaseAgent', () => {
         }
       ];
       
-      const reflections = agent['parseReflectionsFromContent'](content, otherThoughts);
+      const agents = [
+        { ...testAgent, id: 'eiro-001', name: '慧露' }
+      ];
+      
+      const reflections = agent['parseReflectionsFromContent'](content, otherThoughts, agents);
       
       expect(reflections).toHaveLength(1);
       expect(reflections[0].targetAgentId).toBe('eiro-001');
@@ -620,11 +636,136 @@ describe('BaseAgent', () => {
         }
       ];
       
-      const reflections = agent['parseReflectionsFromContent'](content, otherThoughts);
+      const agents = [
+        { ...testAgent, id: 'eiro-001', name: '慧露' },
+        { ...testAgent, id: 'kanshi-001', name: '観至' }
+      ];
+      
+      const reflections = agent['parseReflectionsFromContent'](content, otherThoughts, agents);
       
       expect(reflections[0].agreement).toBe(true); // 同意
       expect(reflections[1].agreement).toBe(false); // 疑問
       expect(reflections[1].questions.length).toBeGreaterThan(0);
     });
+  });
+});
+
+describe('BaseAgent (overrides)', () => {
+  let agent: CustomAgent;
+  let testAgent: Agent;
+  let testMessage: Message;
+  beforeEach(() => {
+    testAgent = {
+      id: 'custom-1',
+      name: 'Custom Name',
+      furigana: 'カスタム',
+      style: 'meta',
+      personality: 'Meta',
+      priority: 'balance',
+      memoryScope: 'session',
+      preferences: ['meta'],
+      tone: 'meta',
+      communicationStyle: 'meta'
+    };
+    agent = new CustomAgent(testAgent);
+    testMessage = {
+      id: 'msg-1',
+      agentId: 'custom-1',
+      content: 'Prompt',
+      timestamp: new Date(),
+      role: 'user'
+    };
+  });
+  it('should use overridden getReferences, getReasoning, getAssumptions, getApproach', async () => {
+    const resp = await agent.respond('Prompt', [testMessage]);
+    expect(resp.references).toEqual(['custom-ref']);
+    expect(resp.reasoning).toContain('custom-reasoning');
+    if (resp.stageData) {
+      expect(resp.stageData.assumptions).toEqual(['custom-assumption']);
+      expect(resp.stageData.approach).toBe('custom-approach');
+    }
+  });
+  it('parseReflectionsFromContent uses agent.name as displayName', () => {
+    const otherThoughts = [{ agentId: 'custom-1', content: 'test', reasoning: '', assumptions: [], approach: '' }];
+    const agents = [testAgent];
+    const content = 'Custom Nameに同意します。';
+    const result = agent['parseReflectionsFromContent'](content, otherThoughts, agents);
+    expect(result[0].targetAgentId).toBe('custom-1');
+    expect(result[0].agreement).toBe(true);
+  });
+
+  it('parseReflectionsFromContent should parse reflections with agreement', () => {
+    const otherThoughts = [
+      { agentId: 'eiro-001', content: 'test', reasoning: '', assumptions: [], approach: '' },
+      { agentId: 'kanshi-001', content: 'test', reasoning: '', assumptions: [], approach: '' }
+    ];
+    const agents = [
+      { ...testAgent, id: 'eiro-001', name: '慧露' },
+      { ...testAgent, id: 'kanshi-001', name: '観至' }
+    ];
+    const content = '慧露に同意します。観至に同意します。';
+    const reflections = agent['parseReflectionsFromContent'](content, otherThoughts, agents);
+    expect(reflections).toHaveLength(2);
+    expect(reflections[0].targetAgentId).toBe('eiro-001');
+    expect(reflections[0].agreement).toBe(true);
+    expect(reflections[0].reaction).toContain('慧露');
+    expect(reflections[1].targetAgentId).toBe('kanshi-001');
+    expect(reflections[1].agreement).toBe(true);
+    expect(reflections[1].reaction).toContain('観至');
+  });
+
+  it('parseReflectionsFromContent should parse reflections with disagreement', () => {
+    const otherThoughts = [
+      { agentId: 'eiro-001', content: 'test', reasoning: '', assumptions: [], approach: '' },
+      { agentId: 'yoga-001', content: 'test', reasoning: '', assumptions: [], approach: '' }
+    ];
+    const agents = [
+      { ...testAgent, id: 'eiro-001', name: '慧露' },
+      { ...testAgent, id: 'yoga-001', name: '陽雅' }
+    ];
+    const content = '慧露の意見には反対です。陽雅さん、どのような場面で役立つと思いますか？';
+    const reflections = agent['parseReflectionsFromContent'](content, otherThoughts, agents);
+    expect(reflections[0].agreement).toBe(false); // 反対
+    expect(reflections[1].targetAgentId).toBe('yoga-001');
+    expect(reflections[1].questions.length).toBeGreaterThan(0); // 質問がある
+  });
+
+  it('parseReflectionsFromContent should extract questions from content', () => {
+    const otherThoughts = [
+      { agentId: 'hekito-001', content: 'test', reasoning: '', assumptions: [], approach: '' },
+      { agentId: 'kanshi-001', content: 'test', reasoning: '', assumptions: [], approach: '' }
+    ];
+    const agents = [
+      { ...testAgent, id: 'hekito-001', name: '慧露' },
+      { ...testAgent, id: 'kanshi-001', name: '観至' }
+    ];
+    const content = '慧露さん、どう思いますか？\n観至さん、何が問題ですか？';
+    const reflections = agent['parseReflectionsFromContent'](content, otherThoughts, agents);
+    expect(reflections[0].questions.length).toBeGreaterThan(0);
+    expect(reflections[0].questions[0]).toContain('どう思いますか');
+    expect(reflections[1].questions.length).toBeGreaterThan(0);
+    expect(reflections[1].questions[0]).toContain('何が問題');
+  });
+
+  it('parseReflectionsFromContent should handle content without agent mentions', () => {
+    const otherThoughts = [{ agentId: 'custom-1', content: 'test', reasoning: '', assumptions: [], approach: '' }];
+    const agents = [testAgent];
+    const content = 'これは誰にも言及していません。';
+    const result = agent['parseReflectionsFromContent'](content, otherThoughts, agents);
+    expect(result[0].agreement).toBe(false);
+    expect(result[0].reaction).toBe('No specific engagement detected');
+  });
+
+  it('parseReflectionsFromContent should handle mixed agreement and disagreement', () => {
+    const otherThoughts = [
+      { agentId: 'custom-1', content: 'test', reasoning: '', assumptions: [], approach: '' },
+      { agentId: 'custom-2', content: 'test2', reasoning: '', assumptions: [], approach: '' }
+    ];
+    const agents = [testAgent, { ...testAgent, id: 'custom-2', name: 'Other Agent' }];
+    const content = 'Custom Nameに同意します。\nOther Agentには反対です。\nOther Agentさん、どう思いますか？';
+    const result = agent['parseReflectionsFromContent'](content, otherThoughts, agents);
+    expect(result[0].agreement).toBe(true); // 同意
+    expect(result[1].agreement).toBe(false); // 反対
+    expect(result[1].questions.length).toBeGreaterThan(0);
   });
 }); 

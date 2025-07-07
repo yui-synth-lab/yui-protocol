@@ -182,33 +182,6 @@ describe('StageSummarizer', () => {
     });
   });
 
-  describe('formatSummaryForPrompt', () => {
-    it('should format summaries for prompt inclusion', () => {
-      const stageSummaries: StageSummary[] = [
-        {
-          stage: 'individual-thought',
-          summary: [
-            { speaker: 'yui', position: '仮説に同意。ただし情報理論の視点を追加。' },
-            { speaker: 'kanshi', position: '概念に興味を示すが、検証性を懸念。' }
-          ],
-          timestamp: new Date(),
-          stageNumber: 1
-        }
-      ];
-
-      const formatted = summarizer.formatSummaryForPrompt(stageSummaries);
-      
-      expect(formatted).toContain('Stage 1: Individual Thought');
-      expect(formatted).toContain('yui: 仮説に同意。ただし情報理論の視点を追加。');
-      expect(formatted).toContain('kanshi: 概念に興味を示すが、検証性を懸念。');
-    });
-
-    it('should return default message for empty summaries', () => {
-      const formatted = summarizer.formatSummaryForPrompt([]);
-      expect(formatted).toBe('前のステージの要約はありません。');
-    });
-  });
-
   describe('stage number mapping', () => {
     it('should correctly map stage names to numbers', async () => {
       const stages: DialogueStage[] = [

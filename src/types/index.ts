@@ -16,6 +16,10 @@ export interface Agent {
   avatar?: string;
   color?: string;
   isSummarizer?: boolean;
+  references?: string[];
+  reasoning?: string;
+  assumptions?: string[];
+  approach?: string;
 }
 
 export interface Message {
@@ -217,7 +221,7 @@ export interface AgentInstance {
   setSessionId(sessionId: string): void;
   setIsSummarizer(isSummarizer: boolean): void;
   stage1IndividualThought(prompt: string, context: Message[]): Promise<AgentResponse>;
-  stage2MutualReflection(prompt: string, individualThoughts: IndividualThought[], context: Message[]): Promise<AgentResponse>;
+  stage2MutualReflection(prompt: string, individualThoughts: IndividualThought[], context: Message[], AgentList: Agent[]): Promise<AgentResponse>;
   stage3ConflictResolution(conflicts: Conflict[], context: Message[]): Promise<AgentResponse>;
   stage4SynthesisAttempt(synthesisData: SynthesisData, context: Message[]): Promise<AgentResponse>;
   stage5OutputGeneration(finalData: FinalData, context: Message[]): Promise<AgentResponse>;
