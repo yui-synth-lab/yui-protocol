@@ -35,8 +35,13 @@ const sharedInteractionLogger = new InteractionLogger();
 // Initialize stage summarizer options
 const stageSummarizerOptions = {};
 
-// Initialize delay options
-const delayOptions = { stageSummarizerDelayMS: 30000, finalSummaryDelayMS: 60000 };
+// Initialize delay options - 統一的なdelay設定
+const delayOptions = {
+  agentResponseDelayMS: 15000,      // エージェント間の応答間隔: 15秒
+  stageSummarizerDelayMS: 15000,    // ステージサマリー生成前の待機時間: 45秒
+  finalSummaryDelayMS: 15000,       // 最終サマリー生成前の待機時間: 90秒
+  defaultDelayMS: 15000             // デフォルト値: 15秒
+};
 
 // Initialize realtime router with shared session storage, output storage, interaction logger, stage summarizer options, and delay options
 const realtimeRouter = new YuiProtocolRouter(
@@ -47,42 +52,6 @@ const realtimeRouter = new YuiProtocolRouter(
   delayOptions
 );
 
-// Helper function to clean up duplicate sessions
-async function cleanupDuplicateSessions(): Promise<void> {
-  try {
-    const sessions = await sharedSessionStorage.getAllSessions();
-    const titleMap = new Map<string, Session[]>();
-    
-    // Group sessions by title
-    for (const session of sessions) {
-      if (!titleMap.has(session.title)) {
-        titleMap.set(session.title, []);
-      }
-      titleMap.get(session.title)!.push(session);
-    }
-    
-    // Remove duplicates, keeping the most recent one
-    for (const [title, sessionList] of titleMap) {
-      if (sessionList.length > 1) {
-        console.log(`Found ${sessionList.length} duplicate sessions for title: "${title}"`);
-        
-        // Sort by updatedAt (newest first) and keep only the first one
-        sessionList.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
-        const sessionsToDelete = sessionList.slice(1);
-        
-        for (const sessionToDelete of sessionsToDelete) {
-          console.log(`Deleting duplicate session: ${sessionToDelete.id}`);
-          await sharedSessionStorage.deleteSession(sessionToDelete.id);
-        }
-      }
-    }
-  } catch (error) {
-    console.error('Error cleaning up duplicate sessions:', error);
-  }
-}
-
-// Clean up duplicates on startup
-cleanupDuplicateSessions();
 
 // API Routes
 app.get('/api/agents', ((req: Request, res: Response) => {
@@ -122,10 +91,10 @@ app.post('/api/sessions', (async (req: Request, res: Response) => {
   }
 }) as RequestHandler);
 
-app.get('/api/sessions/:sessionId', ((req: Request, res: Response) => {
+app.get('/api/sessions/:sessionId', (async (req: Request, res: Response) => {
   try {
     const { sessionId } = req.params;
-    const session = realtimeRouter.getSession(sessionId);
+    const session = await realtimeRouter.getSession(sessionId);
     
     if (!session) {
       return res.status(404).json({ error: 'Session not found' });
@@ -166,20 +135,18 @@ app.post('/api/realtime/sessions', (async (req: Request, res: Response) => {
 }) as RequestHandler);
 
 app.post('/api/realtime/sessions/:sessionId/stage', (async (req: Request, res: Response) => {
+  console.log(`[Server] Received realtime stage request for session ${req.params.sessionId}`);
+  console.log(`[Server] Request body:`, req.body);
+  
   try {
     const { sessionId } = req.params;
-    const { prompt, stage, language } = req.body;
-
-    console.log(`[Server] Processing realtime stage request:`, {
-      sessionId,
-      stage,
-      language,
-      promptLength: prompt?.length || 0
-    });
-
-    if (!prompt || !stage) {
-      console.error(`[Server] Missing required parameters:`, { prompt: !!prompt, stage: !!stage });
-      return res.status(400).json({ error: 'Prompt and stage are required' });
+    const { prompt, stage, language = 'ja' } = req.body;
+    
+    console.log(`[Server] Processing stage ${stage} for session ${sessionId} with prompt: ${prompt?.substring(0, 100)}...`);
+    
+    if (!sessionId || !prompt || !stage) {
+      console.error(`[Server] Missing required parameters: sessionId=${sessionId}, prompt=${!!prompt}, stage=${stage}`);
+      return res.status(400).json({ error: 'Missing required parameters' });
     }
 
     // Set up Server-Sent Events for real-time updates
@@ -191,38 +158,33 @@ app.post('/api/realtime/sessions/:sessionId/stage', (async (req: Request, res: R
       'Access-Control-Allow-Headers': 'Cache-Control'
     });
 
-    const onProgress = (message: any) => {
-      const cleanedMessage = removeCircularReferences(message);
-      console.log(`[Server] Sending progress message via SSE:`, {
-        agentId: cleanedMessage.agentId,
-        stage: cleanedMessage.stage,
-        contentLength: cleanedMessage.content?.length || 0
-      });
-      
-      try {
-        const sseData = JSON.stringify({ type: 'progress', message: cleanedMessage });
-        
-        // Check if the message is too large and might cause issues
-        if (sseData.length > 1000000) { // 1MB limit
-          console.warn(`[Server] Large SSE message detected (${sseData.length} bytes), truncating content`);
-          // Truncate the content if it's too large
-          if (cleanedMessage.content && cleanedMessage.content.length > 50000) {
-            cleanedMessage.content = cleanedMessage.content.substring(0, 50000) + '... [truncated]';
+    const onProgress = (update: { message?: any; session?: any }) => {
+      if (update.message) {
+        const cleanedMessage = removeCircularReferences(update.message);
+        console.log(`[Server] Sending progress message via SSE:`, {
+          agentId: cleanedMessage.agentId,
+          stage: cleanedMessage.stage,
+          contentLength: cleanedMessage.content?.length || 0
+        });
+        try {
+          const sseData = JSON.stringify({ type: 'progress', message: cleanedMessage });
+          if (sseData.length > 1000000) {
+            console.warn(`[Server] Large SSE message detected (${sseData.length} bytes), truncating content`);
+            if (cleanedMessage.content && cleanedMessage.content.length > 50000) {
+              cleanedMessage.content = cleanedMessage.content.substring(0, 50000) + '... [truncated]';
+            }
+            const truncatedData = JSON.stringify({ type: 'progress', message: cleanedMessage });
+            res.write(`data: ${truncatedData}\n\n`);
+          } else {
+            res.write(`data: ${sseData}\n\n`);
           }
-          const truncatedData = JSON.stringify({ type: 'progress', message: cleanedMessage });
-          res.write(`data: ${truncatedData}\n\n`);
-        } else {
-          res.write(`data: ${sseData}\n\n`);
+          if ('flush' in res && typeof res.flush === 'function') {
+            res.flush();
+          }
+        } catch (error) {
+          console.error('[Server] Error serializing SSE message:', error);
+          res.write(`data: ${JSON.stringify({ type: 'error', error: 'Failed to serialize message' })}\n\n`);
         }
-        
-        // Ensure the data is flushed to the client
-        if ('flush' in res && typeof res.flush === 'function') {
-          res.flush();
-        }
-      } catch (error) {
-        console.error('[Server] Error serializing SSE message:', error);
-        // Send a simplified error message
-        res.write(`data: ${JSON.stringify({ type: 'error', error: 'Failed to serialize message' })}\n\n`);
       }
     };
 
@@ -393,6 +355,26 @@ app.delete('/api/sessions/:sessionId', (async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error deleting session:', error);
     res.status(500).json({ error: 'Failed to delete session' });
+  }
+}) as RequestHandler);
+
+// Endpoint to start new sequence
+app.post('/api/sessions/:sessionId/start-new-sequence', (async (req: Request, res: Response) => {
+  try {
+    const { sessionId } = req.params;
+    console.log(`[Server] Starting new sequence for session ${sessionId}`);
+    
+    const session = await realtimeRouter.startNewSequence(sessionId);
+    
+    if (!session) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    console.log(`[Server] New sequence started for session ${sessionId}, sequence number: ${session.sequenceNumber}`);
+    res.json({ success: true, session });
+  } catch (error) {
+    console.error('Error starting new sequence:', error);
+    res.status(500).json({ error: 'Failed to start new sequence' });
   }
 }) as RequestHandler);
 

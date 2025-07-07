@@ -105,7 +105,12 @@ describe('YuiProtocolRouter (Refactored)', () => {
       mockOutputStorage as any,
       mockInteractionLogger as any,
       {},
-      { stageSummarizerDelayMS: 30000, finalSummaryDelayMS: 60000 },
+      { 
+        agentResponseDelayMS: 100,      // テスト用に短縮
+        stageSummarizerDelayMS: 100,    // テスト用に短縮
+        finalSummaryDelayMS: 100,       // テスト用に短縮
+        defaultDelayMS: 100             // テスト用に短縮
+      },
       mockAgentManager,
       mockSessionManager
     );
@@ -123,7 +128,12 @@ describe('YuiProtocolRouter (Refactored)', () => {
         mockOutputStorage as any,
         mockInteractionLogger as any,
         {},
-        { stageSummarizerDelayMS: 60000, finalSummaryDelayMS: 120000 },
+        { 
+          agentResponseDelayMS: 200,     // テスト用に短縮
+          stageSummarizerDelayMS: 200,   // テスト用に短縮
+          finalSummaryDelayMS: 200,      // テスト用に短縮
+          defaultDelayMS: 200            // テスト用に短縮
+        },
         mockAgentManager,
         mockSessionManager
       );
@@ -239,7 +249,12 @@ describe('YuiProtocolRouter (Refactored)', () => {
         mockOutputStorage as any,
         mockInteractionLogger as any,
         {},
-        { stageSummarizerDelayMS: 30000, finalSummaryDelayMS: 60000 }
+        { 
+          agentResponseDelayMS: 100,     // テスト用に短縮
+          stageSummarizerDelayMS: 100,   // テスト用に短縮
+          finalSummaryDelayMS: 100,      // テスト用に短縮
+          defaultDelayMS: 100            // テスト用に短縮
+        }
       );
 
       // 実際のインスタンスかどうかをチェック

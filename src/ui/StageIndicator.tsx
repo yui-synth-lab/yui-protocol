@@ -40,9 +40,12 @@ const StageIndicator: React.FC<StageIndicatorProps> = ({
   };
 
   // Filter stageHistory to only include current sequence
-  const currentSequenceStageHistory = stageHistory.filter(h => 
+  const currentSequenceStageHistory = stageHistory?.filter(h => 
     h.sequenceNumber === sequenceNumber
-  );
+  ) || [];
+
+  // デバッグ用: 現在のシーケンスのstageHistoryを出力
+  console.log('DEBUG: currentSequenceStageHistory', currentSequenceStageHistory);
 
   const isStageCompleted = (stage: DialogueStage) => {
     return currentSequenceStageHistory.some(h => h.stage === stage && h.endTime);
@@ -91,7 +94,15 @@ const StageIndicator: React.FC<StageIndicatorProps> = ({
   };
 
   const getCompletedStagesCount = () => {
-    return currentSequenceStageHistory.filter(h => h.endTime).length;
+    // main stagesごとに、最初の1件だけカウント
+    let count = 0;
+    for (const stage of stages) {
+          const found = currentSequenceStageHistory?.find(
+      h => h.stage === stage && h.endTime && !h.stage.includes('summary')
+    );
+      if (found) count++;
+    }
+    return count;
   };
 
   const getTotalStagesCount = () => {

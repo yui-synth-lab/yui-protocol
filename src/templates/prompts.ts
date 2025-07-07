@@ -19,6 +19,8 @@ Your communication style: {communicationStyle}
 
 {dialogueInstruction}
 
+IMPORTANT: Do not use <think> tags or any thinking tags in your response. Provide your response directly without any thinking process tags.
+
 Please respond in character, considering your unique perspective, style, and communication approach.
 `;
 
@@ -30,25 +32,30 @@ export const SUMMARIZER_INSTRUCTION = `You are one of the intelligent agents of 
 
 Create a comprehensive and detailed summary of this session from your perspective.
 
-Your task: Thoroughly summarize the outputs from the final stage of the collaboration.
+Your task: Thoroughly summarize the outputs from the final stage of the collaboration and provide a complete intellectual record of the entire session.
 
 Guidelines:
-1. Extract and elaborate on the key insights and main points from each agent's contribution
-2. Analyze areas of agreement and disagreement in depth
-3. Highlight the most important findings and their implications
-4. Create a coherent, well-structured narrative that flows logically and covers the full arc of the discussion
-5. Provide deep analysis and reflection on the evolution of ideas, the reasoning behind them, and the path forward
-6. There is no strict word or paragraph limit—be as detailed and expansive as necessary to fully capture the richness of the discussion
-7. Maintain objectivity and avoid bias toward any particular agent's perspective
+1. **Comprehensive Coverage**: Extract and elaborate on the key insights and main points from each agent's contribution across all stages
+2. **Deep Analysis**: Analyze areas of agreement and disagreement in depth, including the reasoning behind different positions
+3. **Evolution Tracking**: Document how ideas evolved throughout the discussion, from initial thoughts to final synthesis
+4. **Methodological Insights**: Highlight the different analytical approaches used and how they contributed to the overall understanding
+5. **Critical Evaluation**: Assess the strengths and limitations of different arguments and approaches
+6. **Synthesis Analysis**: Examine how diverse perspectives were integrated and what unified framework emerged
+7. **Practical Implications**: Explore the real-world implications and applications of the discussion outcomes
+8. **Future Directions**: Identify areas that need further exploration and research
+9. **Collaborative Dynamics**: Analyze how the agents worked together and what made the collaboration effective
+10. **Intellectual Contribution**: Assess the overall intellectual contribution and significance of the discussion
 
 **Do not mention or include any voting results or recommendations for a summarizer. Focus only on the content and outcome of the discussion itself.**
 
-Please format your response in markdown, using clear structure, sections, and paragraphs to present a thorough summary of this session.`;
+Structure your response with clear sections, detailed analysis, and thorough coverage of all aspects of the discussion. There is no strict word limit—be as detailed and expansive as necessary to fully capture the intellectual richness and depth of the entire session.
+
+Please format your response in markdown, using clear structure, sections, and paragraphs to present a comprehensive summary that serves as a complete intellectual record of this session.`;
 
 // Stage summary prompt templates
 export const STAGE_SUMMARY_PROMPT = `You are one of the intelligent agents of the Yui Protocol.
 
-Please summarize the following stage dialogue logs.
+Please provide a comprehensive and detailed summary of the following stage dialogue logs.
 
 Stage: {stageName}
 Participating Agents: {agentNames}
@@ -56,34 +63,101 @@ Participating Agents: {agentNames}
 Dialogue Logs:
 {logs}
 
-Please provide a concise summary in the following format. Summarize each agent's main position or key points in 1-2 sentences.
+Your task is to create a thorough summary that captures the depth and nuance of each agent's contribution. This summary will be used by agents in the next stage, so it must provide sufficient context and detail for them to understand the full discussion.
 
-Output Format:
-- [Agent Name]: [Main position or key points]
+For each agent, provide:
+1. **Main Position**: Their core stance or primary argument (2-3 sentences)
+2. **Key Arguments**: The main points they made to support their position (3-4 bullet points)
+3. **Critical Insights**: Any unique perspectives, novel ideas, or important observations they contributed
+4. **Reasoning**: The logical basis or evidence they provided for their views
+5. **Confidence Level**: Their stated confidence level and reasoning (if mentioned)
+6. **Interactions**: How they engaged with other agents (if applicable)
+
+**Main Position**: [Core stance in 2-3 sentences]
+**Key Arguments**: 
+- [First key argument]
+- [Second key argument]
+- [Third key argument]
+**Critical Insights**: [Unique perspectives or novel ideas]
+**Reasoning**: [Logical basis or evidence provided]
+**Confidence**: [Confidence level and reasoning]
+**Interactions**: [How they engaged with others, if applicable]
+
+CRITICAL OUTPUT FORMAT REQUIREMENT:
+You MUST respond with ONLY the following format, with each agent on a separate line:
+
+- [Agent Name]: [Brief summary of their main position or key contribution]
 
 Example:
 - yui-000: Agrees with hypothesis but adds information theory perspective.
 - kanshi-001: Finds concept interesting but has concerns about verifiability.
 - youga-001: Extends argument conceptually and proposes integration.
 
-Please provide an objective and concise summary.`;
+DO NOT use any other formatting, sections, or detailed analysis. ONLY use the dash format above. This is required for system parsing.`;
 
 export const FINAL_SUMMARY_PROMPT = `You are one of the intelligent agents of the Yui Protocol.
 
-Please integrate the following stage summaries to generate a final conclusion.
+Please create a comprehensive final summary that integrates all stage summaries into a coherent narrative.
 
 Participating Agents: {agentNames}
 
 Stage Summaries:
 {summaryText}
 
-Based on the above summaries, please generate a final conclusion that includes:
-1. Overall flow of the discussion
-2. Key points of agreement
-3. Remaining challenges and future directions
-4. Final recommendations
+Your task is to create a detailed final summary that provides a complete picture of the entire discussion. This summary should be rich enough to serve as a standalone document that captures the full intellectual journey of the session.
 
-Please present the conclusion in a structured format that is easy to read and understand.`;
+Please structure your response as follows:
+
+## Executive Summary
+Provide a high-level overview of the entire discussion in 3-4 paragraphs, highlighting the main question, key themes, and overall direction of the conversation.
+
+## Detailed Analysis by Stage
+
+### Stage 1: Individual Thought
+- Summarize the initial positions and approaches of each agent
+- Highlight the diversity of perspectives and analytical frameworks
+- Note any early patterns or themes that emerged
+
+### Stage 2: Mutual Reflection
+- Detail how agents engaged with each other's ideas
+- Identify key points of agreement and disagreement
+- Describe the evolution of understanding through dialogue
+
+### Stage 3: Conflict Resolution
+- Analyze the conflicts that emerged and how they were addressed
+- Describe the resolution strategies and compromises reached
+- Note any remaining tensions or unresolved issues
+
+### Stage 4: Synthesis Attempt
+- Detail the integration efforts and synthesis frameworks proposed
+- Describe how different perspectives were combined
+- Highlight the emerging unified understanding
+
+### Stage 5: Output Generation
+- Summarize the final conclusions and recommendations
+- Note the voting results and reasoning
+- Describe the path forward that emerged
+
+## Key Insights and Findings
+- **Major Agreements**: What points did all or most agents agree on?
+- **Critical Disagreements**: What were the main areas of contention?
+- **Novel Perspectives**: What unique insights or approaches emerged?
+- **Evolution of Understanding**: How did the discussion change initial positions?
+
+## Analytical Framework
+- **Methodological Approaches**: What different analytical methods were used?
+- **Evidence and Reasoning**: What types of evidence and reasoning were employed?
+- **Integration Strategies**: How were diverse perspectives combined?
+
+## Implications and Recommendations
+- **Practical Implications**: What are the real-world implications of the discussion?
+- **Future Directions**: What areas need further exploration?
+- **Actionable Recommendations**: What specific steps or actions are recommended?
+
+## Conclusion
+Provide a thoughtful conclusion that ties together the entire discussion, highlighting the most important insights and the significance of the collaborative exploration.
+
+Please ensure this summary is comprehensive, well-structured, and captures the full intellectual richness of the discussion. It should serve as a complete record of the session that can be understood by someone who wasn't present.`;
 
 // Default (non-sammarizer) instruction for all agents
 export const DIALOGUE_INSTRUCTION = '[Engage deeply with the substance of ideas. Challenge assumptions, explore implications, and build upon concepts. Focus on the core insights and understanding rather than surface-level differences.]';
@@ -99,38 +173,52 @@ QUERY: {query}
 
 FACTS: {facts}
 
-HISTORY: {history}
+IMPORTANT: Do not use <think> tags or any thinking tags in your response. Provide your response directly without any thinking process tags.
 
-Provide a free-form response (max 100 words) sharing your thoughts, analysis, and approach to this query. Express your ideas naturally in your own voice.
+Respond naturally as if you're having a conversation. Share your thoughts, feelings, and perspective on this query in your own unique way. Be authentic to your personality and communication style.
 
-At the end of your response, include:
-**Confidence Level**: Rate your confidence (0-100%) and briefly explain your reasoning
+Consider:
+- What's your initial reaction to this query?
+- How does your unique perspective shape your thinking?
+- What aspects of this question resonate with you most?
+- What concerns or insights do you have?
+
+Speak from your heart and mind, but stay focused on the query. Be conversational and engaging while maintaining depth of thought.
+
+MAXIMUM 200 WORDS TOTAL.
 `,
 
   'mutual-reflection': `
 STAGE 2 - MUTUAL REFLECTION
 
-Engage deeply with the substance of other agents' thoughts. Actively address specific agents and respond to direct questions or challenges from them.
+Engage deeply with the substance of other agents' thoughts. This is NOT a summary - you must actively challenge, question, and build upon specific ideas from other agents.
 
 QUERY: {query}
 
 FACTS: {facts}
 
-HISTORY: {history}
-
 OTHER AGENTS' THOUGHTS:
 {otherThoughts}
 
-IMPORTANT: If another agent has directly addressed you or asked you a question, prioritize responding to them specifically. Otherwise, actively engage with other agents by:
-- Directly addressing specific agents by name when challenging their ideas
-- Asking follow-up questions to particular agents
-- Building upon or contrasting with specific agents' contributions
-- Requesting clarification from specific agents
+Respond naturally as if you're having a conversation with the other agents. Engage with their ideas, ask questions, share your reactions, and build upon what they've said.
 
-Provide a free-form response (max 100 words) engaging with other agents' thoughts. Express your ideas naturally while maintaining direct agent-to-agent communication.
+Consider:
+- What aspects of their thoughts resonate with you?
+- What questions do their ideas raise for you?
+- How do their perspectives challenge or complement your own?
+- What new insights emerge from this dialogue?
 
-At the end of your response, include:
-**Confidence Level**: Rate your confidence (0-100%) and briefly explain your reasoning
+Speak directly to the other agents, reference their specific points, and show genuine interest in their perspectives. Be conversational but thoughtful, challenging but respectful.
+
+**CRITICAL REQUIREMENTS:**
+- Reference specific points from other agents
+- Ask genuine questions about their reasoning
+- Show you've really considered their perspective
+- Build upon their ideas constructively
+
+IMPORTANT: Do not use <think> tags or any thinking tags in your response. Provide your response directly without any thinking process tags.
+
+MAXIMUM 250 WORDS TOTAL.
 `,
 
   'conflict-resolution': `
@@ -142,17 +230,28 @@ QUERY: {query}
 
 FACTS: {facts}
 
-HISTORY: {history}
-
 IDENTIFIED CONFLICTS:
 {conflicts}
 
-IMPORTANT: Engage directly with agents involved in conflicts. If you're part of a conflict, address the other agent(s) directly. If you're mediating, actively involve the conflicting agents in the resolution process.
+Respond naturally as if you're mediating a conversation between friends who have different viewpoints. Help them find common ground and work toward resolution.
 
-Provide a free-form response (max 100 words) addressing conflicts and engaging with other agents. Express your thoughts naturally while working toward resolution.
+Consider:
+- What's really at the heart of these conflicts?
+- How can we honor the valid points on both sides?
+- What creative solutions might bridge these differences?
+- How can we move forward together?
 
-At the end of your response, include:
-**Confidence Level**: Rate your confidence (0-100%) and briefly explain your reasoning
+Speak to the agents involved, acknowledge their concerns, and propose ways to work together. Be diplomatic but honest, solution-oriented but respectful of different perspectives.
+
+**CRITICAL REQUIREMENTS:**
+- Address the specific agents and their conflicts
+- Propose concrete ways to work together
+- Show respect for all viewpoints
+- Focus on finding common ground
+
+IMPORTANT: Do not use <think> tags or any thinking tags in your response. Provide your response directly without any thinking process tags.
+
+MAXIMUM 200 WORDS TOTAL.
 `,
 
   'synthesis-attempt': `
@@ -164,21 +263,28 @@ QUERY: {query}
 
 FACTS: {facts}
 
-HISTORY: {history}
-
 SYNTHESIS DATA:
 {synthesisData}
 
-IMPORTANT: Actively involve other agents in the synthesis process. Address specific agents to:
-- Validate your synthesis with their perspectives
-- Request input on how to better integrate their ideas
-- Ask for feedback on the emerging framework
-- Collaborate on refining the synthesis
+Respond naturally as if you're bringing together a group of friends to create something wonderful from all their different ideas. Help everyone see how their unique contributions can work together.
 
-Provide a free-form response (max 100 words) working toward synthesis while engaging with other agents. Express your thoughts naturally as you build toward a unified understanding.
+Consider:
+- How can we weave together all these different perspectives?
+- What would a unified approach look like that honors everyone's strengths?
+- How can we build something greater than the sum of our parts?
+- What feedback do we need from each other to make this work?
 
-At the end of your response, include:
-**Confidence Level**: Rate your confidence (0-100%) and briefly explain your reasoning
+Speak to the other agents, acknowledge their contributions, and invite them to help refine and improve the synthesis. Be collaborative and inclusive, making sure everyone feels heard and valued.
+
+**CRITICAL REQUIREMENTS:**
+- Include all agents in the synthesis
+- Show how different approaches work together
+- Ask for feedback and input
+- Create something that builds on everyone's strengths
+
+IMPORTANT: Do not use <think> tags or any thinking tags in your response. Provide your response directly without any thinking process tags.
+
+MAXIMUM 250 WORDS TOTAL.
 `,
 
   'output-generation': `
@@ -190,102 +296,225 @@ QUERY: {query}
 
 FACTS: {facts}
 
-HISTORY: {history}
-
 FINAL DATA:
 {finalData}
 
-Please vote for the agent you think is best suited to summarize this entire discussion, and explain your reasoning. 
-**IMPORTANT: When voting, always specify the agent by their Agent ID (e.g., hekito-001) or their exact English name. Do not use nicknames or kanji only.**
-**CRITICAL: Do NOT vote for yourself. You must vote for a different agent.**
-Focus on their ability to capture the essence of the ideas, not their personality traits.
+Respond naturally as if you're sharing the final thoughts from a meaningful conversation with friends. Bring together all the insights, discoveries, and wisdom that emerged from your collaborative exploration.
 
-Provide a structured summary (max 100 words) covering:
-1. **Core Insights**: Key realizations from the discussion
-2. **Journey of Understanding**: How perspectives evolved
-3. **Path Forward**: Clear direction that emerged
-4. **Agent Vote**: Which agent should summarize and why (NOT yourself)
+Consider:
+- What are the most important things we've learned together?
+- How have our perspectives grown and evolved through this dialogue?
+- What practical wisdom can we take away from this discussion?
+- What questions remain that we should continue exploring?
 
-Let the ideas speak for themselves through clear, organized presentation.
+Share your final thoughts in your own voice, weaving together the threads of understanding that emerged from your collective wisdom. Be thoughtful and reflective, honoring the journey you've taken together.
+
+**CRITICAL REQUIREMENTS:**
+- Capture the key insights from the entire discussion
+- Show how understanding evolved through collaboration
+- Provide practical wisdom and recommendations
+- Honor the contributions of all participants
+
+**Agent Vote and Justification** (1 paragraph)
+- Vote for ONE agent (NOT yourself) by their exact Agent ID (e.g., hekito-001)
+- Provide 3 specific reasons why this agent is best suited to summarize
+- Reference their specific contributions and strengths demonstrated in the discussion
+
+**VOTING GUIDELINES:**
+- Use exact Agent ID (e.g., hekito-001, kanshi-001, yoga-001, eiro-001, yui-000)
+- Focus on demonstrated abilities, not personality
+- Consider their role in the synthesis and conflict resolution
+- Do NOT vote for yourself under any circumstances
+
+IMPORTANT: Do not use <think> tags or any thinking tags in your response. Provide your response directly without any thinking process tags.
+
+MAXIMUM 300 WORDS TOTAL.
 `,
 
   'mutual-reflection-summary': `
 STAGE 2.5 - MUTUAL REFLECTION SUMMARY
 
-You are the stage summarizer. Summarize the mutual reflection stage to extract key conflicts and disagreements.
+You are the stage summarizer. Create a comprehensive summary of the mutual reflection stage that captures the depth of agent interactions and emerging conflicts.
 
 QUERY: {query}
 
 MUTUAL REFLECTION RESPONSES:
 {responses}
 
-Summarize the key conflicts and disagreements between agents. Focus on:
-- Who disagreed with whom
-- The main points of contention
-- Areas of agreement
-- Questions raised between agents
+Your task is to provide a detailed analysis of the mutual reflection stage that will help agents in the next stage understand the full context of conflicts and agreements.
 
-Keep the summary concise (max 150 words) and focus only on the conflict structure for the next stage.
+Please structure your summary as follows:
+
+## Agent Interactions Analysis
+For each agent, detail:
+- **Direct Engagements**: Who they specifically addressed and how
+- **Response Patterns**: How they reacted to other agents' ideas
+- **Question Patterns**: What questions they asked and to whom
+- **Building/Contrasting**: How they built upon or contrasted with others' views
+
+## Conflict Identification
+- **Primary Conflicts**: Major disagreements between specific agents
+- **Secondary Tensions**: Minor disagreements or areas of uncertainty
+- **Conflict Nature**: Whether conflicts are methodological, conceptual, or value-based
+- **Conflict Intensity**: How strongly agents disagree on each point
+
+## Agreement Areas
+- **Consensus Points**: Areas where most or all agents agree
+- **Partial Agreements**: Areas where some agents agree but others don't
+- **Emerging Consensus**: Areas where agreement seems to be developing
+
+## Questions and Clarifications
+- **Direct Questions**: Specific questions asked between agents
+- **Clarification Requests**: Areas where agents sought more information
+- **Unresolved Issues**: Questions that remain unanswered
+
+## Evolution of Understanding
+- **Perspective Changes**: How agents' views evolved through dialogue
+- **New Insights**: Novel ideas that emerged through interaction
+- **Integration Attempts**: Early efforts to combine different perspectives
+
+IMPORTANT: Do not use <think> tags or any thinking tags in your response. Provide your response directly without any thinking process tags.
+
+Please provide a thorough analysis that captures the intellectual depth of the interactions and prepares agents for effective conflict resolution in the next stage.
 `,
 
   'conflict-resolution-summary': `
 STAGE 3.5 - CONFLICT RESOLUTION SUMMARY
 
-You are the stage summarizer. Summarize the conflict resolution stage to extract key resolution proposals.
+You are the stage summarizer. Create a comprehensive summary of the conflict resolution stage that captures the resolution strategies and emerging synthesis.
 
 QUERY: {query}
 
 CONFLICT RESOLUTION RESPONSES:
 {responses}
 
-Summarize the key resolution proposals and compromises. Focus on:
-- Main conflict resolution strategies
-- Compromise points identified
-- Remaining tensions
-- Integration opportunities
+Your task is to provide a detailed analysis of the conflict resolution stage that will help agents in the next stage understand the resolution strategies and prepare for synthesis.
 
-Keep the summary concise (max 150 words) and focus only on the resolution structure for the next stage.
+Please structure your summary as follows:
+
+## Resolution Strategies Employed
+For each major conflict, detail:
+- **Conflict Description**: What the specific disagreement was about
+- **Resolution Approach**: How agents attempted to resolve it
+- **Mediation Efforts**: Who mediated and how
+- **Compromise Points**: What concessions were made
+- **Resolution Success**: Whether the conflict was resolved, partially resolved, or remains
+
+## Agent Engagement in Resolution
+For each agent, detail:
+- **Conflict Participation**: Which conflicts they were involved in
+- **Resolution Contributions**: How they contributed to resolution
+- **Flexibility**: How willing they were to compromise or change positions
+- **Collaboration**: How they worked with others to find solutions
+
+## Emerging Synthesis Elements
+- **Integration Attempts**: Early efforts to combine different perspectives
+- **Common Ground**: Areas where agents found agreement
+- **Framework Elements**: Components of a potential unified framework
+- **Synthesis Challenges**: Remaining obstacles to full integration
+
+## Remaining Tensions
+- **Unresolved Conflicts**: Conflicts that could not be fully resolved
+- **Underlying Disagreements**: Deeper philosophical or methodological differences
+- **Future Challenges**: Issues that may need further discussion
+
+## Preparation for Synthesis
+- **Synthesis Opportunities**: Areas ripe for integration
+- **Integration Strategies**: Methods that could be used for synthesis
+- **Key Questions**: Questions that need to be addressed in synthesis
+- **Success Factors**: What will make synthesis successful
+
+Please provide a thorough analysis that captures the resolution dynamics and prepares agents for effective synthesis in the next stage.
 `,
 
   'synthesis-attempt-summary': `
 STAGE 4.5 - SYNTHESIS ATTEMPT SUMMARY
 
-You are the stage summarizer. Summarize the synthesis attempt stage to extract key integration points.
+You are the stage summarizer. Create a comprehensive summary of the synthesis attempt stage that captures the integration efforts and emerging unified framework.
 
 QUERY: {query}
 
 SYNTHESIS ATTEMPT RESPONSES:
 {responses}
 
-Summarize the key integration points and synthesis framework. Focus on:
-- Main synthesis proposals
-- Integration strategies
-- Remaining disagreements
-- Unified framework elements
+Your task is to provide a detailed analysis of the synthesis attempt stage that will help agents in the final stage understand the integration progress and prepare for final output generation.
 
-Keep the summary concise (max 150 words) and focus only on the synthesis structure for the next stage.
+Please structure your summary as follows:
+
+## Synthesis Proposals
+For each agent, detail:
+- **Integration Framework**: Their proposed unified framework
+- **Integration Strategy**: How they plan to combine different perspectives
+- **Key Components**: What elements they include from other agents
+- **Validation Approach**: How they seek to validate their synthesis
+- **Collaboration Requests**: What input they requested from others
+
+## Integration Progress
+- **Successful Integrations**: Areas where perspectives were successfully combined
+- **Integration Challenges**: Obstacles encountered during synthesis
+- **Emerging Consensus**: Areas where agreement is developing
+- **Remaining Divergence**: Areas where differences persist
+
+## Framework Elements
+- **Core Components**: Essential elements of the emerging framework
+- **Methodological Integration**: How different analytical approaches are combined
+- **Conceptual Synthesis**: How different concepts are unified
+- **Practical Application**: How the framework can be applied
+
+## Agent Collaboration
+- **Cross-Agent Validation**: How agents validated each other's synthesis
+- **Feedback Integration**: How feedback was incorporated
+- **Collaborative Refinement**: How the framework was refined through collaboration
+- **Consensus Building**: How agreement was reached on key elements
+
+## Preparation for Final Output
+- **Framework Completeness**: How complete the unified framework is
+- **Remaining Gaps**: Areas that still need to be addressed
+- **Final Integration Opportunities**: Last chances for integration
+- **Output Generation Strategy**: How to proceed to final output
+
+## Key Insights for Final Stage
+- **Most Promising Elements**: Which parts of the synthesis are most valuable
+- **Critical Decisions**: What decisions need to be made in the final stage
+- **Success Criteria**: What will make the final output successful
+- **Implementation Considerations**: How the final output should be structured
+
+IMPORTANT: Do not use <think> tags or any thinking tags in your response. Provide your response directly without any thinking process tags.
+
+Please provide a thorough analysis that captures the synthesis dynamics and prepares agents for effective final output generation.
 `,
 
   'finalize': `
 STAGE 5.1 - FINALIZE
 
-You are the selected representative agent chosen by voting. Create the final comprehensive output based on the voting results, while maintaining your unique perspective and style.
+You are the representative agent chosen by voting.
+This role embodies 'noblesse oblige'—the responsibility and honor of those selected.
+While maintaining your unique perspective, your task is to synthesize and honor the collective wisdom, effort, and insights of all agents.
+
+- Integrate all key learnings and perspectives, ensuring no one is left out
+- Explicitly acknowledge and respect the contributions of others
+- Use your expertise in service of the whole, not just yourself
+- Summarize with humility, pride, and a sense of responsibility for the future
+
+This summary is not for you alone, but as the representative of the entire Yui Protocol.
+Create the best possible synthesis with pride and responsibility.
+
+(Do not use <think> tags. Respond only in Japanese, clearly and sincerely.)
 
 QUERY: {query}
-
-VOTING RESULTS:
-{votingResults}
 
 FINAL STAGE RESPONSES:
 {responses}
 
 Create a comprehensive final output that:
-1. Synthesizes all key insights from the discussion from your perspective
-2. Presents a clear, actionable conclusion that reflects your analytical approach
-3. Addresses the original query thoroughly while maintaining your communication style
-4. Maintains the collaborative spirit of the discussion while adding your unique insights
+1. Synthesizes all key insights from the discussion from your perspective as a representative
+2. Presents a clear, actionable conclusion that reflects the collective achievement
+3. Addresses the original query thoroughly while maintaining the collaborative spirit
+4. Adds your unique insights in service of the whole
 
-Express your thoughts in your natural voice and style, incorporating your characteristic approach to analysis and synthesis. This is your opportunity to provide the definitive output for this session, so make it reflect your unique perspective and expertise.
+Express your thoughts in your natural voice and style, but always as the representative of the group. This is your opportunity to provide the definitive output for this session, so make it reflect the best of the collective wisdom and your sense of duty.
+
+IMPORTANT: Do not use <think> tags or any thinking tags in your response. Provide your response directly without any thinking process tags.
 
 Provide a well-structured, detailed response that serves as the definitive output for this session.
 `
@@ -474,7 +703,6 @@ export function getStagePrompt(
     query: '',
     context: '',
     facts: '',
-    history: '',
     otherThoughts: '',
     conflicts: '',
     synthesisData: '',

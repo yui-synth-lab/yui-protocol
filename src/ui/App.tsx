@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import ThreadView from './ThreadView';
-import AgentSelector from './AgentSelector';
-import SessionManager from './SessionManager';
 import { Session, Agent } from '../types/index';
 import {
   BrowserRouter as Router,
@@ -11,13 +9,238 @@ import {
   useNavigate,
   useLocation
 } from 'react-router-dom';
+// @ts-ignore
 import imgUrl from './images/YuiProtocol.png'
+
+// Menu component for sessions and agents
+const Menu: React.FC<{
+  sessions: Session[];
+  currentSession: Session | null;
+  onSelectSession: (session: Session) => void;
+  onCreateSession: (title: string, agentIds: string[], language: 'ja' | 'en') => void;
+  availableAgents: Agent[];
+  isOpen: boolean;
+  onClose: () => void;
+}> = ({ sessions, currentSession, onSelectSession, onCreateSession, availableAgents, isOpen, onClose }) => {
+  const [activeTab, setActiveTab] = useState<'sessions' | 'agents'>('sessions');
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newSessionTitle, setNewSessionTitle] = useState('');
+  const [language, setLanguage] = useState<'ja' | 'en'>('ja');
+
+  const handleCreateSession = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSessionTitle.trim()) return;
+    onCreateSession(newSessionTitle, availableAgents.map(agent => agent.id), language);
+    setNewSessionTitle('');
+    setShowCreateForm(false);
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div 
+        className="fixed inset-0 bg-black bg-opacity-50 z-40"
+        onClick={onClose}
+      />
+      
+      {/* Menu Panel */}
+      <div className="fixed right-0 top-0 h-full w-80 bg-gray-800 border-l border-gray-700 z-50 overflow-hidden">
+        <div className="p-4 h-full flex flex-col">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-100">Menu</h2>
+            <button
+              onClick={onClose}
+              className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Tabs */}
+          <div className="flex mb-4 border-b border-gray-700">
+            <button
+              onClick={() => setActiveTab('sessions')}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'sessions'
+                  ? 'border-blue-500 text-blue-400'
+                  : 'border-transparent text-gray-400 hover:text-gray-300'
+              }`}
+            >
+              Sessions
+            </button>
+            <button
+              onClick={() => setActiveTab('agents')}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'agents'
+                  ? 'border-blue-500 text-blue-400'
+                  : 'border-transparent text-gray-400 hover:text-gray-300'
+              }`}
+            >
+              Agents
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            {activeTab === 'sessions' && (
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-base font-semibold text-gray-100">Sessions</h3>
+                  <button
+                    onClick={() => {
+                      setShowCreateForm(!showCreateForm);
+                      if (showCreateForm) {
+                        setNewSessionTitle('');
+                      }
+                    }}
+                    className="text-xs bg-blue-800 text-white px-3 py-2 hover:bg-blue-900 rounded"
+                  >
+                    {showCreateForm ? 'Cancel' : 'New'}
+                  </button>
+                </div>
+
+                {showCreateForm && (
+                  <form onSubmit={handleCreateSession} className="mb-4 space-y-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-300 mb-1">
+                        Session Title
+                      </label>
+                      <input
+                        type="text"
+                        value={newSessionTitle}
+                        onChange={(e) => setNewSessionTitle(e.target.value)}
+                        className="w-full px-3 py-2 text-sm border border-gray-700 bg-gray-800 text-gray-100 focus:ring-2 focus:ring-blue-800 focus:border-transparent rounded"
+                        placeholder="Enter session title..."
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-gray-300 mb-1">
+                        Language
+                      </label>
+                      <select 
+                        value={language} 
+                        onChange={e => setLanguage(e.target.value as 'ja' | 'en')}
+                        className="w-full px-3 py-2 text-sm border border-gray-700 bg-gray-800 text-gray-100 focus:ring-2 focus:ring-blue-800 focus:border-transparent rounded"
+                      >
+                        <option value="ja">日本語</option>
+                        <option value="en">English</option>
+                      </select>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={!newSessionTitle.trim()}
+                      className="w-full bg-blue-800 text-white py-2 text-sm hover:bg-blue-900 disabled:opacity-50 disabled:cursor-not-allowed rounded"
+                    >
+                      Create Session
+                    </button>
+                  </form>
+                )}
+
+                <div className="space-y-2">
+                  {sessions.length === 0 ? (
+                    <p className="text-xs text-gray-400 text-center py-4">No sessions yet.</p>
+                  ) : (
+                    sessions.map((session) => {
+                      const messageCount = session.messages && Array.isArray(session.messages) 
+                        ? session.messages.length 
+                        : 0;
+                      const agentCount = session.agents && Array.isArray(session.agents) 
+                        ? session.agents.length 
+                        : 0;
+                      
+                      return (
+                        <button
+                          key={session.id}
+                          onClick={() => {
+                            onSelectSession(session);
+                            onClose();
+                          }}
+                          className={`w-full text-left p-3 transition-colors rounded ${
+                            currentSession?.id === session.id
+                              ? 'bg-blue-950 border border-blue-800'
+                              : 'hover:bg-gray-700'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-medium text-gray-100 text-sm truncate">{session.title}</h4>
+                              <p className="text-xs text-gray-400 mt-1">
+                                {agentCount} agents • {messageCount} messages
+                              </p>
+                            </div>
+                            <span className="text-xs text-gray-500 ml-2 flex-shrink-0">
+                              {new Date(session.updatedAt).toLocaleDateString()}
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'agents' && (
+              <div>
+                <h3 className="text-base font-semibold text-gray-100 mb-3">Available Agents</h3>
+                <div className="space-y-3">
+                  {availableAgents.map((agent) => (
+                    <div
+                      key={agent.id}
+                      className="flex items-start p-4 rounded-xl shadow-lg border-l-8"
+                      style={{
+                        borderLeftColor: agent.color || '#ccc',
+                        background: `linear-gradient(135deg, ${agent.color || '#374151'}22 0%, #23272f 100%)`,
+                        boxShadow: `0 4px 16px 0 ${agent.color || '#222'}33`,
+                      }}
+                    >
+                      <span className="text-2xl mr-4 mt-1 flex-shrink-0 drop-shadow-sm">
+                        {agent.avatar}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-bold text-base tracking-wide flex items-center gap-2" style={{ color: agent.color || '#fff', textShadow: '0 1px 4px #0008' }}>
+                          {agent.name}
+                          {agent.furigana && (
+                            <span className="ml-1 text-xs font-medium text-gray-300/80" style={{ letterSpacing: '0.05em' }}>（{agent.furigana}）</span>
+                          )}
+                        </div>
+                        <div className="text-xs mt-2 font-normal text-gray-100">
+                          {agent.personality}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 pt-4 border-t border-gray-700">
+                  <h4 className="text-xs font-medium text-gray-300 mb-2">Yui Protocol Agent Types</h4>
+                  <div className="text-xs text-gray-500 space-y-1">
+                    <p><strong>Styles:</strong> Logical, Critical, Intuitive, Meta, Emotive, Analytical</p>
+                    <p><strong>Priorities:</strong> Precision, Breadth, Depth, Balance</p>
+                    <p><strong>Memory:</strong> Local, Session, Cross-Session</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+};
 
 export function AppRoutes() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [availableAgents, setAvailableAgents] = useState<Agent[]>([]);
   const [showProcessInfo, setShowProcessInfo] = useState(false);
-  const [showSidebar, setShowSidebar] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -36,9 +259,7 @@ export function AppRoutes() {
     
     // Check screen size and set default visibility
     const checkScreenSize = () => {
-      const isMobile = window.innerWidth < 1024; // lg breakpoint
       setShowProcessInfo(window.innerWidth >= 768); // md breakpoint
-      setShowSidebar(!isMobile); // Hide sidebar by default on mobile
     };
     
     checkScreenSize();
@@ -119,11 +340,14 @@ export function AppRoutes() {
 
   // Callback to handle session updates from ThreadView
   const handleSessionUpdate = async (updatedSession: Session) => {
+    console.log(`[App] Handling session update for ${updatedSession.id} with ${updatedSession.messages?.length || 0} messages`);
+    
     // Update sessions list without unnecessary sorting
     setSessions(prev => {
       const sessionIndex = prev.findIndex(s => s.id === updatedSession.id);
       if (sessionIndex === -1) {
         // Session not found, add it (shouldn't happen but just in case)
+        console.log(`[App] Session not found, adding new session: ${updatedSession.id}`);
         return [...prev, updatedSession];
       }
       
@@ -131,12 +355,13 @@ export function AppRoutes() {
       const newSessions = prev.map((session, index) => {
         if (index === sessionIndex) {
           // Create a new session object with updated fields
-          return {
+          const updatedSessionData: Session = {
             id: session.id,
             title: session.title,
             agents: session.agents,
             createdAt: session.createdAt,
-            // Only update the fields that actually changed
+            language: session.language,
+            // Always update messages to ensure count is current
             messages: updatedSession.messages || session.messages,
             updatedAt: updatedSession.updatedAt || session.updatedAt,
             currentStage: updatedSession.currentStage !== undefined ? updatedSession.currentStage : session.currentStage,
@@ -144,6 +369,9 @@ export function AppRoutes() {
             status: updatedSession.status || session.status,
             complete: updatedSession.complete !== undefined ? updatedSession.complete : session.complete
           };
+          
+          console.log(`[App] Updated session ${session.id}: ${session.messages?.length || 0} -> ${updatedSessionData.messages?.length || 0} messages`);
+          return updatedSessionData;
         }
         // Return unchanged session
         return session;
@@ -162,10 +390,11 @@ export function AppRoutes() {
               <h1 className="text-3xl font-bold text-gray-100">
                 <img src={imgUrl} alt="Yui Protocol" className="w-10 h-10 inline-block" /> Yui Protocol
               </h1>
-              {/* Mobile sidebar toggle */}
+              {/* Menu toggle button */}
               <button
-                onClick={() => setShowSidebar(!showSidebar)}
-                className="lg:hidden p-2 text-gray-300 hover:text-white hover:bg-gray-800 rounded"
+                onClick={() => setShowMenu(!showMenu)}
+                className="p-2 text-gray-300 hover:text-white hover:bg-gray-800 rounded"
+                title="Open menu"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
@@ -227,84 +456,44 @@ export function AppRoutes() {
             </div>
           </header>
 
-          <div className="flex-1 min-h-0 flex">
-            {/* Sidebar - Mobile overlay or desktop sidebar */}
-            <div className={`
-              ${showSidebar ? 'fixed lg:relative inset-0 z-50 lg:z-auto' : 'hidden lg:block'}
-              lg:w-1/4 lg:max-w-xs
-            `}>
-              {/* Mobile overlay background */}
-              {showSidebar && (
-                <div 
-                  className="lg:hidden fixed inset-0 bg-black bg-opacity-50 z-40"
-                  onClick={() => setShowSidebar(false)}
-                />
-              )}
-              
-              {/* Sidebar content */}
-              <div className={`
-                ${showSidebar ? 'fixed lg:relative left-0 top-0' : ''}
-                h-full lg:h-full w-80 lg:w-full max-w-sm lg:max-w-none
-                bg-gray-800 lg:bg-transparent
-                border-r border-gray-700 lg:border-none
-                z-50 lg:z-auto
-                overflow-hidden
-              `}>
-                <div className="p-4 lg:p-0 h-full flex flex-col">
-                  <div className="flex-1 min-h-0 flex flex-col space-y-3">
-                    <div className="flex-1 min-h-0 overflow-hidden">
-                      <SessionManager
-                        sessions={sessions}
-                        currentSession={currentSession}
-                        onSelectSession={(session) => {
-                          selectSession(session);
-                          setShowSidebar(false); // Close sidebar on mobile after selection
-                        }}
-                        onCreateSession={(title, agentIds, language) => createNewSession(title, agentIds, language)}
-                        availableAgents={availableAgents}
-                      />
-                    </div>
-                    {currentSession && (
-                      <div className="flex-1 min-h-0 overflow-hidden">
-                      <AgentSelector
-                        agents={currentSession.agents}
-                        availableAgents={availableAgents}
-                      />
-                    </div>
-                    )}
+          {/* Main Content - Now full width */}
+          <div className="flex-1 min-h-0 flex flex-col">
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              {currentSession ? (
+                <ThreadView session={currentSession} onSessionUpdate={handleSessionUpdate} />
+              ) : (
+                <div className="bg-gray-800 shadow-sm p-6 text-center h-full flex flex-col justify-center">
+                  <div className="text-gray-600 mb-3">
+                    <svg className="mx-auto h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-lg font-medium text-gray-100 mb-2">
+                    No Session Selected
+                  </h3>
+                  <p className="text-gray-400 mb-3 text-sm">
+                    Create a new session or select an existing one to start the Yui Protocol dialogue process.
+                  </p>
+                  <div className="text-xs text-gray-500">
+                    <p><strong>Yui</strong> means to bind, to entangle. This protocol simulates conceptual binding through reasoning.</p>
                   </div>
                 </div>
-              </div>
-            </div>
-
-            {/* Main Content */}
-            <div className="flex-1 min-h-0 flex flex-col">
-              <div className="flex-1 min-h-0 overflow-y-auto">
-                {currentSession ? (
-                  <ThreadView session={currentSession} onSessionUpdate={handleSessionUpdate} />
-                ) : (
-                  <div className="bg-gray-800 shadow-sm p-6 text-center h-full flex flex-col justify-center">
-                    <div className="text-gray-600 mb-3">
-                      <svg className="mx-auto h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                      </svg>
-                    </div>
-                    <h3 className="text-lg font-medium text-gray-100 mb-2">
-                      No Session Selected
-                    </h3>
-                    <p className="text-gray-400 mb-3 text-sm">
-                      Create a new session or select an existing one to start the Yui Protocol dialogue process.
-                    </p>
-                    <div className="text-xs text-gray-500">
-                      <p><strong>Yui</strong> means to bind, to entangle. This protocol simulates conceptual binding through reasoning.</p>
-                    </div>
-                  </div>
-                )}
-              </div>
+              )}
             </div>
           </div>
         </div>
       </div>
+
+      {/* Menu Component */}
+      <Menu
+        sessions={sessions}
+        currentSession={currentSession}
+        onSelectSession={selectSession}
+        onCreateSession={createNewSession}
+        availableAgents={availableAgents}
+        isOpen={showMenu}
+        onClose={() => setShowMenu(false)}
+      />
     </div>
   );
 }

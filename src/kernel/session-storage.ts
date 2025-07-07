@@ -14,6 +14,10 @@ export function removeCircularReferences(obj: any, seen = new WeakSet()): any {
     
     // Handle Date objects
     if (obj instanceof Date) {
+        // Check if the date is valid before calling toISOString()
+        if (isNaN(obj.getTime())) {
+            return null; // Return null for invalid dates
+        }
         return obj.toISOString();
     }
     
@@ -107,18 +111,45 @@ export class SessionStorage {
         console.error(`Error parsing session JSON for ${sessionId}:`, jsonError);
         return null;
       }
-      // Convert date strings back to Date objects
+      // Convert date strings back to Date objects with validation
       session.createdAt = new Date(session.createdAt);
       session.updatedAt = new Date(session.updatedAt);
+      
+      // Validate dates and set defaults if invalid
+      if (isNaN(session.createdAt.getTime())) {
+        session.createdAt = new Date();
+      }
+      if (isNaN(session.updatedAt.getTime())) {
+        session.updatedAt = new Date();
+      }
+      
       if (session.messages) {
-        session.messages = session.messages.map((msg: any) => ({
-          ...msg,
-          timestamp: new Date(msg.timestamp)
-        }));
+        session.messages = session.messages.map((msg: any) => {
+          const timestamp = new Date(msg.timestamp);
+          return {
+            ...msg,
+            timestamp: isNaN(timestamp.getTime()) ? new Date() : timestamp
+          };
+        });
       }
       // Set default sequenceNumber if not present (for backward compatibility)
       if (session.sequenceNumber === undefined) {
         session.sequenceNumber = 1;
+      }
+      
+      // Set default stageHistory if not present (for backward compatibility)
+      if (session.stageHistory === undefined) {
+        session.stageHistory = [];
+      }
+      
+      // Set default currentStage if not present (for backward compatibility)
+      if (session.currentStage === undefined) {
+        session.currentStage = 'individual-thought';
+      }
+      
+      // Set default status if not present (for backward compatibility)
+      if (session.status === undefined) {
+        session.status = 'completed';
       }
       return session;
     } catch (error) {
@@ -160,8 +191,12 @@ export class SessionStorage {
         }
       }
       
-      // Sort by updatedAt (newest first)
-      return sessions.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+      // Sort by updatedAt (newest first), with protection against invalid dates
+      return sessions.sort((a, b) => {
+        const timeA = isNaN(a.updatedAt.getTime()) ? 0 : a.updatedAt.getTime();
+        const timeB = isNaN(b.updatedAt.getTime()) ? 0 : b.updatedAt.getTime();
+        return timeB - timeA;
+      });
     } catch (error) {
       console.error('Error loading all sessions:', error);
       return [];

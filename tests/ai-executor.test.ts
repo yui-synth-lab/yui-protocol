@@ -4,7 +4,12 @@ import { AIExecutor, AIExecutorOptions, AIExecutionResult, createAIExecutor } fr
 // Mock implementation for testing
 class MockAIExecutor extends AIExecutor {
   constructor(options: AIExecutorOptions) {
-    super(options);
+    super({
+      provider: 'ollama',
+      model: 'default',
+      customConfig: { maxTokens: 4000, ...(options.customConfig || {}) },
+      ...options,
+    });
   }
 
   async execute(prompt: string): Promise<AIExecutionResult> {
@@ -28,10 +33,9 @@ describe('AIExecutor', () => {
   beforeEach(() => {
     options = {
       agentName: 'TestAgent',
-      maxTokens: 4000,
       model: 'test-model',
       provider: 'custom',
-      customConfig: {}
+      customConfig: { maxTokens: 4000 }
     };
     mockExecutor = new MockAIExecutor(options);
   });
@@ -52,7 +56,7 @@ describe('AIExecutor', () => {
       
       expect(executor['maxTokens']).toBe(4000);
       expect(executor['model']).toBe('default');
-      expect(executor['provider']).toBe('gemini');
+      expect(executor['provider']).toBe('ollama');
     });
   });
 
@@ -112,6 +116,45 @@ describe('AIExecutor', () => {
       expect(result.duration).toBeGreaterThan(0);
     });
   });
+
+  describe('sanitizeContent', () => {
+    it('should remove think tags from content', () => {
+      const contentWithThinkTags = `
+        <think>This is some thinking process</think>
+        Here is the actual response.
+        <thinking>More thinking here</thinking>
+        <reasoning>Some reasoning</reasoning>
+        Final content.
+      `;
+      
+      const sanitized = mockExecutor['sanitizeContent'](contentWithThinkTags);
+      
+      expect(sanitized).not.toContain('<think>');
+      expect(sanitized).not.toContain('</think>');
+      expect(sanitized).not.toContain('<thinking>');
+      expect(sanitized).not.toContain('</thinking>');
+      expect(sanitized).not.toContain('<reasoning>');
+      expect(sanitized).not.toContain('</reasoning>');
+      expect(sanitized).toContain('Here is the actual response.');
+      expect(sanitized).toContain('Final content.');
+    });
+
+    it('should handle content without think tags', () => {
+      const normalContent = 'This is normal content without any think tags.';
+      const sanitized = mockExecutor['sanitizeContent'](normalContent);
+      expect(sanitized).toBe(normalContent);
+    });
+
+    it('should handle empty content', () => {
+      const sanitized = mockExecutor['sanitizeContent']('');
+      expect(sanitized).toContain('Fallback response');
+    });
+
+    it('should handle null content', () => {
+      const sanitized = mockExecutor['sanitizeContent'](null as any);
+      expect(sanitized).toContain('Fallback response');
+    });
+  });
 });
 
 describe('createAIExecutor', () => {
@@ -140,7 +183,7 @@ describe('createAIExecutor', () => {
     expect(executor['maxTokens']).toBe(4000);
     // The actual model might vary based on the implementation, so we just check it's a string
     expect(typeof executor['model']).toBe('string');
-    expect(executor['provider']).toBe('gemini');
+    expect(executor['provider']).toBe('ollama');
   });
 });
 

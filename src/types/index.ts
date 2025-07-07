@@ -34,6 +34,8 @@ export interface Message {
     voteFor?: string;
     voteReasoning?: string;
     voteSection?: string;
+    outputFileName?: string;
+    sequenceOutputFiles?: { [sequenceNumber: number]: string };
   };
 }
 
@@ -50,6 +52,7 @@ export interface Session {
   stageSummaries?: StageSummary[];
   complete?: boolean;
   outputFileName?: string;
+  sequenceOutputFiles?: { [sequenceNumber: number]: string };
   sequenceNumber?: number;
   language: Language;
 }
@@ -251,12 +254,20 @@ export interface StageSummarizerOptions {
 }
 
 export interface DelayOptions {
+  // エージェント間の応答間隔
+  agentResponseDelayMS?: number;
+  // ステージサマリー生成前の待機時間
   stageSummarizerDelayMS?: number;
+  // 最終サマリー生成前の待機時間
   finalSummaryDelayMS?: number;
+  // デフォルト値
+  defaultDelayMS?: number;
 }
 
+export type ProgressUpdate = { message?: Message; session?: Session };
+
 export interface ProgressCallback {
-  (message: Message): void;
+  (update: ProgressUpdate): void;
 }
 
 export interface StageExecutionResult {

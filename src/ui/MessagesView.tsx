@@ -19,6 +19,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
 }) => {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [autoScroll, setAutoScroll] = useState(true);
 
   // Auto-scroll to bottom when new messages are added
   useEffect(() => {
@@ -191,7 +192,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
               </span>
             </div>
             <div className="bg-gray-800 border-l-4 border-blue-500 p-4 rounded">
-              {renderMessageContent(systemMessage.content)}
+              {renderMessageContent(systemMessage.content ?? '')}
             </div>
           </div>
         </div>
@@ -199,10 +200,23 @@ const MessagesView: React.FC<MessagesViewProps> = ({
     );
   };
 
+  // Agent ID をすべて名前に一括置換する関数
+  const replaceAgentIdsWithNames = (content: string): string => {
+    if (!content) return content;
+    let replaced = content;
+    session.agents.forEach(agent => {
+      const regex = new RegExp(agent.id, 'g');
+      replaced = replaced.replace(regex, agent.name);
+    });
+    return replaced;
+  };
+
   const renderMessageContent = (content: string) => {
     try {
+      // Agent ID を名前に置換
+      const replacedContent = replaceAgentIdsWithNames(content);
       // 基本的なMarkdownの安全性チェック
-      if (!content || typeof content !== 'string') {
+      if (!replacedContent || typeof replacedContent !== 'string') {
         return <span className="text-gray-400 italic">[Empty or invalid content]</span>;
       }
 
@@ -245,19 +259,26 @@ const MessagesView: React.FC<MessagesViewProps> = ({
             span: ({ children }) => <span className="text-gray-300">{children}</span>
           }}
         >
-          {content}
+          {replacedContent}
         </ReactMarkdown>
       );
     } catch (error) {
       console.error('[MessagesView] Error rendering markdown content:', error);
       // エラーが発生した場合はプレーンテキストとして表示
+      const replacedContent = replaceAgentIdsWithNames(content);
       return (
         <div className="whitespace-pre-wrap text-gray-100">
-          {content}
+          {replacedContent}
         </div>
       );
     }
   };
+
+  // デバッグ用: session.sequenceOutputFilesの値をログ出力
+  console.log('[MessagesView] session.sequenceOutputFiles:', session.sequenceOutputFiles);
+  console.log('[MessagesView] session.outputFileName:', session.outputFileName);
+  console.log('[MessagesView] session.sequenceOutputFiles keys:', session.sequenceOutputFiles ? Object.keys(session.sequenceOutputFiles) : 'undefined');
+  console.log('[MessagesView] session.sequenceOutputFiles length:', session.sequenceOutputFiles ? Object.keys(session.sequenceOutputFiles).length : 0);
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-900" ref={messagesContainerRef} onScroll={handleScroll}>
@@ -298,7 +319,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                                 {formatTimestamp(message.timestamp)}
                               </span>
                             </div>
-                            <div className="bg-gray-800 border-l-4 border-purple-500 p-4 rounded">
+                            <div className="bg-gray-800 border-l-4 border-purple-500 p-4 rounded prose prose-invert prose-sm max-w-none">
                               {renderMessageContent(message.content ?? '')}
                             </div>
                           </div>
@@ -371,33 +392,13 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                     </div>
                   );
                 })}
-                {/* サマリーがあればこの位置で表示 */}
-                {summary && summary.summary.length > 0 && group.stage && renderSummarizeMessage(group.stage)}
+                {/* サマリー表示を無効化 */}
+                {/* {summary && summary.summary.length > 0 && group.stage && renderSummarizeMessage(group.stage)} */}
               </div>
             );
           })}
         </>
       )}
-      {session.outputFileName && (
-        <button
-          className="mt-3 px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs font-semibold shadow"
-          onClick={() => {
-            const url = `/api/outputs/${session.outputFileName}`;
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = session.outputFileName || '';
-            document.body.appendChild(a);
-            a.click();
-            setTimeout(() => {
-              document.body.removeChild(a);
-            }, 100);
-          }}
-          title="Download output file"
-        >
-          📥 Download
-        </button>
-      )}
-      <div ref={messagesEndRef} />
     </div>
   );
 };

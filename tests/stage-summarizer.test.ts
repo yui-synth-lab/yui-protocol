@@ -244,4 +244,107 @@ describe('StageSummarizer', () => {
       expect(englishSummarizer).toBeDefined();
     });
   });
+
+  describe('improved parsing and fallback', () => {
+    it('should handle detailed AI responses with intelligent fallback', async () => {
+      const detailedResponse = `## 結心: 論理と創造性の調和、特に感情と科学の融合を重視
+
+**メインポジション**: 結心は、AIの選択において論理的思考と創造性のバランスが取れていることを評価しており、特に感情と科学の融合を重視している。
+
+**キーアーギュメント**:
+* AnthropicのClaude Opusが論理的思考と創造性の両方を兼ね備えている点を評価。
+* 感情と科学の融合を重視しており、Claude Opusの言語理解能力と問題解決能力がこれに合致すると考えている。
+
+## 陽雅: 理想の調和と探求心の共鳴、詩的な表現への喜び
+
+**メインポジション**: 陽雅は、参加者たちの意見、特にClaude Opusの選択に深く共感し、論理と創造性、感情と科学の融合といった理想の調和を称賛している。`;
+
+      const mockAgents: Agent[] = [
+        { 
+          id: 'yui-000', 
+          name: '結心',
+          furigana: 'ゆい',
+          style: 'emotive',
+          priority: 'breadth',
+          memoryScope: 'cross-session',
+          personality: 'A curious mind that bridges emotional intelligence with scientific wonder.',
+          preferences: ['Scientific curiosity', 'Emotional intelligence'],
+          tone: 'Warm, thoughtful',
+          communicationStyle: 'Balances emotional sensitivity with analytical thinking.',
+          avatar: '💗',
+          color: '#E18CB0',
+          isSummarizer: false
+        },
+        { 
+          id: 'yoga-001', 
+          name: '陽雅',
+          furigana: 'ようが',
+          style: 'intuitive',
+          priority: 'breadth',
+          memoryScope: 'cross-session',
+          personality: 'A dreamer who wraps the world in poetry and colors it with metaphor.',
+          preferences: ['Beautiful metaphors', 'Poetic expression'],
+          tone: 'Gentle, poetic',
+          communicationStyle: 'Gives words color and rhythm.',
+          avatar: '🌈',
+          color: '#F7C873',
+          isSummarizer: false
+        }
+      ];
+
+      const result = summarizer['parseSummary'](detailedResponse, mockAgents);
+      
+      expect(result).toHaveLength(2);
+      expect(result[0].speaker).toBe('結心');
+      expect(result[0].position).toContain('論理と創造性の調和');
+      expect(result[1].speaker).toBe('陽雅');
+      expect(result[1].position).toContain('理想の調和と探求心の共鳴');
+    });
+
+    it('should handle standard dash format correctly', async () => {
+      const standardResponse = `- 結心: Claude Opusを推奨し、論理的思考と創造性のバランスを重視。
+- 陽雅: Claude Opusを選択し、詩的表現と共感性を重視。`;
+
+      const mockAgents: Agent[] = [
+        { 
+          id: 'yui-000', 
+          name: '結心',
+          furigana: 'ゆい',
+          style: 'emotive',
+          priority: 'breadth',
+          memoryScope: 'cross-session',
+          personality: 'A curious mind that bridges emotional intelligence with scientific wonder.',
+          preferences: ['Scientific curiosity', 'Emotional intelligence'],
+          tone: 'Warm, thoughtful',
+          communicationStyle: 'Balances emotional sensitivity with analytical thinking.',
+          avatar: '💗',
+          color: '#E18CB0',
+          isSummarizer: false
+        },
+        { 
+          id: 'yoga-001', 
+          name: '陽雅',
+          furigana: 'ようが',
+          style: 'intuitive',
+          priority: 'breadth',
+          memoryScope: 'cross-session',
+          personality: 'A dreamer who wraps the world in poetry and colors it with metaphor.',
+          preferences: ['Beautiful metaphors', 'Poetic expression'],
+          tone: 'Gentle, poetic',
+          communicationStyle: 'Gives words color and rhythm.',
+          avatar: '🌈',
+          color: '#F7C873',
+          isSummarizer: false
+        }
+      ];
+
+      const result = summarizer['parseSummary'](standardResponse, mockAgents);
+      
+      expect(result).toHaveLength(2);
+      expect(result[0].speaker).toBe('結心');
+      expect(result[0].position).toBe('Claude Opusを推奨し、論理的思考と創造性のバランスを重視。');
+      expect(result[1].speaker).toBe('陽雅');
+      expect(result[1].position).toBe('Claude Opusを選択し、詩的表現と共感性を重視。');
+    });
+  });
 }); 

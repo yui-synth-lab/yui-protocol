@@ -3,6 +3,12 @@ export interface AIExecutorOptions {
   model?: string;
   provider?: string;
   customConfig?: Record<string, any>;
+  temperature?: number;
+  topP?: number;
+  repetitionPenalty?: number;
+  presencePenalty?: number;
+  frequencyPenalty?: number;
+  topK?: number;
 }
 
 export interface AIExecutionResult {
@@ -12,6 +18,13 @@ export interface AIExecutionResult {
   duration: number;
   success: boolean;
   error?: string;
+  errorDetails?: {
+    type: string;
+    message: string;
+    stack?: string;
+    httpStatus?: number;
+    responseText?: string;
+  };
 }
 
 export abstract class AIExecutor {
@@ -20,6 +33,12 @@ export abstract class AIExecutor {
   protected provider: string;
   protected maxTokens: number;
   protected customConfig: Record<string, any>;
+  protected temperature: number;
+  protected topP: number;
+  protected repetitionPenalty: number;
+  protected presencePenalty: number;
+  protected frequencyPenalty: number;
+  protected topK: number;
 
   constructor(options: AIExecutorOptions) {
     this.agentName = options.agentName;
@@ -27,6 +46,12 @@ export abstract class AIExecutor {
     this.provider = options.provider || 'gemini';
     this.maxTokens = options.customConfig?.maxTokens || 4000;
     this.customConfig = options.customConfig || {};
+    this.temperature = options.temperature || 0.7;
+    this.topP = options.topP || 0.9;
+    this.repetitionPenalty = options.repetitionPenalty || 1.1;
+    this.presencePenalty = options.presencePenalty || 0.0;
+    this.frequencyPenalty = options.frequencyPenalty || 0.0;
+    this.topK = options.topK || 40;
   }
 
   abstract execute(prompt: string): Promise<AIExecutionResult>;
@@ -60,6 +85,11 @@ export abstract class AIExecutor {
     // 不正な文字を除去
     sanitized = sanitized.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
     
+    // <think>タグとその内容を除去
+    sanitized = sanitized.replace(/<think>[\s\S]*?<\/think>/gi, '');
+    sanitized = sanitized.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '');
+    sanitized = sanitized.replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '');
+    
     return sanitized;
   }
 }
@@ -90,13 +120,34 @@ export async function createAIExecutor(agentName: string, options?: Partial<AIEx
     return new (class MockExecutor extends AIExecutor {
       async execute(prompt: string): Promise<AIExecutionResult> {
         const startTime = Date.now();
-        // 100〜1000msのランダムな待機
-        const wait = Math.floor(Math.random() * 900) + 100;
-        await new Promise(resolve => setTimeout(resolve, wait));
+        let content: string;
+        // output-generationステージの場合は必ずAgent Voteを含める
+        if (prompt.includes('STAGE 5 - OUTPUT GENERATION')) {
+          // エージェントID候補を抽出（自分以外）
+          const agentIdPattern = /Agent\s+ID\s*[:：]\s*([a-zA-Z0-9\-_]+)/g;
+          const allIds = Array.from(prompt.matchAll(agentIdPattern)).map(m => m[1]);
+          const candidates = allIds.filter(id => id !== this.agentName);
+          const voteFor = candidates.length > 0 ? candidates[Math.floor(Math.random() * candidates.length)] : 'yui-000';
+          
+          // 複数の投票表記形式で出力（表記ゆれに対応）
+          const voteFormats = [
+            `Agent Vote: ${voteFor}`,
+            `投票: ${voteFor}`,
+            `推薦: ${voteFor}`,
+            `選択: ${voteFor}`,
+            `まとめ役: ${voteFor}`,
+            `**${voteFor}**`,
+            `\`${voteFor}\``
+          ];
+          const randomVoteFormat = voteFormats[Math.floor(Math.random() * voteFormats.length)];
+          
+          content = `[${this.agentName}] Mock response: This is a simulated response to your query is "${prompt.substring(0, 100)}...".\n\n${randomVoteFormat}\n理由: このエージェントが最も適切だと思います。`;
+        } else {
+          content = `[${this.agentName}] Mock response: This is a simulated response to your query is "${prompt.substring(0, 100)}...". Please configure your AI implementation.`;
+        }
         const duration = Date.now() - startTime;
-        
         return {
-          content: `[${this.agentName}] Mock response: This is a simulated response to your query is "${prompt}". Please configure your AI implementation.`,
+          content,
           model: this.model,
           duration,
           success: true

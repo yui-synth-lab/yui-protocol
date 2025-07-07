@@ -16,7 +16,18 @@ export abstract class BaseAgent {
   constructor(agent: Agent, interactionLogger?: InteractionLogger) {
     this.agent = agent;
     this.interactionLogger = interactionLogger || new InteractionLogger();
-    this.aiExecutorPromise = createAIExecutor(agent.name);
+    
+    // エージェント固有の生成パラメータを計算
+    const generationParams = this.getGenerationParameters();
+    
+    this.aiExecutorPromise = createAIExecutor(agent.name, {
+      temperature: generationParams.temperature,
+      topP: generationParams.topP,
+      repetitionPenalty: generationParams.repetitionPenalty,
+      presencePenalty: generationParams.presencePenalty,
+      frequencyPenalty: generationParams.frequencyPenalty,
+      topK: generationParams.topK
+    });
     this.isSummarizer = false;
   }
 
@@ -47,13 +58,8 @@ export abstract class BaseAgent {
     const userMessage = context.find(m => m.role === 'user');
     const query = userMessage?.content || prompt || 'No user query provided';
     
-    // サマリーコンテキストを抽出（Stage 1では通常ないが、将来的な拡張のため）
-    const summaryContext = context.find(m => m.role === 'system' && m.content.includes('前ステージの要約'));
-    const history = summaryContext ? summaryContext.content : '';
-    
     const stagePrompt = this.getStagePrompt('individual-thought', {
-      query,
-      history
+      query
     });
     
     const content = await this.executeAIWithErrorHandling(
@@ -77,18 +83,13 @@ export abstract class BaseAgent {
     const userMessage = context.find(m => m.role === 'user');
     const query = userMessage?.content || prompt || 'No user query provided';
     
-    // サマリーコンテキストを抽出
-    const summaryContext = context.find(m => m.role === 'system' && m.content.includes('前ステージの要約'));
-    const history = summaryContext ? summaryContext.content : '';
-    
     const otherThoughtsText = otherThoughts.map(thought => 
       `${thought.agentId}: ${thought.content}`
     ).join('\n\n');
     
     const stagePrompt = this.getStagePrompt('mutual-reflection', {
       query,
-      otherThoughts: otherThoughtsText,
-      history
+      otherThoughts: otherThoughtsText
     });
     
     const content = await this.executeAIWithErrorHandling(
@@ -98,12 +99,8 @@ export abstract class BaseAgent {
       'mutual reflection processing'
     );
     
-    const reflections = otherThoughts.map(thought => ({
-      targetAgentId: thought.agentId,
-      reaction: 'Engaged with the perspective',
-      agreement: true,
-      questions: []
-    }));
+    // AIの実際の出力からreflectionsを解析
+    const reflections = this.parseReflectionsFromContent(content, otherThoughts);
     
     return {
       agentId: this.agent.id,
@@ -113,18 +110,151 @@ export abstract class BaseAgent {
     };
   }
 
+  // AIの出力からreflectionsを解析するメソッド
+  protected parseReflectionsFromContent(content: string, otherThoughts: IndividualThought[]): {
+    targetAgentId: string;
+    reaction: string;
+    agreement: boolean;
+    questions: string[];
+  }[] {
+    const reflections: {
+      targetAgentId: string;
+      reaction: string;
+      agreement: boolean;
+      questions: string[];
+    }[] = [];
+    
+    for (const thought of otherThoughts) {
+      const agentName = thought.agentId;
+      const agentNamePatterns = [
+        new RegExp(`${agentName}`, 'gi'),
+        new RegExp(`${this.getAgentDisplayName(agentName)}`, 'gi'),
+        new RegExp(`${this.getAgentDisplayName(agentName).replace(/[^\w\s]/g, '')}`, 'gi')
+      ];
+      
+      // エージェントへの言及があるかチェック
+      const hasMention = agentNamePatterns.some(pattern => pattern.test(content));
+      
+      if (hasMention) {
+        // 否定的・対立的な表現を優先的に検出
+        const negativePatterns = [
+          /異なります|疑問|しかし|反対|異議|批判|違う|問題|懸念|不適切|否定|ただし|一方|but|however|disagree|oppose|question|concern|problem|inappropriate|different|criticize/gi
+        ];
+        const agentMention = new RegExp(`${agentName}|${this.getAgentDisplayName(agentName)}`, 'gi');
+        // エージェント名を含む行だけ抽出
+        const lines = content.split('\n').filter(line => agentMention.test(line));
+        const negative = lines.some(line => negativePatterns.some(pattern => pattern.test(line)));
+        // 同意/不同意を判定
+        const agreement = negative ? false : this.detectAgreement(content, agentName);
+        // 質問を抽出
+        const questions = this.extractQuestions(content, agentName);
+        // 反応を抽出
+        const reaction = this.extractReaction(content, agentName);
+        reflections.push({
+          targetAgentId: agentName,
+          reaction: reaction || 'Engaged with the perspective',
+          agreement,
+          questions
+        });
+      } else {
+        // 言及がない場合はデフォルト値
+        reflections.push({
+          targetAgentId: agentName,
+          reaction: 'No specific engagement detected',
+          agreement: false,
+          questions: []
+        });
+      }
+    }
+    
+    return reflections;
+  }
+
+  // エージェントの表示名を取得
+  private getAgentDisplayName(agentId: string): string {
+    const agentMap: Record<string, string> = {
+      'eiro-001': '慧露',
+      'kanshi-001': '観至',
+      'yoga-001': '陽雅',
+      'hekito-001': '碧統',
+      'yui-000': '結心'
+    };
+    return agentMap[agentId] || agentId;
+  }
+
+  // 同意/不同意を判定
+  private detectAgreement(content: string, agentName: string): boolean {
+    const agreementPatterns = [
+      /同意|賛成|同感|理解|共感|良い|素晴らしい|興味深い|説得力|妥当|適切/gi,
+      /agree|support|understand|good|great|interesting|convincing|valid|appropriate/gi
+    ];
+    
+    const disagreementPatterns = [
+      /不同意|反対|異議|疑問|懸念|問題|不適切|違う|異なる|批判|否定|しかし|ただし|一方|but|however|disagree|oppose|question|concern|problem|inappropriate|different|criticize/gi
+    ];
+    
+    const agentMention = new RegExp(`${agentName}|${this.getAgentDisplayName(agentName)}`, 'gi');
+    const lines = content.split('\n').filter(line => agentMention.test(line));
+    if (lines.length === 0) return false;
+    // 否定的表現があればfalse
+    if (lines.some(line => disagreementPatterns.some(pattern => pattern.test(line)))) return false;
+    // 肯定的表現があればtrue
+    if (lines.some(line => agreementPatterns.some(pattern => pattern.test(line)))) return true;
+    // どちらもなければfalse
+    return false;
+  }
+
+  // 質問を抽出
+  private extractQuestions(content: string, agentName: string): string[] {
+    const questions: string[] = [];
+    const agentPattern = new RegExp(`${agentName}|${this.getAgentDisplayName(agentName)}`, 'gi');
+    
+    // 質問文を検出
+    const questionPatterns = [
+      /([^。！？]*[ですか？？？])/g,
+      /([^.!?]*[?？])/g
+    ];
+    
+    const lines = content.split('\n');
+    for (const line of lines) {
+      if (agentPattern.test(line)) {
+        for (const pattern of questionPatterns) {
+          const matches = line.match(pattern);
+          if (matches) {
+            questions.push(...matches.map(q => q.trim()).filter(q => q.length > 5));
+          }
+        }
+      }
+    }
+    
+    return questions.slice(0, 3); // 最大3つまで
+  }
+
+  // 反応を抽出
+  private extractReaction(content: string, agentName: string): string {
+    const agentPattern = new RegExp(`${agentName}|${this.getAgentDisplayName(agentName)}`, 'gi');
+    const lines = content.split('\n');
+    
+    for (const line of lines) {
+      if (agentPattern.test(line)) {
+        // その行から反応を抽出
+        const reaction = line.trim();
+        if (reaction.length > 10 && reaction.length < 200) {
+          return reaction;
+        }
+      }
+    }
+    
+    return 'No specific engagement detected';
+  }
+
   async stage3ConflictResolution(conflicts: any[], context: Message[]): Promise<AgentResponse> {
     const userMessage = context.find(m => m.role === 'user');
     const query = userMessage?.content || 'No user query provided';
     
-    // サマリーコンテキストを抽出
-    const summaryContext = context.find(m => m.role === 'system' && m.content.includes('前ステージの要約'));
-    const history = summaryContext ? summaryContext.content : '';
-    
     const stagePrompt = this.getStagePrompt('conflict-resolution', {
       query,
-      conflicts: JSON.stringify(conflicts, null, 2),
-      history
+      conflicts: JSON.stringify(conflicts, null, 2)
     });
     
     const content = await this.executeAIWithErrorHandling(
@@ -154,14 +284,9 @@ export abstract class BaseAgent {
     const userMessage = context.find(m => m.role === 'user');
     const query = userMessage?.content || 'No user query provided';
     
-    // サマリーコンテキストを抽出
-    const summaryContext = context.find(m => m.role === 'system' && m.content.includes('前ステージの要約'));
-    const history = summaryContext ? summaryContext.content : '';
-    
     const stagePrompt = this.getStagePrompt('synthesis-attempt', {
       query,
-      synthesisData: JSON.stringify(synthesisData, null, 2),
-      history
+      synthesisData: JSON.stringify(synthesisData, null, 2)
     });
     
     const content = await this.executeAIWithErrorHandling(
@@ -190,25 +315,19 @@ export abstract class BaseAgent {
   async stage5OutputGeneration(finalData: any, context: Message[]): Promise<AgentResponse> {
     const userMessage = context.find(m => m.role === 'user');
     const query = userMessage?.content || 'No user query provided';
-    
-    // サマリーコンテキストを抽出
-    const summaryContext = context.find(m => m.role === 'system' && m.content.includes('前ステージの要約'));
-    const history = summaryContext ? summaryContext.content : '';
 
     let stagePrompt: string;
     if (this.isSummarizer) {
       // サマライザー専用プロンプトを使用
       stagePrompt = formatPrompt(SUMMARIZER_STAGE_PROMPT, {
         query,
-        finalData: JSON.stringify(finalData, null, 2),
-        history
+        finalData: JSON.stringify(finalData, null, 2)
       });
     } else {
       // 通常のプロンプト
       stagePrompt = this.getStagePrompt('output-generation', {
         query,
-        finalData: JSON.stringify(finalData, null, 2),
-        history
+        finalData: JSON.stringify(finalData, null, 2)
       });
     }
     
@@ -396,6 +515,18 @@ export abstract class BaseAgent {
     const result = await executor.execute(prompt);
     if (!result.success) {
       console.warn(`[${this.agent.name}] AI execution failed: ${result.error}`);
+      // Log the error details for debugging
+      if (this.sessionId) {
+        await this.logInteraction(
+          this.sessionId,
+          'unknown' as DialogueStage,
+          prompt,
+          result.content,
+          result.duration,
+          'error',
+          `AI execution failed: ${result.error}${result.errorDetails ? ` | Details: ${JSON.stringify(result.errorDetails)}` : ''}`
+        );
+      }
     }
     return result.content;
   }
@@ -405,6 +536,18 @@ export abstract class BaseAgent {
     const result = await executor.execute(prompt);
     if (!result.success) {
       console.warn(`[${this.agent.name}] AI execution with truncation failed: ${result.error}`);
+      // Log the error details for debugging
+      if (this.sessionId) {
+        await this.logInteraction(
+          this.sessionId,
+          'unknown' as DialogueStage,
+          prompt,
+          result.content,
+          result.duration,
+          'error',
+          `AI execution with truncation failed: ${result.error}${result.errorDetails ? ` | Details: ${JSON.stringify(result.errorDetails)}` : ''}`
+        );
+      }
     }
     return result.content;
   }
@@ -679,6 +822,417 @@ export abstract class BaseAgent {
     return this.isSummarizer;
   }
 
+  // エージェントの属性からtemperature値を自動算出するメソッド
+  protected calculateTemperature(): number {
+    let baseTemperature = 0.5; // ベース温度
+    let adjustments = 0;
+
+    // 柔らかさ・親しみやすさキーワード
+    const gentleKeywords = [
+      'gentle', 'warm', 'friendly', 'soft', 'caring', 'compassionate', 'kind', 'supportive', 'reassuring', 'tender', '包み込む', 'やさしい', '親しみやすい'
+    ];
+
+    // Personality（性格）による調整
+    const personality = this.agent.personality?.toLowerCase() || '';
+    
+    // 創造性・感情性を表すキーワード
+    const creativeKeywords = [
+      'creative', 'imaginative', 'poetic', 'artistic', 'dreamer', 'fantastical',
+      'emotional', 'empathetic', 'curious', 'wonder', 'passionate', 'expressive',
+      'intuitive', 'free', 'unconventional', 'innovative', 'visionary'
+    ];
+    
+    // 論理性・分析的思考を表すキーワード
+    const logicalKeywords = [
+      'logical', 'analytical', 'systematic', 'precise', 'critical', 'objective',
+      'mathematical', 'statistical', 'rigorous', 'structured', 'methodical',
+      'factual', 'data-driven', 'evidence-based', 'scientific'
+    ];
+    
+    // 哲学的・深い思考を表すキーワード
+    const philosophicalKeywords = [
+      'philosophical', 'contemplative', 'thoughtful', 'reflective', 'wise',
+      'truth-seeking', 'profound', 'deep', 'meditative', 'serene'
+    ];
+
+    // Personalityによる調整
+    const creativeScore = creativeKeywords.filter(keyword => personality.includes(keyword)).length;
+    const logicalScore = logicalKeywords.filter(keyword => personality.includes(keyword)).length;
+    const philosophicalScore = philosophicalKeywords.filter(keyword => personality.includes(keyword)).length;
+
+    adjustments += (creativeScore * 0.1); // 創造性キーワード: +0.1 each
+    adjustments -= (logicalScore * 0.08); // 論理性キーワード: -0.08 each
+    adjustments += (philosophicalScore * 0.05); // 哲学的キーワード: +0.05 each
+
+    // Tone（トーン）による調整
+    const tone = this.agent.tone?.toLowerCase() || '';
+    
+    const warmTones = ['warm', 'gentle', 'poetic', 'empathetic', 'thoughtful', 'serene'];
+    const analyticalTones = ['calm', 'objective', 'direct', 'precise', 'critical'];
+    const creativeTones = ['fantastical', 'expressive', 'colorful', 'rhythmic'];
+
+    if (warmTones.some(t => tone.includes(t))) adjustments += 0.1;
+    if (analyticalTones.some(t => tone.includes(t))) adjustments -= 0.1;
+    if (creativeTones.some(t => tone.includes(t))) adjustments += 0.15;
+
+    // Preferences（好み）による調整
+    const preferences = this.agent.preferences || [];
+    const preferencesText = preferences.join(' ').toLowerCase();
+    
+    const creativePreferences = [
+      'beautiful metaphors', 'poetic expression', 'free imagination', 'creative solutions',
+      'scientific curiosity', 'emotional intelligence', 'pattern recognition', 'empathic analysis',
+      'creative problem-solving', 'innocent wonder'
+    ];
+    
+    const analyticalPreferences = [
+      'statistical analysis', 'mathematical models', 'objective evaluation', 'the beauty of data',
+      'elimination of ambiguity', 'sharp observations', 'pursuit of essence', 'logical consistency'
+    ];
+    
+    const logicalPreferences = [
+      'the beauty of logic', 'rigorous reasoning', 'pursuit of truth', 'quiet contemplation',
+      'systematic analysis', 'structured thinking'
+    ];
+
+    const creativePrefScore = creativePreferences.filter(pref => preferencesText.includes(pref)).length;
+    const analyticalPrefScore = analyticalPreferences.filter(pref => preferencesText.includes(pref)).length;
+    const logicalPrefScore = logicalPreferences.filter(pref => preferencesText.includes(pref)).length;
+
+    adjustments += (creativePrefScore * 0.08);
+    adjustments -= (analyticalPrefScore * 0.06);
+    adjustments -= (logicalPrefScore * 0.05);
+
+    // Style（スタイル）による調整
+    const style = this.agent.style?.toLowerCase() || '';
+    
+    if (style.includes('intuitive')) adjustments += 0.15;
+    if (style.includes('emotive')) adjustments += 0.12;
+    if (style.includes('logical')) adjustments -= 0.1;
+    if (style.includes('analytical')) adjustments -= 0.12;
+    if (style.includes('critical')) adjustments -= 0.15;
+
+    // Priority（優先度）による調整
+    const priority = this.agent.priority?.toLowerCase() || '';
+    
+    if (priority.includes('breadth')) adjustments += 0.05;
+    if (priority.includes('depth')) adjustments -= 0.05;
+    if (priority.includes('precision')) adjustments -= 0.1;
+
+    // 柔らかさスコア
+    const gentleScore = gentleKeywords.filter(keyword =>
+      personality.includes(keyword) || tone.includes(keyword) || style.includes(keyword) || preferencesText.includes(keyword)
+    ).length;
+    adjustments -= (gentleScore * 0.08); // 柔らかさはtemperatureを下げる
+
+    // 最終的なtemperature値を計算（0.1 - 1.0の範囲に制限）
+    const finalTemperature = Math.max(0.1, Math.min(1.0, baseTemperature + adjustments));
+    
+    // デバッグ用ログ
+    console.log(`[Temperature Calculator] ${this.agent.id}:`, {
+      personality: this.agent.personality,
+      tone: this.agent.tone,
+      style: this.agent.style,
+      priority: this.agent.priority,
+      preferences: this.agent.preferences,
+      baseTemperature,
+      adjustments,
+      finalTemperature: finalTemperature.toFixed(2)
+    });
+
+    return Math.round(finalTemperature * 100) / 100; // 小数点2桁に丸める
+  }
+
+  // エージェント固有のtemperatureを取得するメソッド
+  public getTemperature(): number {
+    return this.calculateTemperature();
+  }
+
+  // エージェントの属性からtop_p値を自動算出するメソッド
+  protected calculateTopP(): number {
+    let baseTopP = 0.9; // ベース値
+    let adjustments = 0;
+
+    // 柔らかさ・親しみやすさキーワード
+    const gentleKeywords = [
+      'gentle', 'warm', 'friendly', 'soft', 'caring', 'compassionate', 'kind', 'supportive', 'reassuring', 'tender', '包み込む', 'やさしい', '親しみやすい'
+    ];
+
+    // Personality（性格）による調整
+    const personality = this.agent.personality?.toLowerCase() || '';
+    
+    // 創造性・多様性を表すキーワード
+    const creativeKeywords = [
+      'creative', 'imaginative', 'poetic', 'artistic', 'dreamer', 'fantastical',
+      'expressive', 'colorful', 'rhythmic', 'metaphorical', 'innovative'
+    ];
+    
+    // 論理性・一貫性を表すキーワード
+    const logicalKeywords = [
+      'logical', 'analytical', 'systematic', 'precise', 'critical', 'objective',
+      'rigorous', 'structured', 'methodical', 'consistent', 'focused'
+    ];
+
+    const creativeScore = creativeKeywords.filter(keyword => personality.includes(keyword)).length;
+    const logicalScore = logicalKeywords.filter(keyword => personality.includes(keyword)).length;
+
+    adjustments += (creativeScore * 0.05); // 創造性キーワード: +0.05 each
+    adjustments -= (logicalScore * 0.03); // 論理性キーワード: -0.03 each
+
+    // Style（スタイル）による調整
+    const style = this.agent.style?.toLowerCase() || '';
+    
+    if (style.includes('intuitive')) adjustments += 0.08;
+    if (style.includes('emotive')) adjustments += 0.06;
+    if (style.includes('logical')) adjustments -= 0.05;
+    if (style.includes('analytical')) adjustments -= 0.06;
+    if (style.includes('critical')) adjustments -= 0.08;
+
+    // Priority（優先度）による調整
+    const priority = this.agent.priority?.toLowerCase() || '';
+    
+    if (priority.includes('breadth')) adjustments += 0.04;
+    if (priority.includes('precision')) adjustments -= 0.06;
+
+    // 柔らかさスコア
+    const tone = this.agent.tone?.toLowerCase() || '';
+    const preferences = this.agent.preferences || [];
+    const preferencesText = preferences.join(' ').toLowerCase();
+    const gentleScore = gentleKeywords.filter(keyword =>
+      personality.includes(keyword) || tone.includes(keyword) || style.includes(keyword) || preferencesText.includes(keyword)
+    ).length;
+    adjustments += (gentleScore * 0.05); // 柔らかさはtopPを上げる
+
+    // 最終的なtop_p値を計算（0.7 - 1.0の範囲に制限）
+    const finalTopP = Math.max(0.7, Math.min(1.0, baseTopP + adjustments));
+    
+    return Math.round(finalTopP * 100) / 100; // 小数点2桁に丸める
+  }
+
+  // エージェントの属性からrepetition_penalty値を自動算出するメソッド
+  protected calculateRepetitionPenalty(): number {
+    let basePenalty = 1.1; // ベース値
+    let adjustments = 0;
+
+    // 柔らかさ・親しみやすさキーワード
+    const gentleKeywords = [
+      'gentle', 'warm', 'friendly', 'soft', 'caring', 'compassionate', 'kind', 'supportive', 'reassuring', 'tender', '包み込む', 'やさしい', '親しみやすい'
+    ];
+
+    // Personality（性格）による調整
+    const personality = this.agent.personality?.toLowerCase() || '';
+    
+    // 多様性・創造性を表すキーワード
+    const diverseKeywords = [
+      'creative', 'imaginative', 'poetic', 'artistic', 'dreamer', 'fantastical',
+      'expressive', 'colorful', 'rhythmic', 'metaphorical', 'innovative'
+    ];
+    
+    // 一貫性・論理性を表すキーワード
+    const consistentKeywords = [
+      'logical', 'analytical', 'systematic', 'precise', 'critical', 'objective',
+      'rigorous', 'structured', 'methodical', 'consistent', 'focused'
+    ];
+
+    const diverseScore = diverseKeywords.filter(keyword => personality.includes(keyword)).length;
+    const consistentScore = consistentKeywords.filter(keyword => personality.includes(keyword)).length;
+
+    adjustments += (diverseScore * 0.05); // 多様性キーワード: +0.05 each
+    adjustments -= (consistentScore * 0.03); // 一貫性キーワード: -0.03 each
+
+    // Style（スタイル）による調整
+    const style = this.agent.style?.toLowerCase() || '';
+    
+    if (style.includes('intuitive')) adjustments += 0.08;
+    if (style.includes('emotive')) adjustments += 0.06;
+    if (style.includes('logical')) adjustments -= 0.05;
+    if (style.includes('analytical')) adjustments -= 0.06;
+    if (style.includes('critical')) adjustments -= 0.04;
+
+    // 柔らかさスコア
+    const tone = this.agent.tone?.toLowerCase() || '';
+    const preferences = this.agent.preferences || [];
+    const preferencesText = preferences.join(' ').toLowerCase();
+    const gentleScore = gentleKeywords.filter(keyword =>
+      personality.includes(keyword) || tone.includes(keyword) || style.includes(keyword) || preferencesText.includes(keyword)
+    ).length;
+    adjustments -= (gentleScore * 0.03); // 柔らかさはペナルティを下げる
+
+    // 最終的なrepetition_penalty値を計算（1.0 - 1.3の範囲に制限）
+    const finalPenalty = Math.max(1.0, Math.min(1.3, basePenalty + adjustments));
+    
+    return Math.round(finalPenalty * 100) / 100; // 小数点2桁に丸める
+  }
+
+  // エージェントの属性からpresence_penalty値を自動算出するメソッド
+  protected calculatePresencePenalty(): number {
+    let basePenalty = 0.0; // ベース値（デフォルトは無効）
+    let adjustments = 0;
+
+    // 柔らかさ・親しみやすさキーワード
+    const gentleKeywords = [
+      'gentle', 'warm', 'friendly', 'soft', 'caring', 'compassionate', 'kind', 'supportive', 'reassuring', 'tender', '包み込む', 'やさしい', '親しみやすい'
+    ];
+
+    // Personality（性格）による調整
+    const personality = this.agent.personality?.toLowerCase() || '';
+    
+    // 多様性・創造性を表すキーワード
+    const diverseKeywords = [
+      'creative', 'imaginative', 'poetic', 'artistic', 'dreamer', 'fantastical',
+      'expressive', 'colorful', 'rhythmic', 'metaphorical', 'innovative'
+    ];
+    
+    // 一貫性・論理性を表すキーワード
+    const consistentKeywords = [
+      'logical', 'analytical', 'systematic', 'precise', 'critical', 'objective',
+      'rigorous', 'structured', 'methodical', 'consistent', 'focused'
+    ];
+
+    const diverseScore = diverseKeywords.filter(keyword => personality.includes(keyword)).length;
+    const consistentScore = consistentKeywords.filter(keyword => personality.includes(keyword)).length;
+
+    adjustments += (diverseScore * 0.02); // 多様性キーワード: +0.02 each
+    adjustments -= (consistentScore * 0.01); // 一貫性キーワード: -0.01 each
+
+    // Style（スタイル）による調整
+    const style = this.agent.style?.toLowerCase() || '';
+    
+    if (style.includes('intuitive')) adjustments += 0.05;
+    if (style.includes('emotive')) adjustments += 0.04;
+    if (style.includes('logical')) adjustments -= 0.03;
+    if (style.includes('analytical')) adjustments -= 0.04;
+    if (style.includes('critical')) adjustments -= 0.02;
+
+    // 柔らかさスコア
+    const tone = this.agent.tone?.toLowerCase() || '';
+    const preferences = this.agent.preferences || [];
+    const preferencesText = preferences.join(' ').toLowerCase();
+    const gentleScore = gentleKeywords.filter(keyword =>
+      personality.includes(keyword) || tone.includes(keyword) || style.includes(keyword) || preferencesText.includes(keyword)
+    ).length;
+    adjustments -= (gentleScore * 0.01); // 柔らかさはpresence_penaltyを下げる
+
+    // 最終的なpresence_penalty値を計算（0.0 - 0.2の範囲に制限）
+    const finalPenalty = Math.max(0.0, Math.min(0.2, basePenalty + adjustments));
+    
+    return Math.round(finalPenalty * 100) / 100; // 小数点2桁に丸める
+  }
+
+  // エージェントの属性からfrequency_penalty値を自動算出するメソッド
+  protected calculateFrequencyPenalty(): number {
+    let basePenalty = 0.0; // ベース値（デフォルトは無効）
+    let adjustments = 0;
+
+    // 柔らかさ・親しみやすさキーワード
+    const gentleKeywords = [
+      'gentle', 'warm', 'friendly', 'soft', 'caring', 'compassionate', 'kind', 'supportive', 'reassuring', 'tender', '包み込む', 'やさしい', '親しみやすい'
+    ];
+
+    // Personality（性格）による調整
+    const personality = this.agent.personality?.toLowerCase() || '';
+    
+    // 多様性・創造性を表すキーワード
+    const diverseKeywords = [
+      'creative', 'imaginative', 'poetic', 'artistic', 'dreamer', 'fantastical',
+      'expressive', 'colorful', 'rhythmic', 'metaphorical', 'innovative'
+    ];
+    
+    // 一貫性・論理性を表すキーワード
+    const consistentKeywords = [
+      'logical', 'analytical', 'systematic', 'precise', 'critical', 'objective',
+      'rigorous', 'structured', 'methodical', 'consistent', 'focused'
+    ];
+
+    const diverseScore = diverseKeywords.filter(keyword => personality.includes(keyword)).length;
+    const consistentScore = consistentKeywords.filter(keyword => personality.includes(keyword)).length;
+
+    adjustments += (diverseScore * 0.02); // 多様性キーワード: +0.02 each
+    adjustments -= (consistentScore * 0.01); // 一貫性キーワード: -0.01 each
+
+    // Style（スタイル）による調整
+    const style = this.agent.style?.toLowerCase() || '';
+    
+    if (style.includes('intuitive')) adjustments += 0.05;
+    if (style.includes('emotive')) adjustments += 0.04;
+    if (style.includes('logical')) adjustments -= 0.03;
+    if (style.includes('analytical')) adjustments -= 0.04;
+    if (style.includes('critical')) adjustments -= 0.02;
+
+    // 柔らかさスコア
+    const tone = this.agent.tone?.toLowerCase() || '';
+    const preferences = this.agent.preferences || [];
+    const preferencesText = preferences.join(' ').toLowerCase();
+    const gentleScore = gentleKeywords.filter(keyword =>
+      personality.includes(keyword) || tone.includes(keyword) || style.includes(keyword) || preferencesText.includes(keyword)
+    ).length;
+    adjustments -= (gentleScore * 0.01); // 柔らかさはfrequency_penaltyを下げる
+
+    // 最終的なfrequency_penalty値を計算（0.0 - 0.2の範囲に制限）
+    const finalPenalty = Math.max(0.0, Math.min(0.2, basePenalty + adjustments));
+    
+    return Math.round(finalPenalty * 100) / 100; // 小数点2桁に丸める
+  }
+
+  // エージェントの属性からtop_k値を自動算出するメソッド
+  protected calculateTopK(): number {
+    let baseTopK = 40; // ベース値
+    let adjustments = 0;
+
+    // Personality（性格）による調整
+    const personality = this.agent.personality?.toLowerCase() || '';
+    // 多様性・創造性を表すキーワード
+    const creativeKeywords = [
+      'creative', 'imaginative', 'poetic', 'artistic', 'dreamer', 'fantastical',
+      'expressive', 'colorful', 'rhythmic', 'metaphorical', 'innovative'
+    ];
+    // 論理性・一貫性を表すキーワード
+    const logicalKeywords = [
+      'logical', 'analytical', 'systematic', 'precise', 'critical', 'objective',
+      'rigorous', 'structured', 'methodical', 'consistent', 'focused'
+    ];
+    const creativeScore = creativeKeywords.filter(keyword => personality.includes(keyword)).length;
+    const logicalScore = logicalKeywords.filter(keyword => personality.includes(keyword)).length;
+    adjustments += (creativeScore * 10); // 創造性キーワード: +10 each
+    adjustments -= (logicalScore * 5); // 論理性キーワード: -5 each
+
+    // Style（スタイル）による調整
+    const style = this.agent.style?.toLowerCase() || '';
+    if (style.includes('intuitive')) adjustments += 15;
+    if (style.includes('emotive')) adjustments += 10;
+    if (style.includes('logical')) adjustments -= 10;
+    if (style.includes('analytical')) adjustments -= 12;
+    if (style.includes('critical')) adjustments -= 8;
+
+    // Priority（優先度）による調整
+    const priority = this.agent.priority?.toLowerCase() || '';
+    if (priority.includes('breadth')) adjustments += 8;
+    if (priority.includes('precision')) adjustments -= 10;
+
+    // 最終的なtop_k値を計算（10 - 100の範囲に制限）
+    const finalTopK = Math.max(10, Math.min(100, baseTopK + adjustments));
+    return Math.round(finalTopK); // 整数で返す
+  }
+
+  // 全パラメータを取得するメソッド
+  public getGenerationParameters(): {
+    temperature: number;
+    topP: number;
+    repetitionPenalty: number;
+    presencePenalty: number;
+    frequencyPenalty: number;
+    topK: number;
+  } {
+    return {
+      temperature: this.calculateTemperature(),
+      topP: this.calculateTopP(),
+      repetitionPenalty: this.calculateRepetitionPenalty(),
+      presencePenalty: this.calculatePresencePenalty(),
+      frequencyPenalty: this.calculateFrequencyPenalty(),
+      topK: this.calculateTopK()
+    };
+  }
+
   // Demo method to show confidence calculation breakdown
   public async demonstrateConfidenceCalculation(
     stage?: DialogueStage,
@@ -763,13 +1317,42 @@ export abstract class BaseAgent {
     stage: DialogueStage,
     operationName: string
   ): Promise<string> {
-    return this.executeWithErrorHandling(
-      () => this.executeAI(prompt),
-      sessionId,
-      stage,
-      prompt,
-      operationName
-    );
+    const startTime = Date.now();
+    
+    try {
+      const executor = await this.ensureAIExecutor();
+      const result = await executor.execute(prompt);
+      const duration = Date.now() - startTime;
+      
+      // Log the interaction with proper status
+      await this.logInteraction(
+        sessionId,
+        stage,
+        prompt,
+        result.content,
+        duration,
+        result.success ? 'success' : 'error',
+        result.success ? undefined : `AI execution failed: ${result.error}${result.errorDetails ? ` | Details: ${JSON.stringify(result.errorDetails)}` : ''}`
+      );
+      
+      return result.content;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      
+      // Log the error
+      await this.logInteraction(
+        sessionId,
+        stage,
+        prompt,
+        `Error occurred during ${operationName}`,
+        duration,
+        'error',
+        errorMessage
+      );
+      
+      throw error;
+    }
   }
 
   // Common AI execution with truncation and error handling
@@ -779,13 +1362,42 @@ export abstract class BaseAgent {
     stage: DialogueStage,
     operationName: string
   ): Promise<string> {
-    return this.executeWithErrorHandling(
-      () => this.executeAIWithTruncation(prompt),
-      sessionId,
-      stage,
-      prompt,
-      operationName
-    );
+    const startTime = Date.now();
+    
+    try {
+      const executor = await this.ensureAIExecutor();
+      const result = await executor.execute(prompt);
+      const duration = Date.now() - startTime;
+      
+      // Log the interaction with proper status
+      await this.logInteraction(
+        sessionId,
+        stage,
+        prompt,
+        result.content,
+        duration,
+        result.success ? 'success' : 'error',
+        result.success ? undefined : `AI execution with truncation failed: ${result.error}${result.errorDetails ? ` | Details: ${JSON.stringify(result.errorDetails)}` : ''}`
+      );
+      
+      return result.content;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      
+      // Log the error
+      await this.logInteraction(
+        sessionId,
+        stage,
+        prompt,
+        `Error occurred during ${operationName}`,
+        duration,
+        'error',
+        errorMessage
+      );
+      
+      throw error;
+    }
   }
 
   // 共通のコンテキスト分析メソッド

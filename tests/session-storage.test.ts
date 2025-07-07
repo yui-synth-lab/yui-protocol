@@ -76,7 +76,8 @@ describe('SessionStorage', () => {
       status: 'active',
       stageHistory: [],
       sequenceNumber: 1,
-      language: 'en'
+      language: 'en',
+      currentStage: 'individual-thought'
     };
   });
 

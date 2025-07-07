@@ -64,7 +64,7 @@ async function testSessionProgression() {
     // Monitor for system messages and continue buttons
     let systemMessagesFound = 0;
     let continueButtonsClicked = 0;
-    const maxWaitTime = 300000; // 5 minutes
+    const maxWaitTime = 60000; // 1 minute
     const startTime = Date.now();
     
     console.log('🔍 Monitoring for system messages and continue buttons...');

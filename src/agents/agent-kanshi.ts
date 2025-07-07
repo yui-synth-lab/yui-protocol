@@ -93,13 +93,8 @@ export class KanshiAgent extends BaseAgent {
       'mutual reflection processing'
     );
 
-    // Parse reflections from the response
-    const reflections = otherThoughts.map(thought => ({
-      targetAgentId: thought.agentId,
-      reaction: `I carefully considered ${thought.agentId}'s perspective, offering constructive feedback while appreciating their unique insights.`,
-      agreement: true,
-      questions: []
-    }));
+    // AIの実際の出力からreflectionsを解析
+    const reflections = this.parseReflectionsFromContent(reflectionText, otherThoughts);
 
     return {
       agentId: this.agent.id,

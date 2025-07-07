@@ -93,13 +93,8 @@ export class EiroAgent extends BaseAgent {
       'mutual reflection processing'
     );
 
-    // Parse reflections from the response
-    const reflections = otherThoughts.map(thought => ({
-      targetAgentId: thought.agentId,
-      reaction: `I thoughtfully reflected on ${thought.agentId}'s perspective, finding value in their reasoning and seeking common ground.`,
-      agreement: true,
-      questions: []
-    }));
+    // AIの実際の出力からreflectionsを解析
+    const reflections = this.parseReflectionsFromContent(reflectionText, otherThoughts);
 
     return {
       agentId: this.agent.id,

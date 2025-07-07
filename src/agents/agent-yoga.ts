@@ -93,13 +93,8 @@ export class YogaAgent extends BaseAgent {
       'mutual reflection processing'
     );
 
-    // Parse reflections from the response
-    const reflections = otherThoughts.map(thought => ({
-      targetAgentId: thought.agentId,
-      reaction: `I considered ${thought.agentId}'s perspective and found it valuable for our collaborative approach.`,
-      agreement: true,
-      questions: []
-    }));
+    // AIの実際の出力からreflectionsを解析
+    const reflections = this.parseReflectionsFromContent(content, otherThoughts);
 
     return {
       agentId: this.agent.id,

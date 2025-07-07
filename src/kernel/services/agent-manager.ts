@@ -24,12 +24,11 @@ export class AgentManager {
 
   initializeAgents(): void {
     // 全てのエージェントを初期化
-    this.agents.set('yui-000', new yuiAgent(this.interactionLogger));
+    this.agents.set('eiro-001', new EiroAgent(this.interactionLogger));
+    this.agents.set('kanshi-001', new KanshiAgent(this.interactionLogger));
     this.agents.set('yoga-001', new YogaAgent(this.interactionLogger));
-    this.agents.set('kanshi-002', new KanshiAgent(this.interactionLogger));
-    this.agents.set('hekito-003', new HekitoAgent(this.interactionLogger));
-    this.agents.set('eiro-004', new EiroAgent(this.interactionLogger));
-    
+    this.agents.set('hekito-001', new HekitoAgent(this.interactionLogger));
+    this.agents.set('yui-000', new yuiAgent(this.interactionLogger));    
     console.log(`[AgentManager] Initialized ${this.agents.size} agents`);
   }
 } 

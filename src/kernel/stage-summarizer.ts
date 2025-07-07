@@ -52,6 +52,7 @@ export class StageSummarizer {
       this.aiExecutor = await createAIExecutor('StageSummarizer', {
         model: this.options.model,
         provider: this.options.provider,
+        temperature: 0.5, // ステージサマライザーは中程度のtemperatureを使用
         customConfig: { 
           maxTokens: this.options.maxTokens,
           language: this.options.language // 設定された言語を使用
@@ -74,6 +75,30 @@ export class StageSummarizer {
     const startTime = Date.now();
     const stageNumber = this.getStageNumber(stage);
     const stageName = this.getStageDisplayName(stage);
+    
+    // finalizeステージの場合はサマリーを生成しない
+    if (stage === 'finalize') {
+      const summary = {
+        stage,
+        summary: [],
+        timestamp: new Date(),
+        stageNumber
+      };
+
+      // ログ出力（finalizeステージはスキップ）
+      if (sessionId) {
+        await this.logInteraction(
+          sessionId,
+          stage,
+          `Stage summarization for ${stageName}`,
+          'Finalize stage - no summary generated',
+          Date.now() - startTime,
+          'success'
+        );
+      }
+
+      return summary;
+    }
     
     // ステージ内のAI発言のみを抽出
     const stageMessages = logs.filter(msg => 
@@ -337,24 +362,71 @@ export class StageSummarizer {
     const lines = content.split('\n').filter(line => line.trim());
     
     for (const line of lines) {
-      const match = line.match(/^[-•]\s*([^:]+):\s*(.+)$/);
+      // より柔軟なパターンマッチング
+      const patterns = [
+        /^[-•]\s*([^:]+):\s*(.+)$/,  // - エージェント名: 内容
+        /^([^:]+):\s*(.+)$/,         // エージェント名: 内容（ダッシュなし）
+        /^[-•]\s*([^:]+)\s*-\s*(.+)$/, // - エージェント名 - 内容
+        /^([^:]+)\s*-\s*(.+)$/       // エージェント名 - 内容（ダッシュなし）
+      ];
+      
+      let match: RegExpMatchArray | null = null;
+      for (const pattern of patterns) {
+        match = line.match(pattern);
+        if (match) break;
+      }
+      
       if (match) {
         const speaker = match[1].trim();
         const position = match[2].trim();
         
-        // エージェント名が存在するかチェック
-        if (agentNames.some(name => speaker.includes(name) || name.includes(speaker))) {
-          summary.push({ speaker, position });
+        // エージェント名が存在するかチェック（より柔軟に）
+        const matchedAgent = agentNames.find(name => 
+          speaker.includes(name) || 
+          name.includes(speaker) ||
+          speaker.toLowerCase().includes(name.toLowerCase()) ||
+          name.toLowerCase().includes(speaker.toLowerCase())
+        );
+        
+        if (matchedAgent) {
+          summary.push({ speaker: matchedAgent, position });
         }
       }
     }
     
-    // パース結果が空の場合は、フォールバックとして各エージェントのデフォルトサマリーを生成
+    // パース結果が空の場合は、AIのレスポンスから情報を抽出してフォールバックサマリーを生成
     if (summary.length === 0) {
-      return agents.map(agent => ({
-        speaker: agent.name,
-        position: `${agent.name}が議論に参加し、独自の視点を提供しました。`
-      }));
+      console.warn(`[StageSummarizer] Failed to parse summary content: ${content.substring(0, 200)}...`);
+      return this.generateIntelligentFallbackSummary(content, agents);
+    }
+    
+    return summary;
+  }
+
+  private generateIntelligentFallbackSummary(content: string, agents: Agent[]): { speaker: string; position: string }[] {
+    const summary: { speaker: string; position: string }[] = [];
+    
+    // AIのレスポンスから各エージェントの情報を抽出
+    for (const agent of agents) {
+      let position = `${agent.name}が議論に参加し、独自の視点を提供しました。`;
+      
+      // エージェント名を含む行を探す
+      const lines = content.split('\n');
+      for (const line of lines) {
+        if (line.includes(agent.name)) {
+          // その行から主要な情報を抽出
+          const cleanLine = line.replace(/[#*`]/g, '').trim();
+          if (cleanLine.length > agent.name.length + 5) {
+            const extractedInfo = cleanLine.substring(cleanLine.indexOf(agent.name) + agent.name.length).trim();
+            if (extractedInfo.length > 10) {
+              position = `${agent.name}: ${extractedInfo.substring(0, 100)}${extractedInfo.length > 100 ? '...' : ''}`;
+              break;
+            }
+          }
+        }
+      }
+      
+      summary.push({ speaker: agent.name, position });
     }
     
     return summary;

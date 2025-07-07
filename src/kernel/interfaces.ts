@@ -22,7 +22,7 @@ export interface IRealtimeRouter {
     userPrompt: string,
     stage: string,
     language: Language,
-    onProgress?: (message: Message) => void
+    onProgress?: (update: { message?: Message; session?: Session }) => void
   ): Promise<{ stage: string; agentResponses: AgentResponse[]; duration: number }>;
   getSession(sessionId: string): Promise<Session | undefined>;
   getAllSessions(): Promise<Session[]>;

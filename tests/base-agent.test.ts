@@ -145,14 +145,27 @@ describe('BaseAgent', () => {
         execute: vi.fn().mockResolvedValue({
           content: 'Error fallback response',
           success: false,
-          error: 'Test error'
+          error: 'Test error',
+          errorDetails: {
+            type: 'TEST_ERROR',
+            message: 'Test error message',
+            stack: 'Test stack trace'
+          }
         }),
       } as any;
       
       agent['aiExecutor'] = mockExecutor;
+      agent.setSessionId('test-session-error');
       
       const result = await agent['executeAI']('Test prompt');
       expect(result).toBe('Error fallback response');
+      
+      // Check that error was logged
+      const logs = await agent['interactionLogger'].getSessionLogs('test-session-error');
+      const errorLog = logs.find(log => log.error);
+      expect(errorLog).toBeDefined();
+      expect(errorLog?.status).toBe('error');
+      expect(errorLog?.error).toContain('AI execution failed: Test error');
     });
 
     it('should ensure AI executor is properly cached after initialization', async () => {
@@ -177,6 +190,47 @@ describe('BaseAgent', () => {
       // Even more calls return the same instance
       const executor3 = await agent2['ensureAIExecutor']();
       expect(executor3).toBe(executor1);
+    });
+
+    it('should handle AI execution errors with proper logging in executeAIWithErrorHandling', async () => {
+      // Mock the AI executor to return an error
+      const mockExecutor = {
+        agentName: 'TestAgent',
+        maxTokens: 4000,
+        model: 'test-model',
+        provider: 'custom',
+        customConfig: {},
+        execute: vi.fn().mockResolvedValue({
+          content: 'Error fallback response',
+          success: false,
+          error: 'Test error with details',
+          errorDetails: {
+            type: 'EXECUTION_ERROR',
+            message: 'Test error message',
+            stack: 'Test stack trace'
+          }
+        }),
+      } as any;
+      
+      agent['aiExecutor'] = mockExecutor;
+      agent.setSessionId('test-session-error-handling');
+      
+      const result = await agent['executeAIWithErrorHandling'](
+        'Test prompt',
+        'test-session-error-handling',
+        'individual-thought',
+        'test operation'
+      );
+      
+      expect(result).toBe('Error fallback response');
+      
+      // Check that error was logged with proper status
+      const logs = await agent['interactionLogger'].getSessionLogs('test-session-error-handling');
+      const errorLog = logs.find(log => log.error);
+      expect(errorLog).toBeDefined();
+      expect(errorLog?.status).toBe('error');
+      expect(errorLog?.error).toContain('AI execution failed: Test error with details');
+      expect(errorLog?.stage).toBe('individual-thought');
     });
   });
 
@@ -421,6 +475,156 @@ describe('BaseAgent', () => {
       expect(localAgent.getMemory()).toHaveLength(5);
       expect(localAgent.getMemory()[0].id).toBe('msg-0');
       expect(localAgent.getMemory()[4].id).toBe('msg-4');
+    });
+  });
+
+  describe('parseReflectionsFromContent', () => {
+    it('should parse reflections with agreement', () => {
+      const content = `
+        慧露さんのClaude選択は興味深いです。その論理的思考力は素晴らしいと思います。
+        観至さんのMistral DeepSeek選択も理解できます。
+      `;
+      
+      const otherThoughts = [
+        { 
+          agentId: 'eiro-001', 
+          content: 'Claudeを選びます',
+          reasoning: '論理的思考力が優れているため',
+          assumptions: ['Claudeが最適'],
+          approach: '分析的なアプローチ'
+        },
+        { 
+          agentId: 'kanshi-001', 
+          content: 'Mistral DeepSeekを選びます',
+          reasoning: '数学的推論力が優れているため',
+          assumptions: ['Mistral DeepSeekが最適'],
+          approach: '数学的なアプローチ'
+        }
+      ];
+      
+      const reflections = agent['parseReflectionsFromContent'](content, otherThoughts);
+      
+      expect(reflections).toHaveLength(2);
+      expect(reflections[0].targetAgentId).toBe('eiro-001');
+      expect(reflections[0].agreement).toBe(true);
+      expect(reflections[0].reaction).toContain('慧露');
+      expect(reflections[1].targetAgentId).toBe('kanshi-001');
+      expect(reflections[1].agreement).toBe(true);
+    });
+
+    it('should parse reflections with disagreement', () => {
+      const content = `
+        碧統さんの分析は論理的ですが、私の感情的なアプローチとは異なります。
+        陽雅さんの詩的表現へのこだわりは理解できますが、実用性とのバランスはどう考えていますか？
+      `;
+      
+      const otherThoughts = [
+        { 
+          agentId: 'hekito-001', 
+          content: '分析的なアプローチを重視します',
+          reasoning: '論理的思考が重要',
+          assumptions: ['分析が最適'],
+          approach: '分析的なアプローチ'
+        },
+        { 
+          agentId: 'yoga-001', 
+          content: '詩的表現を重視します',
+          reasoning: '感情的な表現が重要',
+          assumptions: ['詩的表現が最適'],
+          approach: '感情的なアプローチ'
+        }
+      ];
+      
+      const reflections = agent['parseReflectionsFromContent'](content, otherThoughts);
+      
+      expect(reflections).toHaveLength(2);
+      expect(reflections[0].targetAgentId).toBe('hekito-001');
+      expect(reflections[0].agreement).toBe(false); // 異なります
+      expect(reflections[1].targetAgentId).toBe('yoga-001');
+      expect(reflections[1].questions.length).toBeGreaterThan(0); // 質問がある
+    });
+
+    it('should extract questions from content', () => {
+      const content = `
+        観至さんのMistral DeepSeek選択は興味深いですが、その数学的推論力について具体的にどのような場面で活用することを想定していますか？
+        碧統さんの分析は論理的ですが、実用性とのバランスはどう考えていますか？
+      `;
+      
+      const otherThoughts = [
+        { 
+          agentId: 'kanshi-001', 
+          content: 'Mistral DeepSeekを選びます',
+          reasoning: '数学的推論力が優れているため',
+          assumptions: ['Mistral DeepSeekが最適'],
+          approach: '数学的なアプローチ'
+        },
+        { 
+          agentId: 'hekito-001', 
+          content: '分析的なアプローチを重視します',
+          reasoning: '論理的思考が重要',
+          assumptions: ['分析が最適'],
+          approach: '分析的なアプローチ'
+        }
+      ];
+      
+      const reflections = agent['parseReflectionsFromContent'](content, otherThoughts);
+      
+      expect(reflections[0].questions.length).toBeGreaterThan(0);
+      expect(reflections[0].questions[0]).toContain('どのような場面');
+      expect(reflections[1].questions.length).toBeGreaterThan(0);
+      expect(reflections[1].questions[0]).toContain('バランス');
+    });
+
+    it('should handle content without agent mentions', () => {
+      const content = '一般的なコメントです。';
+      
+      const otherThoughts = [
+        { 
+          agentId: 'eiro-001', 
+          content: 'Claudeを選びます',
+          reasoning: '論理的思考力が優れているため',
+          assumptions: ['Claudeが最適'],
+          approach: '分析的なアプローチ'
+        }
+      ];
+      
+      const reflections = agent['parseReflectionsFromContent'](content, otherThoughts);
+      
+      expect(reflections).toHaveLength(1);
+      expect(reflections[0].targetAgentId).toBe('eiro-001');
+      expect(reflections[0].reaction).toBe('No specific engagement detected');
+      expect(reflections[0].agreement).toBe(false);
+      expect(reflections[0].questions).toEqual([]);
+    });
+
+    it('should handle mixed agreement and disagreement', () => {
+      const content = `
+        慧露さんのClaude選択には同意します。素晴らしい選択だと思います。
+        しかし、観至さんのMistral DeepSeek選択には疑問があります。なぜその選択をしたのでしょうか？
+      `;
+      
+      const otherThoughts = [
+        { 
+          agentId: 'eiro-001', 
+          content: 'Claudeを選びます',
+          reasoning: '論理的思考力が優れているため',
+          assumptions: ['Claudeが最適'],
+          approach: '分析的なアプローチ'
+        },
+        { 
+          agentId: 'kanshi-001', 
+          content: 'Mistral DeepSeekを選びます',
+          reasoning: '数学的推論力が優れているため',
+          assumptions: ['Mistral DeepSeekが最適'],
+          approach: '数学的なアプローチ'
+        }
+      ];
+      
+      const reflections = agent['parseReflectionsFromContent'](content, otherThoughts);
+      
+      expect(reflections[0].agreement).toBe(true); // 同意
+      expect(reflections[1].agreement).toBe(false); // 疑問
+      expect(reflections[1].questions.length).toBeGreaterThan(0);
     });
   });
 }); 
