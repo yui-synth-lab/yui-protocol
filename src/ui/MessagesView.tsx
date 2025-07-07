@@ -298,75 +298,52 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                   </div>
                 )}
                 {group.messages.map((message) => {
-                  const isAgent = message.role === 'agent';
-                  const isSystem = message.role === 'system';
-                  const agentColor = isAgent ? getAgentColor(message.agentId) : undefined;
-                  
-                  // Systemメッセージの場合は特別な表示
-                  if (isSystem) {
-                    return (
-                      <div key={message.id} className="mb-4">
-                        <div className="flex items-start space-x-3">
-                          <div className="flex-shrink-0">
-                            <div className="w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center">
-                              <span className="text-sm">⚙️</span>
-                            </div>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center space-x-2 mb-2">
-                              <span className="text-sm font-medium text-purple-300">System</span>
-                              <span className="text-xs text-gray-500">
-                                {formatTimestamp(message.timestamp)}
-                              </span>
-                            </div>
-                            <div className="bg-gray-800 border-l-4 border-purple-500 p-4 rounded prose prose-invert prose-sm max-w-none">
-                              {renderMessageContent(message.content ?? '')}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
+                  // 表示用プロパティをrole/agentIdで切り替え
+                  let avatar, name, nameColor, bubbleBorder, avatarBg, nameClass;
+                  if (message.role === 'system') {
+                    avatar = <span className="text-sm">⚙️</span>;
+                    name = 'System';
+                    nameColor = 'text-purple-300';
+                    bubbleBorder = 'border-purple-500';
+                    avatarBg = 'bg-purple-600';
+                    nameClass = 'font-medium text-purple-300';
+                  } else if (message.role === 'agent') {
+                    avatar = getAgentAvatar(message.agentId);
+                    name = getAgentName(message.agentId);
+                    nameColor = '';
+                    bubbleBorder = '';
+                    avatarBg = '';
+                    nameClass = 'font-medium';
+                  } else if (message.role === 'user') {
+                    avatar = getUserAvatar();
+                    name = 'You';
+                    nameColor = 'text-blue-300';
+                    bubbleBorder = 'border-blue-700';
+                    avatarBg = 'bg-blue-800';
+                    nameClass = 'font-medium text-blue-300';
                   }
-                  
+                  // バブルの色や枠線
+                  let bubbleClass = `bg-gray-800 p-4 rounded prose prose-invert prose-sm max-w-none border-l-4 ${bubbleBorder}`;
+                  // アバター背景
+                  let avatarClass = `w-8 h-8 rounded-full flex items-center justify-center ${avatarBg}`;
+                  // レイアウト（userは右寄せ、他は左寄せ）
+                  const isUser = message.role === 'user';
                   return (
                     <div
                       key={message.id}
-                      className={`flex space-x-3 ${message.role === 'user' ? 'justify-end flex-row-reverse' : 'justify-start'}`}
+                      className={`flex items-start space-x-3 mb-4 ${isUser ? 'flex-row-reverse justify-end' : 'justify-start'}`}
                     >
-                      {isAgent && (
-                        <div className="flex-shrink-0">
-                          <div className="w-10 h-10 bg-gray-800 flex items-center justify-center text-sm rounded">
-                            {getAgentAvatar(message.agentId)}
-                          </div>
+                      <div className="flex-shrink-0">
+                        <div className={avatarClass}>{avatar}</div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className={`flex items-center space-x-2 mb-2 ${isUser ? 'flex-row-reverse justify-end' : ''}`}> 
+                          <span className={`text-sm ${nameClass}`}>{name}</span>
+                          <span className="text-xs text-gray-500">{formatTimestamp(message.timestamp)}</span>
                         </div>
-                      )}
-                      {message.role === 'user' && (
-                        <div className="flex-shrink-0 ml-2">
-                          <div className="w-10 h-10 bg-blue-800 flex items-center justify-center text-sm rounded">
-                            {getUserAvatar()}
-                          </div>
-                        </div>
-                      )}
-                      <div
-                        className={`w-full mx-2 md:mx-16 lg:mx-32 px-4 py-3 bg-gray-800 text-gray-100 rounded ${message.role === 'user' ? 'border border-blue-700' : ''}`}
-                        style={
-                          isAgent
-                            ? {
-                              borderLeft: `6px solid ${agentColor}`,
-                              background: agentColor ? `${agentColor}22` : undefined, // 22 = ~13% opacity
-                            }
-                            : undefined
-                        }
-                      >
-                        <div className="text-sm">
-                          {isAgent && (
-                            <div className="font-medium mb-2" style={{ color: agentColor }}>
-                              {getAgentName(message.agentId)}
-                            </div>
-                          )}
-                          <div className="prose prose-invert prose-sm max-w-none">
-                            {renderMessageContent(message.content ?? '')}
-                          </div>
+                        <div className={bubbleClass}>
+                          {renderMessageContent(message.content ?? '')}
+                          {/* 投票情報 */}
                           {message.metadata?.voteFor && (
                             <div className="mt-2 space-y-1">
                               <div className="inline-block px-2 py-1 rounded bg-indigo-700 text-xs text-white font-semibold">
@@ -384,9 +361,6 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                               )}
                             </div>
                           )}
-                          <div className="text-xs text-gray-500 mt-3">
-                            {formatTimestamp(message.timestamp)}
-                          </div>
                         </div>
                       </div>
                     </div>
