@@ -36,6 +36,7 @@ export interface Message {
     voteSection?: string;
     outputFileName?: string;
     sequenceOutputFiles?: { [sequenceNumber: number]: string };
+    wasUserInputReferenced?: boolean;
   };
 }
 
@@ -55,6 +56,10 @@ export interface Session {
   sequenceOutputFiles?: { [sequenceNumber: number]: string };
   sequenceNumber?: number;
   language: Language;
+  lastUserInput?: string | null;
+  interventionPoints?: Array<{ userInput: string; stage: DialogueStage | number; timestamp: number }>;
+  activeAgents?: string[];
+  stage?: DialogueStage | number;
 }
 
 export interface AgentResponse {

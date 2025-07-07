@@ -8,6 +8,7 @@ import { Session } from '../types/index.js';
 import { OutputStorage } from '../kernel/output-storage.js';
 import { InteractionLogger } from '../kernel/interaction-logger.js';
 import { createStageSummarizer } from '../kernel/stage-summarizer.js';
+import { WebSocketServer } from 'ws';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -52,6 +53,58 @@ const realtimeRouter = new YuiProtocolRouter(
   delayOptions
 );
 
+// Start server
+const server = app.listen(port, () => {
+  console.log(`🤖 Yui Protocol Server running on port ${port}`);
+  console.log(`Available endpoints:`);
+  console.log(`  GET  /api/agents - Get available agents`);
+  console.log(`  GET  /api/sessions - Get all sessions`);
+  console.log(`  POST /api/sessions - Create new session`);
+  console.log(`  GET  /api/sessions/:id - Get specific session`);
+  console.log(`  POST /api/realtime/sessions - Create realtime session`);
+  console.log(`  POST /api/realtime/sessions/:id/stage - Execute stage with real-time updates`);
+  console.log(`  GET  /api/realtime/sessions/:id - Get realtime session`);
+  console.log(`  POST /api/outputs/save - Save output`);
+  console.log(`  GET  /api/outputs - Get all outputs`);
+  console.log(`  GET  /api/outputs/:id - Get specific output`);
+  console.log(`  DELETE /api/outputs/:id - Delete specific output`);
+});
+
+// --- WebSocketサーバー雛形追加 ---
+const wss = new WebSocketServer({ server });
+
+// スレッドごとにクライアントを管理
+const threadClients: Record<string, Set<any>> = {};
+
+wss.on('connection', (ws, req) => {
+  // URL例: ws://host:port/session/{threadId}
+  const url = req.url || '';
+  const match = url.match(/\/session\/(.+)$/);
+  const threadId = match ? match[1] : undefined;
+  if (!threadId) {
+    ws.close(1008, 'threadId required');
+    return;
+  }
+  if (!threadClients[threadId]) threadClients[threadId] = new Set();
+  threadClients[threadId].add(ws);
+
+  ws.on('close', () => {
+    threadClients[threadId].delete(ws);
+    if (threadClients[threadId].size === 0) delete threadClients[threadId];
+  });
+
+  ws.send(JSON.stringify({ type: 'connected', threadId }));
+});
+
+// --- 今後のストリーミングpush用: 指定threadIdの全クライアントに送信する関数 ---
+function broadcastToThread(threadId: string, data: any) {
+  const clients = threadClients[threadId];
+  if (!clients) return;
+  const msg = typeof data === 'string' ? data : JSON.stringify(data);
+  for (const ws of clients) {
+    if (ws.readyState === ws.OPEN) ws.send(msg);
+  }
+}
 
 // API Routes
 app.get('/api/agents', ((req: Request, res: Response) => {
@@ -454,23 +507,89 @@ app.get('*', ((req: Request, res: Response) => {
   res.sendFile(path.join(__dirname, '../index.html'));
 }) as RequestHandler);
 
+// --- 新規: 対話ステージ自動進行＆ストリーミング（POSTは即レス、進行はWebSocketのみ） ---
+app.post('/session/:sessionId/start', (async (req: Request, res: Response) => {
+  const { sessionId } = req.params;
+  const { prompt, language = 'ja' } = req.body;
+  if (!sessionId || !prompt) {
+    return res.status(400).json({ error: 'sessionId and prompt are required' });
+  }
+  // 即レスポンス返却
+  res.json({ status: 'started', sessionId });
 
-// Start server
-const server = app.listen(port, () => {
-  console.log(`🤖 Yui Protocol Server running on port ${port}`);
-  console.log(`Available endpoints:`);
-  console.log(`  GET  /api/agents - Get available agents`);
-  console.log(`  GET  /api/sessions - Get all sessions`);
-  console.log(`  POST /api/sessions - Create new session`);
-  console.log(`  GET  /api/sessions/:id - Get specific session`);
-  console.log(`  POST /api/realtime/sessions - Create realtime session`);
-  console.log(`  POST /api/realtime/sessions/:id/stage - Execute stage with real-time updates`);
-  console.log(`  GET  /api/realtime/sessions/:id - Get realtime session`);
-  console.log(`  POST /api/outputs/save - Save output`);
-  console.log(`  GET  /api/outputs - Get all outputs`);
-  console.log(`  GET  /api/outputs/:id - Get specific output`);
-  console.log(`  DELETE /api/outputs/:id - Delete specific output`);
-});
+  // AI進行はバックグラウンドで非同期実行
+  (async () => {
+    const stages: string[] = [
+      'individual-thought',
+      'mutual-reflection',
+      'mutual-reflection-summary',
+      'conflict-resolution',
+      'conflict-resolution-summary',
+      'synthesis-attempt',
+      'synthesis-attempt-summary',
+      'output-generation',
+      'finalize'
+    ];
+    for (const stage of stages) {
+      try {
+        await realtimeRouter.executeStageRealtime(
+          sessionId,
+          prompt,
+          stage as any,
+          language,
+          (update) => {
+            broadcastToThread(sessionId, {
+              type: 'stage-progress',
+              stage,
+              ...update,
+            });
+          }
+        );
+      } catch (err) {
+        broadcastToThread(sessionId, {
+          type: 'stage-error',
+          stage,
+          error: (err as Error).message,
+        });
+        break;
+      }
+    }
+    broadcastToThread(sessionId, { type: 'all-stages-complete', sessionId });
+  })();
+}) as RequestHandler);
+
+// --- 新規: ユーザー介入エンドポイント ---
+app.post('/session/:sessionId/user_input', (async (req: Request, res: Response) => {
+  const { sessionId } = req.params;
+  const { userInput } = req.body;
+  if (!sessionId || !userInput) {
+    return res.status(400).json({ error: 'sessionId and userInput are required' });
+  }
+  try {
+    // セッション取得
+    const session = await sharedSessionStorage.loadSession(sessionId);
+    if (!session) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+    // 介入点を記録
+    const now = Date.now();
+    if (!session.interventionPoints) session.interventionPoints = [];
+    session.interventionPoints.push({ userInput, stage: session.stage ?? session.currentStage ?? 0, timestamp: now });
+    session.lastUserInput = userInput;
+    await sharedSessionStorage.saveSession(session);
+    // WebSocketで全クライアントに介入内容を通知
+    broadcastToThread(sessionId, {
+      type: 'user-intervention',
+      userInput,
+      stage: session.stage ?? session.currentStage ?? 0,
+      timestamp: now,
+      sessionId,
+    });
+    res.json({ status: 'ok', sessionId });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+}) as RequestHandler);
 
 // Graceful shutdown handling
 const gracefulShutdown = (signal: string) => {

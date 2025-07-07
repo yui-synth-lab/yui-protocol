@@ -151,6 +151,22 @@ export class SessionStorage {
       if (session.status === undefined) {
         session.status = 'completed';
       }
+      // Set default lastUserInput if not present (for backward compatibility)
+      if (session.lastUserInput === undefined) {
+        session.lastUserInput = null;
+      }
+      // Set default interventionPoints if not present (for backward compatibility)
+      if (session.interventionPoints === undefined) {
+        session.interventionPoints = [];
+      }
+      // Set default activeAgents if not present (for backward compatibility)
+      if (session.activeAgents === undefined && session.agents) {
+        session.activeAgents = session.agents.map((a: any) => a.id);
+      }
+      // Set default stage if not present (for backward compatibility)
+      if (session.stage === undefined && session.currentStage) {
+        session.stage = session.currentStage;
+      }
       return session;
     } catch (error) {
       if ((error as any).code === 'ENOENT') {

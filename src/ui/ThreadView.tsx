@@ -121,6 +121,76 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
     }
   }, [userPrompt]);
 
+  // --- WebSocket受信: セッション進行・介入のライブ反映 ---
+  useEffect(() => {
+    if (!realtimeSessionId) return;
+    const ws = new WebSocket(`${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/session/${realtimeSessionId}`);
+    ws.onopen = () => {
+      console.log('[WS] Connected to session', realtimeSessionId);
+    };
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'stage-progress' && data.message) {
+          setMessages(prev => [...prev, data.message]);
+          setCurrentStage(data.stage || null);
+        } else if (data.type === 'user-intervention') {
+          // 介入内容を特別なsystemメッセージとして追加
+          setMessages(prev => [...prev, {
+            id: `user-intervention-${data.timestamp}`,
+            agentId: 'user',
+            content: `【ユーザー介入】${data.userInput}`,
+            timestamp: new Date(data.timestamp),
+            role: 'system',
+            stage: data.stage,
+            metadata: { wasUserInputReferenced: false }
+          }]);
+        } else if (data.type === 'all-stages-complete') {
+          setCurrentStage(null);
+        } else if (data.type === 'stage-error') {
+          setMessages(prev => [...prev, {
+            id: `stage-error-${Date.now()}`,
+            agentId: 'system',
+            content: `【エラー】${data.error}`,
+            timestamp: new Date(),
+            role: 'system',
+            stage: data.stage,
+            metadata: {}
+          }]);
+        }
+      } catch (e) {
+        console.error('[WS] Error parsing message:', e, event.data);
+      }
+    };
+    ws.onerror = (e) => {
+      console.error('[WS] Error:', e);
+    };
+    ws.onclose = () => {
+      console.log('[WS] Disconnected from session', realtimeSessionId);
+    };
+    return () => {
+      ws.close();
+    };
+  }, [realtimeSessionId]);
+
+  // --- 途中参加・再接続時の状態復元 ---
+  useEffect(() => {
+    if (!realtimeSessionId) return;
+    let cancelled = false;
+    fetch(`/api/realtime/sessions/${realtimeSessionId}`)
+      .then(res => res.json())
+      .then(sessionData => {
+        if (cancelled) return;
+        setMessages(sessionData.messages || []);
+        setCurrentStage(sessionData.currentStage || null);
+        // 必要なら他の状態も復元
+      })
+      .catch(err => {
+        console.error('[UI] Error fetching session for resume:', err);
+      });
+    return () => { cancelled = true; };
+  }, [realtimeSessionId]);
+
   const createRealtimeSession = async () => {
     setLanguage('ja'); // 新規セッション作成時も日本語に初期化
     if (isCreatingSession) {
@@ -552,76 +622,46 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
     setMessages(prev => [...prev, userMessage]);
 
     try {
-      // Check if all 5 stages are completed
-      const completedStages = session.stageHistory?.filter(h => h.endTime) || [];
-      const isAllStagesCompleted = completedStages.length >= 5;
-
-      if (isAllStagesCompleted) {
-        console.log(`[UI] All 5 stages completed, starting new process`);
-
-        try {
-          const resetResponse = await fetch(`/api/sessions/${realtimeSessionId}/reset`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-          });
-
-          if (resetResponse.ok) {
-            console.log(`[UI] Session reset successfully for new process`);
-            await reloadSessionData();
-          } else {
-            console.warn(`[UI] Failed to reset session: ${resetResponse.status}`);
-          }
-        } catch (error) {
-          console.error(`[UI] Error resetting session:`, error);
-        }
-
-        setCurrentStage(null);
-
-        for (const stage of stages) {
-          console.log(`[UI] Starting new process stage: ${stage}`);
-          setCurrentStage(stage);
-          try {
-            await executeRealtimeStage(stage, prompt);
-            console.log(`[UI] Completed new process stage: ${stage}`);
-          } catch (error) {
-            console.error(`[UI] Error in new process stage ${stage}:`, error);
-          }
-          if (stage !== 'output-generation') {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-        }
+      // セッション未開始（messagesが空 or statusがactiveかつcurrentStage未設定）なら /start
+      const isSessionStart = !session.messages || session.messages.length === 0 || !session.currentStage;
+      if (isSessionStart) {
+        const res = await fetch(`/session/${realtimeSessionId}/start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt, language }),
+        });
+        if (!res.ok) throw new Error('Failed to start session');
       } else {
-        // Continue with remaining stages
-        const currentProgress = completedStages.length;
-        const remainingStages = stages.slice(currentProgress);
-
-        console.log(`[UI] Current progress: ${currentProgress}/${stages.length}, remaining stages: ${remainingStages.join(', ')}`);
-
-        for (const stage of remainingStages) {
-          console.log(`[UI] Starting stage: ${stage}`);
-          setCurrentStage(stage);
-          try {
-            await executeRealtimeStage(stage, 'Continuing from previous session');
-            console.log(`[UI] Completed stage: ${stage}`);
-          } catch (error) {
-            console.error(`[UI] Error in stage ${stage}:`, error);
-          }
-          if (stage !== 'output-generation') {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-        }
+        // 進行中なら /user_input
+        const res = await fetch(`/session/${realtimeSessionId}/user_input`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userInput: prompt }),
+        });
+        if (!res.ok) throw new Error('Failed to send user intervention');
       }
-      console.log(`[UI] All stages completed`);
     } catch (error) {
-      console.error('Error in auto stage execution:', error);
+      console.error('[UI] Error sending prompt/intervention:', error);
     } finally {
       setIsProcessing(false);
       setIsWaitingForFirstResponse(false);
       setPendingUserMessage(null);
       resetTextareaHeight();
-      setLanguage('ja'); // セッション完了後に日本語に初期化
     }
   };
+
+  // --- セッション分析用集計 ---
+  const agentStats = React.useMemo(() => {
+    const stats: Record<string, number> = {};
+    messages.forEach(msg => {
+      if (msg.role === 'agent') {
+        stats[msg.agentId] = (stats[msg.agentId] || 0) + 1;
+      }
+    });
+    return stats;
+  }, [messages]);
+  const interventionCount = React.useMemo(() => messages.filter(m => m.role === 'system' && m.content?.startsWith('【ユーザー介入】')).length, [messages]);
+  const totalMessages = messages.length;
 
   return (
     <div className="flex flex-col h-full">
@@ -711,6 +751,22 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
           </svg>
         </button>
       )}
+
+      {/* --- セッション分析パネル --- */}
+      <div className="bg-gray-800 border-t border-gray-700 p-4 text-xs text-gray-300 flex flex-wrap gap-6">
+        <div>総メッセージ数: <span className="font-bold">{totalMessages}</span></div>
+        <div>ユーザー介入回数: <span className="font-bold">{interventionCount}</span></div>
+        <div>進行中ステージ: <span className="font-bold">{currentStage || '---'}</span></div>
+        <div>各Agent発言数:</div>
+        <ul className="flex gap-3">
+          {session.agents.map(agent => (
+            <li key={agent.id} className="flex items-center gap-1">
+              <span style={{ color: agent.color || '#fff' }}>{agent.name}</span>
+              <span className="bg-gray-700 rounded px-2 py-0.5 ml-1">{agentStats[agent.id] || 0}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 };

@@ -539,6 +539,19 @@ export class YuiProtocolRouter implements IRealtimeRouter {
     context: Message[],
     onProgress?: ProgressCallback
   ): Promise<{ responses: AgentResponse[]; agentResponses: AgentResponse[] }> {
+    // ユーザー介入内容をプロンプトに自動組み込み
+    let interventionText = '';
+    if (session.lastUserInput) {
+      interventionText += `\n\n【ユーザー介入コメント】\n${session.lastUserInput}`;
+    }
+    if (session.interventionPoints && session.interventionPoints.length > 0) {
+      interventionText += '\n\n【これまでのユーザー介入履歴】';
+      for (const point of session.interventionPoints) {
+        interventionText += `\n- (stage: ${point.stage}) ${point.userInput}`;
+      }
+    }
+    const userPromptWithIntervention = userPrompt + interventionText;
+
     // 前のステージのサマリーを取得
     const previousStageSummaries = this.getPreviousStageSummaries(session, stage);
     let summaryContext = previousStageSummaries.length > 0
@@ -574,7 +587,7 @@ export class YuiProtocolRouter implements IRealtimeRouter {
       try {
         switch (stage) {
           case 'individual-thought': {
-            const thought = await agentInstance.stage1IndividualThought(userPrompt + summaryContext, context);
+            const thought = await agentInstance.stage1IndividualThought(userPromptWithIntervention + summaryContext, context);
             response = {
               agentId: thought.agentId,
               content: thought.content,
@@ -614,7 +627,7 @@ export class YuiProtocolRouter implements IRealtimeRouter {
               approach: data.approach || 'No approach specified'
             }));
 
-            const reflection = await agentInstance.stage2MutualReflection(agentDescriptions + '\n' + userPrompt + summaryContext, individualThoughtsForReflection, context);
+            const reflection = await agentInstance.stage2MutualReflection(agentDescriptions + '\n' + userPromptWithIntervention + summaryContext, individualThoughtsForReflection, context);
             response = {
               agentId: reflection.agentId,
               content: reflection.content,
@@ -712,7 +725,8 @@ export class YuiProtocolRouter implements IRealtimeRouter {
             confidence: response.confidence,
             stageData: response.stageData,
             voteFor: voteFor,
-            voteReasoning: voteReasoning
+            voteReasoning: voteReasoning,
+            wasUserInputReferenced: !!session.lastUserInput
           }
         };
 
