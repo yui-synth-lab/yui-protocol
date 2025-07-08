@@ -65,6 +65,7 @@ Each agent in the pool implements the following interface:
 interface Agent {
   id: string;
   name: string;
+  furigana: string;
   style: "logical" | "critical" | "intuitive" | "meta" | "emotive" | "analytical";
   priority: "precision" | "breadth" | "depth" | "balance";
   memoryScope: "local" | "session" | "cross-session";
@@ -73,8 +74,18 @@ interface Agent {
   tone: string;
   communicationStyle: string;
   avatar?: string;
+  color?: string;
+  isSummarizer?: boolean;
+  references?: string[];
+  reasoning?: string;
+  assumptions?: string[];
+  approach?: string;
 }
 ```
+
+- Each agent is implemented as a class extending `BaseAgent`, with configuration passed as an object matching the above interface.
+- The `style` field now includes "meta".
+- Additional fields: `furigana`, `color`, `isSummarizer`, `references`, `reasoning`, `assumptions`, `approach`.
 
 ## Agent Specifications
 
@@ -150,6 +161,23 @@ interface Agent {
 - Suitable for ongoing projects and learning
 
 ## Dialogue Stages
+
+### Stage List
+
+The following dialogue stages are supported:
+- `individual-thought`
+- `mutual-reflection`
+- `mutual-reflection-summary`
+- `conflict-resolution`
+- `conflict-resolution-summary`
+- `synthesis-attempt`
+- `synthesis-attempt-summary`
+- `output-generation`
+- `finalize`
+
+### Stage Data Structures
+
+All stage data structures (e.g., `IndividualThought`, `MutualReflection`, etc.) now support optional `summary` fields and richer metadata.
 
 ### Stage 1: Individual Thought (個別思考)
 
@@ -241,21 +269,26 @@ interface Agent {
 ### Core Types
 
 ```typescript
-// Agent definition
 interface Agent {
   id: string;
   name: string;
-  style: AgentStyle;
-  priority: AgentPriority;
-  memoryScope: MemoryScope;
+  furigana: string;
+  style: "logical" | "critical" | "intuitive" | "meta" | "emotive" | "analytical";
+  priority: "precision" | "breadth" | "depth" | "balance";
+  memoryScope: "local" | "session" | "cross-session";
   personality: string;
   preferences: string[];
   tone: string;
   communicationStyle: string;
   avatar?: string;
+  color?: string;
+  isSummarizer?: boolean;
+  references?: string[];
+  reasoning?: string;
+  assumptions?: string[];
+  approach?: string;
 }
 
-// Message structure
 interface Message {
   id: string;
   agentId: string;
@@ -263,15 +296,20 @@ interface Message {
   timestamp: Date;
   role: 'user' | 'agent' | 'system';
   stage?: DialogueStage;
+  sequenceNumber?: number;
   metadata?: {
     reasoning?: string;
     confidence?: number;
     references?: string[];
-    stageData?: any;
+    stageData?: StageData;
+    voteFor?: string;
+    voteReasoning?: string;
+    voteSection?: string;
+    outputFileName?: string;
+    sequenceOutputFiles?: { [sequenceNumber: number]: string };
   };
 }
 
-// Session management
 interface Session {
   id: string;
   title: string;
@@ -282,64 +320,33 @@ interface Session {
   status: 'active' | 'completed' | 'paused';
   currentStage?: DialogueStage;
   stageHistory: StageHistory[];
+  stageSummaries?: StageSummary[];
   complete?: boolean;
-}
-
-// Stage-specific data structures
-interface IndividualThought {
-  agentId: string;
-  content: string;
-  reasoning: string;
-  assumptions: string[];
-  approach: string;
-}
-
-interface MutualReflection {
-  agentId: string;
-  content: string;
-  reflections: {
-    targetAgentId: string;
-    reaction: string;
-    agreement: boolean;
-    questions: string[];
-  }[];
-}
-
-interface Conflict {
-  id: string;
-  agents: string[];
-  description: string;
-  severity: 'low' | 'medium' | 'high';
-  resolution?: string;
-}
-
-interface SynthesisAttempt {
-  consensus: number;
-  unifiedPerspective?: string;
-  remainingDisagreements?: string[];
-  confidence: number;
-}
-
-// Stage summarization
-interface StageSummary {
-  stage: DialogueStage;
-  summary: {
-    speaker: string;
-    position: string;
-  }[];
-  timestamp: Date;
-  stageNumber: number;
+  outputFileName?: string;
+  sequenceOutputFiles?: { [sequenceNumber: number]: string };
   sequenceNumber?: number;
+  language: Language;
 }
 
-interface StageSummarizerOptions {
-  maxTokens?: number;
-  model?: string;
-  provider?: string;
-  language?: string;
-  interactionLogger?: InteractionLogger;
+interface AgentResponse {
+  agentId: string;
+  content: string;
+  summary?: string;
+  reasoning?: string;
+  confidence?: number;
+  references?: string[];
+  stage?: DialogueStage;
+  stageData?: StageData;
+  metadata?: {
+    voteFor?: string;
+    voteReasoning?: string;
+    voteSection?: string;
+  };
 }
 ```
+
+- The `Session` and `Message` types have new fields for summaries, output files, sequence numbers, and language.
+- `AgentResponse` and related types now support richer metadata and stage data.
 
 ### Simplified Interaction Logging
 
@@ -547,7 +554,6 @@ The system supports multiple AI providers through a unified interface:
 ```typescript
 interface AIExecutor {
   execute(prompt: string): Promise<AIExecutionResult>;
-  executeWithTruncation(prompt: string): Promise<AIExecutionResult>;
 }
 
 interface AIExecutionResult {
@@ -557,14 +563,19 @@ interface AIExecutionResult {
   duration: number;
   success: boolean;
   error?: string;
+  errorDetails?: {
+    type: string;
+    message: string;
+    stack?: string;
+    httpStatus?: number;
+    responseText?: string;
+  };
 }
 ```
 
-Supported providers:
-- **Gemini**: Google's Gemini API
-- **OpenAI**: OpenAI GPT models
-- **Anthropic**: Claude models
-- **Custom**: Custom AI service implementations
+- The `AIExecutor` abstraction supports dynamic provider selection (`provider` field), and the default is `"gemini"`.
+- Supported providers: Gemini, OpenAI, Anthropic, Ollama, Mock.
+- The executor supports advanced generation parameters: `temperature`, `topP`, `repetitionPenalty`, `presencePenalty`, `frequencyPenalty`, `topK`, and `maxTokens`.
 
 ### Testing Strategy
 
@@ -586,34 +597,3 @@ Supported providers:
 2. **Infrastructure Metrics**: CPU, memory, disk usage
 3. **Business Metrics**: User engagement, session completion rates
 4. **Alerting**: Proactive alerts for issues and anomalies
-
-## Version History
-
-### v1.0.0 (Current)
-- **Stage Summarization**: Intelligent stage summary generation to reduce token usage
-- **Configurable Language Support**: Stage summaries can be generated in multiple languages
-- **Enhanced Context Management**: Previous stage summaries are used as context for subsequent stages
-- **Improved Efficiency**: Reduced AI API costs through intelligent summarization
-- **Selenium Testing**: Comprehensive end-to-end testing with automated browser tests
-- **TypeScript Improvements**: Enhanced type safety and error handling
-- **Performance Optimizations**: Better state management and reduced flickering
-- **Comprehensive Testing**: All tests passing with improved coverage (24.34% overall)
-- **Bug Fixes**: Fixed realtime router issues and session management problems
-- **AI Provider Flexibility**: Support for multiple AI providers with unified interface
-
-### v0.9.0
-- Initial implementation of 5-stage dialogue protocol
-- 5 specialized agents with distinct personalities
-- Real-time interaction logging
-- Session management and persistence
-- React-based user interface
-
-### Future Versions
-- Additional agent types and personalities
-- Advanced conflict resolution algorithms
-- Machine learning for agent optimization
-- Enhanced visualization and analytics
-- Multi-language support expansion
-- Advanced AI provider integrations
-- Real-time collaboration features
-- Advanced analytics and insights 
