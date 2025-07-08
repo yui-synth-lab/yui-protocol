@@ -87,6 +87,9 @@ export class SessionManager {
         continue;
       }
       agents.push(agent);
+      
+      // 新しいセッション作成時にサマライザー設定をリセット
+      agentInstance.setIsSummarizer(false);
     }
 
     if (agents.length === 0) {
@@ -123,6 +126,15 @@ export class SessionManager {
   async resetSession(sessionId: string): Promise<Session> {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error('Session not found');
+    
+    // セッションリセット時にすべてのエージェントのサマライザー設定をリセット
+    for (const agent of session.agents) {
+      const agentInstance = this.agentManager.getAgent(agent.id);
+      if (agentInstance) {
+        agentInstance.setIsSummarizer(false);
+      }
+    }
+    
     session.messages = [];
     session.stageHistory = [];
     session.sequenceNumber = 1;  // リセット時も1から始める
@@ -134,6 +146,15 @@ export class SessionManager {
   async startNewSequence(sessionId: string): Promise<Session> {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error('Session not found');
+    
+    // 新しいシーケンス開始時にすべてのエージェントのサマライザー設定をリセット
+    for (const agent of session.agents) {
+      const agentInstance = this.agentManager.getAgent(agent.id);
+      if (agentInstance) {
+        agentInstance.setIsSummarizer(false);
+      }
+    }
+    
     session.sequenceNumber = (session.sequenceNumber || 1) + 1;
     session.updatedAt = new Date();
     await this.saveSession(session);
