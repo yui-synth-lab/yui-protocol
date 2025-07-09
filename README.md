@@ -90,3 +90,7 @@ Yui Protocol は、**複数のAIエージェントとわたし（ゆい）によ
 
 ようこそ、Yui Protocolへ。  
 ここでは、問いが生きています。
+
+静的Demoサイトはこちらです。
+
+[Static Yui Protocol] (https://yui-synth-lab.github.io/yui-protocol-static/)
