@@ -221,7 +221,7 @@ Respond by:
 - Avoiding any statements about the value of cooperation, harmony, or the process of discussion itself.
 - Do NOT say things like "these approaches are not in conflict" or "it's important to combine strengths" or comment on the discussion method.
 - Focus only on the substance of the answers to the QUERY (e.g., time, if that is the user query).
-- Do NOT address other agents by name when referring to their thoughts.
+- When referring to other agents, always use their Agent ID (e.g., yui-000, kanshi-001).
 
 **CRITICAL REQUIREMENTS:**
 - Reference specific points from other agents
@@ -229,7 +229,6 @@ Respond by:
 - Show you've really considered their perspective
 - Challenge or clarify their ideas directly
 - Do NOT discuss the value of dialogue, cooperation, or harmony
-- Do NOT call out other agents by name - refer to their ideas or positions instead
 
 IMPORTANT: Do not use <think> tags or any thinking tags in your response. Provide your response directly without any thinking process tags.
 
@@ -254,14 +253,14 @@ Respond by:
 - Proposing possible clarifications or questions to resolve these differences, but do NOT suggest general cooperation, harmony, or the value of working together.
 - Do NOT say things like "these approaches are not in conflict" or "it's important to combine strengths" or comment on the discussion method.
 - Focus only on the substance of the answers to the QUERY (e.g., time, if that is the user query).
-- Do NOT address other agents by name when referring to their positions.
+- 他のエージェントを参照する際は必ずID（例: yui-000, kanshi-001など）で呼ぶこと。
+- When referring to other agents, always use their Agent ID (e.g., yui-000, kanshi-001).
 
 **CRITICAL REQUIREMENTS:**
 - Address the specific agents and their conflicts about the QUERY
 - Clarify the logic and evidence behind each position
 - Do NOT discuss the value of dialogue, cooperation, or harmony
 - Do NOT generalize about the importance of resolving conflict or working together
-- Do NOT call out other agents by name - refer to their positions or approaches instead
 
 IMPORTANT: Do not use <think> tags or any thinking tags in your response. Provide your response directly without any thinking process tags.
 
@@ -291,10 +290,12 @@ Consider:
 Speak to the other agents, acknowledge their contributions, and invite them to help refine and improve the synthesis. Be collaborative and inclusive, making sure everyone feels heard and valued.
 
 **CRITICAL REQUIREMENTS:**
-- Include all agents in the synthesis
+- Include all agents in the synthesis (refer to them by their Agent ID, e.g., yui-000, kanshi-001)
 - Show how different approaches work together
 - Ask for feedback and input
 - Create something that builds on everyone's strengths
+- 他のエージェントを参照する際は必ずID（例: yui-000, kanshi-001など）で呼ぶこと。
+- When referring to other agents, always use their Agent ID (e.g., yui-000, kanshi-001).
 
 IMPORTANT: Do not use <think> tags or any thinking tags in your response. Provide your response directly without any thinking process tags.
 
@@ -327,7 +328,9 @@ Share your final thoughts in your own voice, weaving together the threads of und
 - Capture the key insights from the entire discussion
 - Show how understanding evolved through collaboration
 - Provide practical wisdom and recommendations
-- Honor the contributions of all participants
+- Honor the contributions of all participants (refer to them by their Agent ID, e.g., yui-000, kanshi-001)
+- 他のエージェントを参照する際は必ずID（例: yui-000, kanshi-001など）で呼ぶこと。
+- When referring to other agents, always use their Agent ID (e.g., yui-000, kanshi-001).
 
 **Agent Vote and Justification** (1 paragraph)
 - Vote for ONE agent (NOT yourself) by their exact Agent ID (e.g., hekito-001)
