@@ -55,15 +55,86 @@ export abstract class BaseAgent {
     };
   }
 
+  /**
+   * 前回シーケンスの情報を取得
+   */
+  protected getPreviousSequenceInfo(context: Message[]): {
+    previousUserInput: string;
+    previousAgentConclusions: { [agentId: string]: string };
+  } {
+    // セッション全体のメッセージから現在のシーケンス番号を取得
+    // contextには最新のメッセージのみが含まれる可能性があるため、
+    // セッション全体のメッセージを使用する必要がある
+    
+    // 現在のシーケンス番号を取得（最新のユーザーメッセージから）
+    const userMessages = context.filter(m => m.role === 'user');
+    const currentSequenceNumber = userMessages.length > 0
+      ? Math.max(...userMessages.map(m => m.sequenceNumber || 1))
+      : 1;
+    const previousSequenceNumber = currentSequenceNumber - 1;
+    
+    console.log(`[BaseAgent] Current sequence: ${currentSequenceNumber}, Previous sequence: ${previousSequenceNumber}`);
+    if (previousSequenceNumber < 1) {
+      return {
+        previousUserInput: '',
+        previousAgentConclusions: {}
+      };
+    }
+    
+    // 前回シーケンスのユーザーメッセージを取得
+    const previousUserMessage = context.find(
+      m => m.role === 'user' && m.sequenceNumber === previousSequenceNumber
+    );
+    const previousUserInput = previousUserMessage?.content || '';
+
+    // 前回シーケンスのエージェント結論を取得
+    const previousAgentConclusions: { [agentId: string]: string } = {};
+    
+    // 前回シーケンスの最終ステージ（finalize）のエージェント応答を取得
+    const previousOutputMessages = context.filter(
+      m => m.role === 'agent' && 
+           m.sequenceNumber === previousSequenceNumber && 
+           m.stage === 'finalize'
+    );
+
+    // デバッグログ
+    console.log(`[BaseAgent] Current sequence: ${currentSequenceNumber}, Previous sequence: ${previousSequenceNumber}`);
+    console.log(`[BaseAgent] Previous user input: "${previousUserInput}"`);
+    console.log(`[BaseAgent] Found ${previousOutputMessages.length} previous output messages`);
+
+    previousOutputMessages.forEach(message => {
+      if (message.agentId && message.content) {
+        // 結論部分を抽出（最初の200文字程度）
+        const conclusion = message.content.slice(0, 200);
+        previousAgentConclusions[message.agentId] = conclusion;
+        console.log(`[BaseAgent] Added conclusion for ${message.agentId}: "${conclusion}"`);
+      }
+    });
+
+    return {
+      previousUserInput,
+      previousAgentConclusions
+    };
+  }
+
   // Stage-specific methods for Yui Protocol
   async stage1IndividualThought(prompt: string, context: Message[]): Promise<IndividualThought> {
     const userMessage = context.find(m => m.role === 'user');
     const query = userMessage?.content || prompt || 'No user query provided';
     const relevantContext = this.getRelevantContext(context);
     const contextAnalysis = this.analyzeContext(relevantContext);
+    
+    // 前回シーケンスの情報を取得
+    const previousInfo = this.getPreviousSequenceInfo(context);
+    const previousConclusionsText = Object.entries(previousInfo.previousAgentConclusions)
+      .map(([agentId, conclusion]) => `${agentId}: ${conclusion}`)
+      .join('\n\n');
+    
     const stagePrompt = this.getStagePrompt('individual-thought', {
       query,
-      context: contextAnalysis
+      context: contextAnalysis,
+      previousInput: previousInfo.previousUserInput,
+      previousConclusions: previousConclusionsText
     });
     const content = await this.executeAIWithErrorHandling(
       stagePrompt,
@@ -88,10 +159,19 @@ export abstract class BaseAgent {
       `${thought.agentId}: ${thought.content}`
     ).join('\n\n');
     const contextAnalysis = this.analyzeContext(context);
+    
+    // 前回シーケンスの情報を取得
+    const previousInfo = this.getPreviousSequenceInfo(context);
+    const previousConclusionsText = Object.entries(previousInfo.previousAgentConclusions)
+      .map(([agentId, conclusion]) => `${agentId}: ${conclusion}`)
+      .join('\n\n');
+    
     const stagePrompt = this.getStagePrompt('mutual-reflection', {
       query,
       otherThoughts: otherThoughtsText,
-      context: contextAnalysis
+      context: contextAnalysis,
+      previousInput: previousInfo.previousUserInput,
+      previousConclusions: previousConclusionsText
     });
     const content = await this.executeAIWithErrorHandling(
       stagePrompt,

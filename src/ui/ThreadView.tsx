@@ -39,6 +39,9 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
   useEffect(() => {
     if (JSON.stringify(session.messages) !== JSON.stringify(messages)) {
       console.log(`[UI] Updating messages from session: ${session.messages.length} messages, current local: ${messages.length} messages`);
+      console.log(`[UI] Session sequenceNumber: ${session.sequenceNumber}`);
+      console.log(`[UI] Session messages with sequenceNumber 2: ${session.messages.filter(m => m.sequenceNumber === 2).length}`);
+      console.log(`[UI] Local messages with sequenceNumber 2: ${messages.filter(m => m.sequenceNumber === 2).length}`);
 
       // メッセージをマージして、リアルタイムメッセージを保持
       if (messages.length === 0 || session.messages.length > messages.length) {
@@ -48,14 +51,14 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
         // まずセッションメッセージを追加
         session.messages.forEach((msg: Message) => {
           messageMap.set(msg.id, msg);
-          console.log(`[UI] Adding session message: ${msg.id} (${msg.role}) from ${msg.agentId}`);
+          console.log(`[UI] Adding session message: ${msg.id} (${msg.role}) from ${msg.agentId}, sequenceNumber: ${msg.sequenceNumber}`);
         });
 
         // 次にローカルメッセージを追加（重複を避ける）
         messages.forEach((msg: Message) => {
           if (!messageMap.has(msg.id)) {
             messageMap.set(msg.id, msg);
-            console.log(`[UI] Adding local message: ${msg.id} (${msg.role}) from ${msg.agentId}`);
+            console.log(`[UI] Adding local message: ${msg.id} (${msg.role}) from ${msg.agentId}, sequenceNumber: ${msg.sequenceNumber}`);
           } else {
             console.log(`[UI] Skipping duplicate local message: ${msg.id}`);
           }
@@ -67,7 +70,8 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
         );
 
         console.log(`[UI] Merged messages: session=${session.messages.length}, local=${messages.length}, merged=${mergedMessages.length}`);
-        console.log(`[UI] Merged message IDs: ${mergedMessages.map((m: Message) => `${m.id}(${m.role})`).join(', ')}`);
+        console.log(`[UI] Merged messages with sequenceNumber 2: ${mergedMessages.filter(m => m.sequenceNumber === 2).length}`);
+        console.log(`[UI] Merged message IDs: ${mergedMessages.map((m: Message) => `${m.id}(${m.role}, seq:${m.sequenceNumber})`).join(', ')}`);
         setMessages(mergedMessages);
       } else {
         console.log(`[UI] Keeping current messages (${messages.length}) over session messages (${session.messages.length})`);
@@ -90,6 +94,11 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
   // Reset messages when session changes
   useEffect(() => {
     console.log(`[UI] Session change effect triggered - session.id: ${session.id}`);
+    console.log(`[UI] Session sequenceNumber: ${session.sequenceNumber}`);
+    console.log(`[UI] Session messages count: ${session.messages.length}`);
+    console.log(`[UI] Session messages with sequenceNumber 2: ${session.messages.filter(m => m.sequenceNumber === 2).length}`);
+    console.log(`[UI] Session messages with sequenceNumber 1: ${session.messages.filter(m => m.sequenceNumber === 1).length}`);
+    
     setMessages(session.messages);
     setCurrentStage(session.currentStage || null);
 
@@ -413,7 +422,7 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
     try {
       console.log(`[UI] Reloading session data for: ${realtimeSessionId}`);
       console.log(`[UI] Current messages before reload: ${messages.length} messages`);
-      console.log(`[UI] Current message IDs: ${messages.map((m: Message) => `${m.id}(${m.role})`).join(', ')}`);
+      console.log(`[UI] Current messages with sequenceNumber 2: ${messages.filter(m => m.sequenceNumber === 2).length}`);
 
       const response = await fetch(`/api/realtime/sessions/${realtimeSessionId}`);
       if (response.ok) {
@@ -423,19 +432,20 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
         const currentMessages = messages;
 
         console.log(`[UI] Server messages: ${serverMessages.length} messages`);
-        console.log(`[UI] Server message IDs: ${serverMessages.map((m: Message) => `${m.id}(${m.role})`).join(', ')}`);
+        console.log(`[UI] Server messages with sequenceNumber 2: ${serverMessages.filter((m: Message) => m.sequenceNumber === 2).length}`);
+        console.log(`[UI] Server sequenceNumber: ${sessionData.sequenceNumber}`);
 
         const messageMap = new Map();
 
         currentMessages.forEach((msg: Message) => {
           messageMap.set(msg.id, msg);
-          console.log(`[UI] Adding current message to map: ${msg.id} (${msg.role})`);
+          console.log(`[UI] Adding current message to map: ${msg.id} (${msg.role}), sequenceNumber: ${msg.sequenceNumber}`);
         });
 
         serverMessages.forEach((msg: Message) => {
           if (!messageMap.has(msg.id)) {
             messageMap.set(msg.id, msg);
-            console.log(`[UI] Adding server message to map: ${msg.id} (${msg.role})`);
+            console.log(`[UI] Adding server message to map: ${msg.id} (${msg.role}), sequenceNumber: ${msg.sequenceNumber}`);
           } else {
             console.log(`[UI] Skipping duplicate server message: ${msg.id}`);
           }
@@ -446,7 +456,8 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
         );
 
         console.log(`[UI] Merged messages: current=${currentMessages.length}, server=${serverMessages.length}, merged=${mergedMessages.length}`);
-        console.log(`[UI] Final merged message IDs: ${mergedMessages.map((m: Message) => `${m.id}(${m.role})`).join(', ')}`);
+        console.log(`[UI] Merged messages with sequenceNumber 2: ${mergedMessages.filter(m => m.sequenceNumber === 2).length}`);
+        console.log(`[UI] Final merged message IDs: ${mergedMessages.map((m: Message) => `${m.id}(${m.role}, seq:${m.sequenceNumber})`).join(', ')}`);
 
         setMessages(mergedMessages);
         setCurrentStage(sessionData.currentStage);

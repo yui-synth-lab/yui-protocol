@@ -108,6 +108,8 @@ const MessagesView: React.FC<MessagesViewProps> = ({
     const groups: { stage?: DialogueStage; messages: Message[] }[] = [];
     let currentGroup: { stage?: DialogueStage; messages: Message[] } = { messages: [] };
 
+    // すべてのメッセージを表示する（シーケンス番号によるフィルタリングを無効化）
+    // All messages should be displayed regardless of their sequence number
     messages.forEach(message => {
       if (message.stage && message.stage !== currentGroup.stage) {
         if (currentGroup.messages.length > 0) {
@@ -280,6 +282,23 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   console.log('[MessagesView] session.outputFileName:', session.outputFileName);
   console.log('[MessagesView] session.sequenceOutputFiles keys:', session.sequenceOutputFiles ? Object.keys(session.sequenceOutputFiles) : 'undefined');
   console.log('[MessagesView] session.sequenceOutputFiles length:', session.sequenceOutputFiles ? Object.keys(session.sequenceOutputFiles).length : 0);
+
+  // デバッグ用: メッセージとシーケンス番号のログ出力
+  console.log('[MessagesView] session.sequenceNumber:', session.sequenceNumber);
+  console.log('[MessagesView] messages count:', messages.length);
+  console.log('[MessagesView] messages with sequence numbers:', messages.map(m => ({
+    id: m.id,
+    role: m.role,
+    agentId: m.agentId,
+    sequenceNumber: m.sequenceNumber,
+    stage: m.stage
+  })));
+  console.log('[MessagesView] messages with sequenceNumber 2:', messages.filter(m => m.sequenceNumber === 2).map(m => ({
+    id: m.id,
+    role: m.role,
+    agentId: m.agentId,
+    content: m.content?.substring(0, 100) + '...'
+  })));
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-900" ref={messagesContainerRef} onScroll={handleScroll}>

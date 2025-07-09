@@ -160,4 +160,43 @@ export class SessionManager {
     await this.saveSession(session);
     return session;
   }
+
+  /**
+   * 前回シーケンスのユーザー入力とエージェント結論を抽出
+   */
+  getPreviousSequenceInfo(session: Session): {
+    previousUserInput: string;
+    previousAgentConclusions: { [agentId: string]: string };
+  } {
+    const previousSequenceNumber = (session.sequenceNumber || 2) - 1;
+    
+    // 前回シーケンスのユーザーメッセージを取得
+    const previousUserMessage = session.messages.find(
+      m => m.role === 'user' && m.sequenceNumber === previousSequenceNumber
+    );
+    const previousUserInput = previousUserMessage?.content || '';
+
+    // 前回シーケンスのエージェント結論を取得
+    const previousAgentConclusions: { [agentId: string]: string } = {};
+    
+    // 前回シーケンスの最終ステージ（finalize）のエージェント応答を取得
+    const previousOutputMessages = session.messages.filter(
+      m => m.role === 'agent' && 
+           m.sequenceNumber === previousSequenceNumber && 
+           m.stage === 'finalize'
+    );
+
+    previousOutputMessages.forEach(message => {
+      if (message.agentId && message.content) {
+        // 結論部分を抽出（最初の200文字程度）
+        const conclusion = message.content.slice(0, 200);
+        previousAgentConclusions[message.agentId] = conclusion;
+      }
+    });
+
+    return {
+      previousUserInput,
+      previousAgentConclusions
+    };
+  }
 } 

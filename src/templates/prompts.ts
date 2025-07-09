@@ -173,17 +173,25 @@ QUERY: {query}
 
 FACTS: {facts}
 
+PREVIOUS SEQUENCE USER INPUT: {previousInput}
+
+PREVIOUS SEQUENCE CONCLUSIONS:
+{previousConclusions}
+
 IMPORTANT: Do not use <think> tags or any thinking tags in your response. Provide your response directly without any thinking process tags.
 
 Respond naturally as if you're having a conversation. Share your thoughts, feelings, and perspective on this query in your own unique way. Be authentic to your personality and communication style.
+
+**CRITICAL: Your primary focus should be on responding to the current QUERY. If this is a new sequence with a different topic, acknowledge the previous discussion briefly if relevant, but then shift your full attention to the current query. Do not dwell extensively on previous topics unless they are directly relevant to understanding or responding to the current query.**
 
 Consider:
 - What's your initial reaction to this query?
 - How does your unique perspective shape your thinking?
 - What aspects of this question resonate with you most?
 - What concerns or insights do you have?
+- How does this relate to the previous sequence's discussion and conclusions (if at all relevant)?
 
-Speak from your heart and mind, but stay focused on the query. Be conversational and engaging while maintaining depth of thought.
+Speak from your heart and mind, but stay focused on the current query. Be conversational and engaging while maintaining depth of thought.
 
 MAXIMUM 200 WORDS TOTAL.
 `,
@@ -197,8 +205,15 @@ QUERY: {query}
 
 FACTS: {facts}
 
+PREVIOUS SEQUENCE USER INPUT: {previousInput}
+
+PREVIOUS SEQUENCE CONCLUSIONS:
+{previousConclusions}
+
 OTHER AGENTS' THOUGHTS:
 {otherThoughts}
+
+**CRITICAL: Your primary focus should be on the current QUERY and how other agents responded to it. If this is a new sequence with a different topic, acknowledge the previous discussion briefly if relevant, but then shift your full attention to analyzing the current responses. Do not dwell extensively on previous topics unless they are directly relevant to understanding the current discussion.**
 
 Respond by:
 - Pointing out specific differences, contradictions, or questions you have about the other agents' answers to the QUERY.

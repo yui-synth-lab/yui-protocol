@@ -292,7 +292,7 @@ export class YuiProtocolRouter implements IRealtimeRouter {
     this.addUserMessageIfNeeded(session, userPrompt, stage);
 
     // 実際のエージェントレスポンス生成
-    const { responses, agentResponses } = await this.generateAgentResponses(session, stage, userPrompt, '', [], onProgress);
+    const { responses, agentResponses } = await this.generateAgentResponses(session, stage, userPrompt, '', session.messages, onProgress);
 
     // ステージ履歴の更新
     await this.updateSessionStageHistory(session, stage, responses, stageStart);
