@@ -269,7 +269,7 @@ export class YuiProtocolRouter implements IRealtimeRouter {
     sessionId: string,
     userPrompt: string,
     stage: DialogueStage,
-    language: Language,
+    language?: Language, // ← optionalにする
     onProgress?: ProgressCallback
   ): Promise<StageExecutionResult> {
     console.log(`[Router] executeStageRealtime called for session ${sessionId}, stage ${stage}`);
@@ -285,8 +285,11 @@ export class YuiProtocolRouter implements IRealtimeRouter {
     session.currentStage = stage;
     session.updatedAt = new Date();
 
+    // 言語を決定（引数優先、なければセッション、なければ'en'）
+    const effectiveLanguage = language || session.language || 'en';
+
     // エージェントのセットアップ
-    this.setupAgentsForStage(session, sessionId, language);
+    this.setupAgentsForStage(session, sessionId, effectiveLanguage);
 
     // ユーザーメッセージの追加
     this.addUserMessageIfNeeded(session, userPrompt, stage);
@@ -314,7 +317,7 @@ export class YuiProtocolRouter implements IRealtimeRouter {
             stageMessages,
             session.agents,
             sessionId,
-            language
+            effectiveLanguage
           );
 
           console.log(`[Router] Stage summary generated successfully for ${stage}`);
@@ -442,7 +445,7 @@ export class YuiProtocolRouter implements IRealtimeRouter {
 
     // 最終出力の保存（必要に応じて）
     const isAllStagesCompleted = this.isAllStagesCompleted(session);
-    await this.saveFinalOutputIfNeeded(isAllStagesCompleted, responses, session, sessionId, language);
+    await this.saveFinalOutputIfNeeded(isAllStagesCompleted, responses, session, sessionId, effectiveLanguage);
 
     const stageEnd = new Date();
     const duration = stageEnd.getTime() - stageStart.getTime();

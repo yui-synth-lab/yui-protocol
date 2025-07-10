@@ -19,7 +19,7 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
   const [isProcessing, setIsProcessing] = useState(false);
   const [messages, setMessages] = useState<Message[]>(session.messages);
   const [currentStage, setCurrentStage] = useState<DialogueStage | null>(null);
-  const [language, setLanguage] = useState<Language>('ja');
+  const [language, setLanguage] = useState<Language>(session.language || 'en');
   const [realtimeSessionIdState, setRealtimeSessionId] = useState<string | null>(null);
   const [isCreatingSessionState, setIsCreatingSession] = useState(false);
   const [showContinueButton, setShowContinueButton] = useState(false);
@@ -101,6 +101,7 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
     
     setMessages(session.messages);
     setCurrentStage(session.currentStage || null);
+    setLanguage(session.language || 'en'); // セッションの言語を設定
 
     setPendingUserMessage(null);
     setIsProcessing(false);
@@ -131,7 +132,7 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
   }, [userPrompt]);
 
   const createRealtimeSession = async () => {
-    setLanguage('ja'); // 新規セッション作成時も日本語に初期化
+    setLanguage(session.language || 'en'); // セッションの言語を使用
     if (isCreatingSession) {
       console.log('[UI] Already creating session, skipping...');
       return;
@@ -280,7 +281,7 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
       setIsWaitingForFirstResponse(false);
       setPendingUserMessage(null);
       resetTextareaHeight();
-      setLanguage('ja'); // セッション完了後に日本語に初期化
+      setLanguage(session.language || 'en'); // セッションの言語を使用
     }
   };
 
