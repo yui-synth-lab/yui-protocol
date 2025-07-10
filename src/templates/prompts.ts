@@ -253,7 +253,6 @@ Respond by:
 - Proposing possible clarifications or questions to resolve these differences, but do NOT suggest general cooperation, harmony, or the value of working together.
 - Do NOT say things like "these approaches are not in conflict" or "it's important to combine strengths" or comment on the discussion method.
 - Focus only on the substance of the answers to the QUERY (e.g., time, if that is the user query).
-- 他のエージェントを参照する際は必ずID（例: yui-000, kanshi-001など）で呼ぶこと。
 - When referring to other agents, always use their Agent ID (e.g., yui-000, kanshi-001).
 
 **CRITICAL REQUIREMENTS:**
