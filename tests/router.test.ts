@@ -214,7 +214,7 @@ describe('YuiProtocolRouter (Refactored)', () => {
     it('should start new sequence', async () => {
       const result = await router.startNewSequence('test-session');
       expect(result).toEqual(mockSession);
-      expect(mockSessionManager.startNewSequence).toHaveBeenCalledWith('test-session');
+      expect(mockSessionManager.startNewSequence).toHaveBeenCalledWith('test-session', undefined);
     });
   });
 

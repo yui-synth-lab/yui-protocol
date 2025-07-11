@@ -301,7 +301,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   })));
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-900" ref={messagesContainerRef} onScroll={handleScroll}>
+    <div className="h-full overflow-y-auto p-4 space-y-4 bg-gray-900" ref={messagesContainerRef} onScroll={handleScroll}>
       {messages.length === 0 ? (
         <div className="text-center py-8">
           <p className="text-gray-400">No messages yet. Start a conversation!</p>

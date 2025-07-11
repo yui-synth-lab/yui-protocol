@@ -2,6 +2,8 @@ import express, { Request, Response, RequestHandler } from 'express';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createServer } from 'http';
+import { Server as SocketIOServer } from 'socket.io';
 import { YuiProtocolRouter } from '../kernel/router.js';
 import { SessionStorage, removeCircularReferences } from '../kernel/session-storage.js';
 import { Session } from '../types/index.js';
@@ -10,6 +12,14 @@ import { InteractionLogger } from '../kernel/interaction-logger.js';
 import { createStageSummarizer } from '../kernel/stage-summarizer.js';
 
 const app = express();
+const server = createServer(app);
+const io = new SocketIOServer(server, {
+  cors: {
+    origin: "http://localhost:3000",
+    methods: ["GET", "POST"]
+  }
+});
+
 const port = process.env.PORT || 3001;
 
 // Get __dirname equivalent for ES modules
@@ -19,9 +29,7 @@ const __dirname = path.dirname(__filename);
 // Middleware
 app.use(cors());
 app.use(express.json());
-
-// Serve static files from the dist directory
-app.use(express.static(path.join(__dirname, '..')));
+app.use(express.static(path.join(__dirname, '../../dist')));
 
 // Initialize shared session storage
 const sharedSessionStorage = new SessionStorage();
@@ -51,6 +59,180 @@ const realtimeRouter = new YuiProtocolRouter(
   stageSummarizerOptions,
   delayOptions
 );
+
+// WebSocket connection management
+const connectedClients = new Map<string, Set<string>>(); // sessionId -> Set of socketIds
+
+// WebSocket event handlers
+io.on('connection', (socket) => {
+  console.log(`[WebSocket] Client connected: ${socket.id}`);
+
+  socket.on('join-session', (sessionId: string) => {
+    console.log(`[WebSocket] Client ${socket.id} joining session: ${sessionId}`);
+    socket.join(sessionId);
+    
+    if (!connectedClients.has(sessionId)) {
+      connectedClients.set(sessionId, new Set());
+    }
+    connectedClients.get(sessionId)!.add(socket.id);
+    
+    console.log(`[WebSocket] Client ${socket.id} joined session ${sessionId}. Total clients in session: ${connectedClients.get(sessionId)!.size}`);
+  });
+
+  socket.on('leave-session', (sessionId: string) => {
+    console.log(`[WebSocket] Client ${socket.id} leaving session: ${sessionId}`);
+    socket.leave(sessionId);
+    
+    const clients = connectedClients.get(sessionId);
+    if (clients) {
+      clients.delete(socket.id);
+      if (clients.size === 0) {
+        connectedClients.delete(sessionId);
+      }
+    }
+  });
+
+  socket.on('start-session-execution', async (data: { sessionId: string; userPrompt: string }) => {
+    console.log(`[WebSocket] Starting session execution for session: ${data.sessionId}`);
+    try {
+      await startSessionExecution(data.sessionId, data.userPrompt);
+    } catch (error) {
+      console.error(`[WebSocket] Error starting session execution:`, error);
+      socket.emit('session-error', { 
+        sessionId: data.sessionId, 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
+    }
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`[WebSocket] Client disconnected: ${socket.id}`);
+    // Remove from all sessions
+    for (const [sessionId, clients] of connectedClients.entries()) {
+      if (clients.has(socket.id)) {
+        clients.delete(socket.id);
+        if (clients.size === 0) {
+          connectedClients.delete(sessionId);
+        }
+      }
+    }
+  });
+});
+
+// Session execution orchestrator
+async function startSessionExecution(sessionId: string, userPrompt: string) {
+  console.log(`[SessionExecutor] Starting execution for session ${sessionId} with prompt: ${userPrompt.substring(0, 100)}...`);
+  
+  try {
+    const session = await realtimeRouter.getSession(sessionId);
+    if (!session) {
+      throw new Error(`Session ${sessionId} not found`);
+    }
+
+    // Check if all stages are completed
+    const completedStages = session.stageHistory?.filter(h => h.endTime) || [];
+    const isAllStagesCompleted = completedStages.length >= 8; // 5 main + 3 summary stages
+
+    if (isAllStagesCompleted) {
+      console.log(`[SessionExecutor] All stages completed, starting new sequence`);
+      await realtimeRouter.startNewSequence(sessionId, userPrompt);
+    }
+
+    // Define all stages including summary stages
+    const allStages: string[] = [
+      'individual-thought',
+      'mutual-reflection',
+      'mutual-reflection-summary',
+      'conflict-resolution',
+      'conflict-resolution-summary',
+      'synthesis-attempt',
+      'synthesis-attempt-summary',
+      'output-generation',
+      'finalize'
+    ];
+
+    // Determine starting stage
+    const currentProgress = completedStages.length;
+    const remainingStages = allStages.slice(currentProgress);
+
+    console.log(`[SessionExecutor] Current progress: ${currentProgress}/${allStages.length}, remaining stages: ${remainingStages.join(', ')}`);
+
+    // Execute remaining stages
+    for (const stage of remainingStages) {
+      console.log(`[SessionExecutor] Executing stage: ${stage}`);
+      
+      // Notify clients about stage start
+      io.to(sessionId).emit('stage-start', { 
+        sessionId, 
+        stage, 
+        timestamp: new Date().toISOString() 
+      });
+
+      try {
+        const result = await executeStageWithWebSocket(sessionId, userPrompt, stage as import('../types/index.js').DialogueStage, session.language || 'en');
+        console.log(`[SessionExecutor] Stage ${stage} completed successfully`);
+        
+        // Notify clients about stage completion
+        io.to(sessionId).emit('stage-complete', { 
+          sessionId, 
+          stage, 
+          result: removeCircularReferences(result),
+          timestamp: new Date().toISOString() 
+        });
+
+        // Small delay between stages
+        if (stage !== 'finalize') {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      } catch (error) {
+        console.error(`[SessionExecutor] Error in stage ${stage}:`, error);
+        io.to(sessionId).emit('stage-error', { 
+          sessionId, 
+          stage, 
+          error: error instanceof Error ? error.message : 'Unknown error',
+          timestamp: new Date().toISOString() 
+        });
+        throw error;
+      }
+    }
+
+    console.log(`[SessionExecutor] All stages completed for session ${sessionId}`);
+    io.to(sessionId).emit('session-complete', { 
+      sessionId, 
+      timestamp: new Date().toISOString() 
+    });
+
+  } catch (error) {
+    console.error(`[SessionExecutor] Error in session execution:`, error);
+    throw error;
+  }
+}
+
+// Execute stage with WebSocket progress updates
+async function executeStageWithWebSocket(
+  sessionId: string, 
+  userPrompt: string, 
+  stage: import('../types/index.js').DialogueStage, 
+  language: import('../types/index.js').Language
+) {
+  return new Promise((resolve, reject) => {
+    const onProgress = (update: { message?: any; session?: any }) => {
+      if (update.message) {
+        const cleanedMessage = removeCircularReferences(update.message);
+        io.to(sessionId).emit('stage-progress', { 
+          sessionId, 
+          stage, 
+          message: cleanedMessage,
+          timestamp: new Date().toISOString() 
+        });
+      }
+    };
+
+    realtimeRouter.executeStageRealtime(sessionId, userPrompt, stage, language, onProgress)
+      .then(resolve)
+      .catch(reject);
+  });
+}
 
 
 // API Routes
@@ -457,7 +639,7 @@ app.get('*', ((req: Request, res: Response) => {
 
 
 // Start server
-const server = app.listen(port, () => {
+server.listen(port, () => {
   console.log(`🤖 Yui Protocol Server running on port ${port}`);
   console.log(`Available endpoints:`);
   console.log(`  GET  /api/agents - Get available agents`);
@@ -471,6 +653,7 @@ const server = app.listen(port, () => {
   console.log(`  GET  /api/outputs - Get all outputs`);
   console.log(`  GET  /api/outputs/:id - Get specific output`);
   console.log(`  DELETE /api/outputs/:id - Delete specific output`);
+  console.log(`WebSocket server is running on the same port`);
 });
 
 // Graceful shutdown handling
