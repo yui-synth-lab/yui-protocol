@@ -9,11 +9,15 @@ export interface IAgentManager {
 export interface ISessionManager {
   getSession(sessionId: string): Promise<Session | undefined>;
   getAllSessions(): Promise<Session[]>;
-  createSession(title: string, agentIds: string[], language: Language): Promise<Session>;
+  createSession(title: string, agentIds: string[], language: string): Promise<Session>;
   saveSession(session: Session): Promise<void>;
   deleteSession(sessionId: string): Promise<boolean>;
   resetSession(sessionId: string): Promise<Session>;
-  startNewSequence(sessionId: string): Promise<Session>;
+  startNewSequence(sessionId: string, userPrompt?: string): Promise<Session>;
+  getPreviousSequenceInfo(session: Session): {
+    previousUserInput: string;
+    previousAgentConclusions: { [agentId: string]: string };
+  };
 }
 
 export interface IRealtimeRouter {

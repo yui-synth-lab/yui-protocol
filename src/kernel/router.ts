@@ -477,8 +477,8 @@ export class YuiProtocolRouter implements IRealtimeRouter {
     return this.sessionManager.resetSession(sessionId);
   }
 
-  async startNewSequence(sessionId: string): Promise<Session> {
-    return this.sessionManager.startNewSequence(sessionId);
+  async startNewSequence(sessionId: string, userPrompt?: string): Promise<Session> {
+    return this.sessionManager.startNewSequence(sessionId, userPrompt);
   }
 
   getAvailableAgents(): Agent[] {

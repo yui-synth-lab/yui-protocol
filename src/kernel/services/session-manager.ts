@@ -1,6 +1,7 @@
 import { Session, Agent } from '../../types/index.js';
 import { SessionStorage } from '../session-storage.js';
 import { IAgentManager } from '../interfaces.js';
+import { Message } from '../../types/index.js';
 
 export class SessionManager {
   private sessionStorage: SessionStorage;
@@ -143,7 +144,7 @@ export class SessionManager {
     return session;
   }
 
-  async startNewSequence(sessionId: string): Promise<Session> {
+  async startNewSequence(sessionId: string, userPrompt?: string): Promise<Session> {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error('Session not found');
     
@@ -156,6 +157,21 @@ export class SessionManager {
     }
     
     session.sequenceNumber = (session.sequenceNumber || 1) + 1;
+    session.currentStage = undefined; // 新しいシーケンスの最初のステージをリセット
+    
+    // ユーザーメッセージをセッションに保存
+    if (userPrompt) {
+      const userMessage: Message = {
+        id: `user-${Date.now()}`,
+        agentId: 'user',
+        content: userPrompt,
+        timestamp: new Date(),
+        role: 'user',
+        sequenceNumber: session.sequenceNumber
+      };
+      session.messages.push(userMessage);
+    }
+    
     session.updatedAt = new Date();
     await this.saveSession(session);
     return session;

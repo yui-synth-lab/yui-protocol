@@ -201,6 +201,7 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
           const startNewSequenceResponse = await fetch(`/api/sessions/${realtimeSessionId}/start-new-sequence`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userPrompt: promptToSend }),
           });
 
           if (startNewSequenceResponse.ok) {

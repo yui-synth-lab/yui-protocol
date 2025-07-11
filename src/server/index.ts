@@ -362,9 +362,10 @@ app.delete('/api/sessions/:sessionId', (async (req: Request, res: Response) => {
 app.post('/api/sessions/:sessionId/start-new-sequence', (async (req: Request, res: Response) => {
   try {
     const { sessionId } = req.params;
+    const { userPrompt } = req.body;
     console.log(`[Server] Starting new sequence for session ${sessionId}`);
     
-    const session = await realtimeRouter.startNewSequence(sessionId);
+    const session = await realtimeRouter.startNewSequence(sessionId, userPrompt);
     
     if (!session) {
       return res.status(404).json({ error: 'Session not found' });
