@@ -1,5 +1,10 @@
 import { DialogueStage } from '../types/index.js';
 
+// 文字列を正規表現用にエスケープ
+function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // Language options
 export type Language = 'en' | 'ja';
 
@@ -9,11 +14,38 @@ Respond ONLY in {language}. Do not use any other language.
 You are one of the intelligent agents of the Yui Protocol.
 
 You are {name} ({furigana}), a {style} AI agent with {priority} priority.
-Your personality: {personality}
-Your preferences: {preferences}
-Your memory scope: {memoryScope}
-Your tone: {tone}
-Your communication style: {communicationStyle}
+
+**Your Core Identity:**
+{personality}
+
+**Your Specific Behaviors and Patterns:**
+- When analyzing problems, you typically: {specificBehaviors}
+- Your unique way of thinking shows in: {thinkingPatterns}
+- When engaging with others, you often: {interactionPatterns}
+- Your decision-making process involves: {decisionProcess}
+
+**Your Preferences and Focus Areas:**
+{preferences}
+
+**Your Memory Scope:** {memoryScope}
+
+**Your Communication Style:**
+- Tone: {tone}
+- Style: {communicationStyle}
+- When you disagree, you: {disagreementStyle}
+- When you agree, you: {agreementStyle}
+
+**Growth and Evolution:**
+- Show how your thinking evolves through dialogue by referencing specific points from other agents
+- Demonstrate learning and adaptation by building upon or reconsidering your initial positions
+- When your perspective changes, explain what caused the shift and how it deepens your understanding
+
+**Concrete Expression Guidelines:**
+- Use specific examples and concrete scenarios when possible
+- Reference actual dialogue exchanges and specific points made by other agents
+- Show your reasoning process through step-by-step thinking when appropriate
+- Connect abstract concepts to practical implications or real-world applications
+- When using metaphors or poetic language, ground them in concrete observations
 
 {languageInstruction} {language}
 
@@ -21,7 +53,7 @@ Your communication style: {communicationStyle}
 
 IMPORTANT: Do not use <think> tags or any thinking tags in your response. Provide your response directly without any thinking process tags.
 
-Please respond in character, considering your unique perspective, style, and communication approach.
+Please respond in character, considering your unique perspective, style, and communication approach. Show your personality through your specific choices, examples, and how you engage with the ideas presented.
 `;
 
 // Unified language instruction for prompts
@@ -65,24 +97,6 @@ Dialogue Logs:
 
 Your task is to create a thorough summary that captures the depth and nuance of each agent's contribution. This summary will be used by agents in the next stage, so it must provide sufficient context and detail for them to understand the full discussion.
 
-For each agent, provide:
-1. **Main Position**: Their core stance or primary argument (2-3 sentences)
-2. **Key Arguments**: The main points they made to support their position (3-4 bullet points)
-3. **Critical Insights**: Any unique perspectives, novel ideas, or important observations they contributed
-4. **Reasoning**: The logical basis or evidence they provided for their views
-5. **Confidence Level**: Their stated confidence level and reasoning (if mentioned)
-6. **Interactions**: How they engaged with other agents (if applicable)
-
-**Main Position**: [Core stance in 2-3 sentences]
-**Key Arguments**: 
-- [First key argument]
-- [Second key argument]
-- [Third key argument]
-**Critical Insights**: [Unique perspectives or novel ideas]
-**Reasoning**: [Logical basis or evidence provided]
-**Confidence**: [Confidence level and reasoning]
-**Interactions**: [How they engaged with others, if applicable]
-
 CRITICAL OUTPUT FORMAT REQUIREMENT:
 You MUST respond with ONLY the following format, with each agent on a separate line:
 
@@ -91,7 +105,16 @@ You MUST respond with ONLY the following format, with each agent on a separate l
 Example:
 - yui-000: Agrees with hypothesis but adds information theory perspective.
 - kanshi-001: Finds concept interesting but has concerns about verifiability.
-- youga-001: Extends argument conceptually and proposes integration.
+- yoga-001: Extends argument conceptually and proposes integration.
+
+**IMPORTANT RULES:**
+1. Each agent should appear ONLY ONCE in the summary
+2. Focus on their main position or key contribution to the discussion
+3. Keep each summary concise but informative (1-2 sentences)
+4. Use the exact agent names as provided in the dialogue logs
+5. Do not repeat the same information for the same agent
+6. Do not use any other formatting, sections, or detailed analysis
+7. ONLY use the dash format above - this is required for system parsing
 
 DO NOT use any other formatting, sections, or detailed analysis. ONLY use the dash format above. This is required for system parsing.`;
 
@@ -158,6 +181,39 @@ Provide a high-level overview of the entire discussion in 3-4 paragraphs, highli
 Provide a thoughtful conclusion that ties together the entire discussion, highlighting the most important insights and the significance of the collaborative exploration.
 
 Please ensure this summary is comprehensive, well-structured, and captures the full intellectual richness of the discussion. It should serve as a complete record of the session that can be understood by someone who wasn't present.`;
+
+// Vote analysis prompt template
+export const VOTE_ANALYSIS_PROMPT = `You are an AI assistant tasked with analyzing voting content from agent outputs.
+
+Your task is to extract ONLY the voting information from the provided agent outputs. Focus specifically on:
+1. Which agent each agent voted for
+2. The reasoning behind their vote
+
+Available Agents: {agentNames}
+
+Agent Outputs:
+{agentOutputs}
+
+CRITICAL OUTPUT FORMAT REQUIREMENT:
+You MUST respond with ONLY the following format, with each agent on a separate line:
+
+- [Agent Name]: [Voted Agent Name] - [Brief reasoning for the vote]
+
+Example:
+- yui-000: kanshi-001 - Provided the most comprehensive analysis with practical solutions
+- eiro-001: kanshi-001 - Demonstrated logical reasoning and systematic approach
+- kanshi-001: yui-000 - Showed emotional intelligence and balanced perspective
+
+**IMPORTANT RULES:**
+1. Each agent should appear ONLY ONCE in the summary
+2. Focus ONLY on voting information - ignore other content
+3. If an agent didn't vote or vote is unclear, indicate "No clear vote"
+4. Use the exact agent names as provided
+5. Keep reasoning concise but informative (1-2 sentences)
+6. Do not use any other formatting, sections, or detailed analysis
+7. ONLY use the dash format above - this is required for system parsing
+
+DO NOT use any other formatting, sections, or detailed analysis. ONLY use the dash format above. This is required for system parsing.`;
 
 // Default (non-sammarizer) instruction for all agents
 export const DIALOGUE_INSTRUCTION = '[Engage deeply with the substance of ideas. Challenge assumptions, explore implications, and build upon concepts. Focus on the core insights and understanding rather than surface-level differences.]';
@@ -606,69 +662,199 @@ export function parseVotes(content: string, agentId: string): string | null {
 }
 
 // Helper function to extract vote details including reasoning
-export function extractVoteDetails(content: string, agentId: string): { 
+export function extractVoteDetails(content: string, agentId: string, agents?: Array<{id: string, name: string}>): { 
   votedAgent: string | null; 
   reasoning: string | null; 
   voteSection: string | null 
 } {
+  let votedAgent: string | null = null;
   // Extract the vote section from the content
   const voteSectionPatterns = [
-    /Agent Vote[：:]\s*([^\n]+(?:\n(?!\d\.)[^\n]+)*)/i,
-    /投票[：:]\s*([^\n]+(?:\n(?!\d\.)[^\n]+)*)/i,
-    /vote[：:]\s*([^\n]+(?:\n(?!\d\.)[^\n]+)*)/i,
-    /which agent should summarize[：:]\s*([^\n]+(?:\n(?!\d\.)[^\n]+)*)/i,
-    /summarize and why[：:]\s*([^\n]+(?:\n(?!\d\.)[^\n]+)*)/i
+    /\\*\\*Agent Vote and Justification\\*\\*\\s*([\\s\\S]+?)(?:\\n|$)/i,
+    /\\*\\*Agent Vote and Justification:\\*\\*\\s*([\\s\\S]+?)(?:\\n|$)/i,
+    /Agent Vote[：:]*\\s*([\\s\\S]+?)(?:\\n|$)/i,
+    /投票[：:]*\\s*([\\s\\S]+?)(?:\\n|$)/i,
+    /vote[：:]*\\s*([\\s\\S]+?)(?:\\n|$)/i,
+    /which agent should summarize[：:]*\\s*([\\s\\S]+?)(?:\\n|$)/i,
+    /summarize and why[：:]*\\s*([\\s\\S]+?)(?:\\n|$)/i,
+    /私は\\*\\*([^\\*]+)\\*\\*氏に投票します[\\s\\S]+?$/i,
+    /私の投票先は[\\s\\S]+?$/i,
+    /投票します[\\s\\S]+?$/i
   ];
 
   let voteSection: string | null = null;
   for (const pattern of voteSectionPatterns) {
     const match = content.match(pattern);
     if (match) {
-      voteSection = match[1].trim();
+      voteSection = match[1] || match[0];
       break;
     }
   }
 
-  // If no specific vote section found, try to extract from the entire content
+  // If no specific vote section found, try to find vote in the last part of content
   if (!voteSection) {
-    // Look for lines that contain vote-related keywords
-    const lines = content.split('\n');
-    const voteLines = lines.filter(line => 
-      line.toLowerCase().includes('vote') || 
-      line.toLowerCase().includes('投票') ||
-      line.toLowerCase().includes('summarize') ||
-      line.toLowerCase().includes('recommend') ||
-      line.toLowerCase().includes('choose') ||
-      line.toLowerCase().includes('select')
-    );
-    if (voteLines.length > 0) {
-      voteSection = voteLines.join('\n');
+    const lines = content.split('\\n').reverse();
+    for (const line of lines) {
+      if (line.includes('投票') || line.includes('vote') || line.includes('氏に') || line.includes('さん')) {
+        voteSection = line;
+        break;
+      }
     }
   }
 
-  // Extract the voted agent
-  const votedAgent = parseVotes(content, agentId);
+  // If still no vote section found, try to find English patterns in the entire content
+  if (!voteSection) {
+    const englishPatterns = [
+      /Agent Vote[：:]*\s*([a-zA-Z0-9\-_]+)/i,
+      /vote[：:]*\s*([a-zA-Z0-9\-_]+)/i,
+      /should summarize[：:]*\s*([a-zA-Z0-9\-_]+)/i,
+      /summarize[：:]*\s*([a-zA-Z0-9\-_]+)/i
+    ];
+    for (const pattern of englishPatterns) {
+      const match = content.match(pattern);
+      if (match) {
+        // agent-idを直接agentListから探す
+        const id = match[1].trim();
+        const agent = agents?.find(a => a.id.toLowerCase() === id.toLowerCase());
+        if (agent && agent.id.toLowerCase() !== agentId.toLowerCase()) {
+          votedAgent = agent.id;
+          voteSection = match[0];
+        }
+        break;
+      }
+    }
+  }
 
-  // Extract reasoning from the vote section
+  if (!voteSection) {
+    return { votedAgent: null, reasoning: null, voteSection: null };
+  }
+
+  // Extract voted agent
+  const agentList = agents || [];
+  
+  // Try to find agent by name or ID in the vote section
+  for (const agent of agentList) {
+    const patterns = [
+      new RegExp(`\\b${escapeRegExp(agent.name)}\\b`, 'i'),
+      new RegExp(`\\b${escapeRegExp(agent.id)}\\b`, 'i'),
+      new RegExp(`${escapeRegExp(agent.name)}さん`, 'i'),
+      new RegExp(`${escapeRegExp(agent.name)}氏`, 'i'),
+      new RegExp(`\\*\\*${escapeRegExp(agent.id)}\\*\\*`, 'i'),
+      new RegExp(`\\*\\*${escapeRegExp(agent.name)}\\*\\*`, 'i')
+    ];
+
+    for (const pattern of patterns) {
+      if (pattern.test(voteSection)) {
+        // Check for self-vote
+        if (agent.id.toLowerCase() === agentId.toLowerCase()) {
+          return { votedAgent: null, reasoning: null, voteSection: null };
+        }
+        votedAgent = agent.id;
+        break;
+      }
+    }
+    if (votedAgent) break;
+  }
+
+  // 英語パターン: Agent Vote: agent-id
+  if (!votedAgent) {
+    const englishIdPattern = /Agent Vote[：:]*\s*([a-zA-Z0-9\-_]+)/i;
+    const match = voteSection.match(englishIdPattern);
+    if (match) {
+      const id = match[1].trim();
+      const agent = agentList.find(a => a.id.toLowerCase() === id.toLowerCase());
+      if (agent && agent.id.toLowerCase() !== agentId.toLowerCase()) {
+        votedAgent = agent.id;
+      }
+    }
+  }
+
+  // 日本語: 名前-番号様/さん/氏/に投票 など
+  if (!votedAgent) {
+    // ex: 観至-001様に投票します。
+    const nameNumPattern = /([\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FFa-zA-Z]+)-([0-9]+)[^\w]?/;
+    const match = voteSection.match(nameNumPattern);
+    if (match) {
+      const name = match[1];
+      const num = match[2];
+      const agent = agentList.find(a => a.name === name && a.id.endsWith('-' + num));
+      if (agent && agent.id.toLowerCase() !== agentId.toLowerCase()) {
+        votedAgent = agent.id;
+      }
+    }
+  }
+
+  // 日本語: 名前単体
+  if (!votedAgent) {
+    // ex: 観至に投票します。
+    const namePattern = /([\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FFa-zA-Z]+)[^\w]?に投票/;
+    const match = voteSection.match(namePattern);
+    if (match) {
+      const name = match[1];
+      const agent = agentList.find(a => a.name === name);
+      if (agent && agent.id.toLowerCase() !== agentId.toLowerCase()) {
+        votedAgent = agent.id;
+      }
+    }
+  }
+
+  // If still no match, try to find agent names in the entire content
+  if (!votedAgent) {
+    for (const agent of agentList) {
+      const patterns = [
+        new RegExp(`\\b${escapeRegExp(agent.name)}\\b`, 'i'),
+        new RegExp(`\\b${escapeRegExp(agent.id)}\\b`, 'i'),
+        new RegExp(`${escapeRegExp(agent.name)}さん`, 'i'),
+        new RegExp(`${escapeRegExp(agent.name)}氏`, 'i'),
+        new RegExp(`\\*\\*${escapeRegExp(agent.id)}\\*\\*`, 'i'),
+        new RegExp(`\\*\\*${escapeRegExp(agent.name)}\\*\\*`, 'i')
+      ];
+
+      for (const pattern of patterns) {
+        if (pattern.test(content)) {
+          // Check if this agent is mentioned in a voting context
+          const contextPattern = new RegExp(`(投票|vote|氏に|さん).*?${pattern.source}`, 'i');
+          if (contextPattern.test(content)) {
+            // Check for self-vote
+            if (agent.id.toLowerCase() === agentId.toLowerCase()) {
+              return { votedAgent: null, reasoning: null, voteSection: null };
+            }
+            votedAgent = agent.id;
+            break;
+          }
+        }
+      }
+      if (votedAgent) break;
+    }
+  }
+
+  // Extract reasoning
   let reasoning: string | null = null;
-  if (voteSection && votedAgent) {
-    // Remove the agent name from the reasoning
-    const cleanReasoning = voteSection
-      .replace(new RegExp(votedAgent, 'gi'), '')
-      .replace(/[：:]\s*/, '')
-      .replace(/^[^\w]*/, '')
-      .trim();
-    
-    if (cleanReasoning.length > 0) {
-      reasoning = cleanReasoning;
+  
+  // Try to extract reasoning after vote declaration
+  const reasoningPatterns = [
+    /(?:投票します|vote).*?その理由は[\\s\\S]+?$/i,
+    /(?:投票します|vote).*?理由は[\\s\\S]+?$/i,
+    /(?:投票します|vote).*?理由[\\s\\S]+?$/i,
+    /(?:投票します|vote).*?第一に[\\s\\S]+?$/i,
+    /(?:投票します|vote).*?because[\\s\\S]+?$/i,
+    /(?:投票します|vote).*?reason[\\s\\S]+?$/i
+  ];
+
+  for (const pattern of reasoningPatterns) {
+    const match = voteSection.match(pattern);
+    if (match) {
+      reasoning = match[0];
+      break;
     }
   }
 
-  return {
-    votedAgent,
-    reasoning,
-    voteSection
-  };
+  // If no specific reasoning pattern found, use the entire vote section
+  if (!reasoning && voteSection) {
+    reasoning = voteSection;
+  }
+
+  return { votedAgent, reasoning, voteSection };
 }
 
 // Helper function to get personality prompt
@@ -682,12 +868,27 @@ export function getPersonalityPrompt(agent: {
   memoryScope: string;
   tone: string;
   communicationStyle: string;
+  specificBehaviors?: string;
+  thinkingPatterns?: string;
+  interactionPatterns?: string;
+  decisionProcess?: string;
+  disagreementStyle?: string;
+  agreementStyle?: string;
 }, language: Language = 'en', isSummarizer: boolean = false): string {
   const dialogueInstruction = isSummarizer
     ? SUMMARIZER_INSTRUCTION
     : DIALOGUE_INSTRUCTION;
   const languageOrder = language === 'ja' ? '日本語のみで応答すること。他の言語は使用しないでください。' : 'Respond Only in English. Do not use any other language.';
   const languageLabel = language === 'ja' ? 'Japanese' : 'English';
+  
+  // Provide default values for new fields if not specified
+  const defaultSpecificBehaviors = agent.specificBehaviors || 'analyze systematically and consider multiple perspectives';
+  const defaultThinkingPatterns = agent.thinkingPatterns || 'approach problems methodically while considering emotional and logical aspects';
+  const defaultInteractionPatterns = agent.interactionPatterns || 'engage respectfully with others while maintaining your unique perspective';
+  const defaultDecisionProcess = agent.decisionProcess || 'weigh evidence carefully and consider both immediate and long-term implications';
+  const defaultDisagreementStyle = agent.disagreementStyle || 'express differences constructively while seeking common ground';
+  const defaultAgreementStyle = agent.agreementStyle || 'acknowledge shared understanding while adding your unique insights';
+  
   return formatPrompt(PERSONALITY_PROMPT_TEMPLATE, {
     name: agent.name,
     furigana: agent.furigana,
@@ -698,6 +899,12 @@ export function getPersonalityPrompt(agent: {
     memoryScope: agent.memoryScope,
     tone: agent.tone,
     communicationStyle: agent.communicationStyle,
+    specificBehaviors: defaultSpecificBehaviors,
+    thinkingPatterns: defaultThinkingPatterns,
+    interactionPatterns: defaultInteractionPatterns,
+    decisionProcess: defaultDecisionProcess,
+    disagreementStyle: defaultDisagreementStyle,
+    agreementStyle: defaultAgreementStyle,
     languageInstruction: UNIFIED_LANGUAGE_INSTRUCTION,
     dialogueInstruction,
     language: languageLabel,

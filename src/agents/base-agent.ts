@@ -1431,9 +1431,10 @@ export abstract class BaseAgent {
           questions
         });
       } else {
+        // エージェントへの言及がない場合は、より適切なデフォルト値を設定
         reflections.push({
           targetAgentId: agentId,
-          reaction: 'No specific engagement detected',
+          reaction: 'No direct engagement with this agent\'s perspective',
           agreement: false,
           questions: []
         });

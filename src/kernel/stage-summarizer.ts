@@ -8,7 +8,7 @@ import {
   Language
 } from '../types/index.js';
 import { AIExecutor, createAIExecutor } from './ai-executor.js';
-import { STAGE_SUMMARY_PROMPT, FINAL_SUMMARY_PROMPT, formatPrompt } from '../templates/prompts.js';
+import { STAGE_SUMMARY_PROMPT, FINAL_SUMMARY_PROMPT, VOTE_ANALYSIS_PROMPT, formatPrompt } from '../templates/prompts.js';
 import { InteractionLogger, SimplifiedInteractionLog } from './interaction-logger.js';
 
 export interface StageSummary {
@@ -20,6 +20,13 @@ export interface StageSummary {
   timestamp: Date;
   stageNumber: number;
   sequenceNumber?: number; // シーケンス番号
+}
+
+export interface VoteAnalysis {
+  agentId: string;
+  votedAgent: string | null;
+  reasoning: string | null;
+  timestamp: Date;
 }
 
 export interface StageSummarizerOptions {
@@ -205,6 +212,93 @@ export class StageSummarizer {
   }
 
   /**
+   * output-generationステージの投票内容を解析する
+   */
+  async analyzeVotes(
+    agentResponses: AgentResponse[],
+    agents: Agent[],
+    sessionId?: string,
+    language: Language = 'en'
+  ): Promise<VoteAnalysis[]> {
+    const startTime = Date.now();
+    
+    if (agentResponses.length === 0) {
+      return [];
+    }
+
+    // エージェント名マッピングを作成
+    const agentMap = new Map<string, string>();
+    agents.forEach(agent => {
+      agentMap.set(agent.id, agent.name);
+    });
+
+    // エージェント出力を整形
+    const agentOutputs = agentResponses.map(response => {
+      const agentName = agentMap.get(response.agentId) || response.agentId;
+      return `${agentName} (${response.agentId}):\n${response.content}`;
+    }).join('\n\n');
+
+    // 言語指定を反映
+    const useLanguage = language || this.options.language || 'en';
+    const prompt = formatPrompt(VOTE_ANALYSIS_PROMPT, {
+      agentNames: agents.map(a => `${a.name} (${a.id})`).join(', '),
+      agentOutputs
+    }) + (useLanguage === 'ja' ? '\n\n出力は必ず日本語で書いてください。' : '');
+
+    try {
+      const executor = await this.ensureAIExecutor();
+      const result = await executor.execute(prompt);
+      
+      if (!result.success) {
+        throw new Error(`AI execution failed: ${result.error}`);
+      }
+
+      // 投票解析結果をパース
+      const voteAnalysis = this.parseVoteAnalysis(result.content, agents);
+      
+      // ログ出力（成功）
+      if (sessionId) {
+        await this.logInteraction(
+          sessionId,
+          'output-generation' as DialogueStage,
+          `Vote analysis for ${agentResponses.length} agents`,
+          result.content,
+          Date.now() - startTime,
+          'success'
+        );
+      }
+
+      return voteAnalysis;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      
+      // ログ出力（エラー）
+      if (sessionId) {
+        await this.logInteraction(
+          sessionId,
+          'output-generation' as DialogueStage,
+          `Vote analysis for ${agentResponses.length} agents`,
+          `Error occurred during vote analysis`,
+          duration,
+          'error',
+          errorMessage
+        );
+      }
+
+      console.error(`[StageSummarizer] Error analyzing votes:`, error);
+      
+      // フォールバック: 空の投票解析を返す
+      return agentResponses.map(response => ({
+        agentId: response.agentId,
+        votedAgent: null,
+        reasoning: null,
+        timestamp: new Date()
+      }));
+    }
+  }
+
+  /**
    * 複数ステージのサマリーを連結して最終サマリーを生成
    */
   async generateFinalSummary(
@@ -328,6 +422,7 @@ export class StageSummarizer {
   private parseSummary(content: string, agents: Agent[]): { speaker: string; position: string }[] {
     const summary: { speaker: string; position: string }[] = [];
     const agentNames = agents.map(a => a.name);
+    const processedAgents = new Set<string>(); // 重複を防ぐためのセット
     
     // モックレスポンスの場合の処理
     if (content.includes('Mock response') || content.includes('Please configure your AI implementation')) {
@@ -368,8 +463,9 @@ export class StageSummarizer {
           name.toLowerCase().includes(speaker.toLowerCase())
         );
         
-        if (matchedAgent) {
+        if (matchedAgent && !processedAgents.has(matchedAgent)) {
           summary.push({ speaker: matchedAgent, position });
+          processedAgents.add(matchedAgent); // 重複を防ぐ
         }
       }
     }
@@ -381,6 +477,53 @@ export class StageSummarizer {
     }
     
     return summary;
+  }
+
+  private parseVoteAnalysis(content: string, agents: Agent[]): VoteAnalysis[] {
+    const lines = content.split('\n').filter(line => line.trim());
+    const voteAnalysis: VoteAnalysis[] = [];
+    const foundAgentIds = new Set<string>();
+    
+    // デバッグ用ログ
+    console.log(`[StageSummarizer] Parsing vote analysis content: ${content.substring(0, 200)}...`);
+    
+    for (const line of lines) {
+      console.log(`[StageSummarizer] Processing line: "${line}"`);
+      // 例: - 結心 (yui-000): 観至 (kanshi-001) - ...
+      const match = line.match(/^\-\s*[^(]+\(([^)]+)\):\s*[^(]+\(([^)]+)\)\s*-\s*(.+)$/);
+      if (match) {
+        const agentId = match[1]?.trim();
+        const votedAgentId = match[2]?.trim();
+        const reasoning = match[3]?.trim();
+        console.log(`[StageSummarizer] Matched: agentId=${agentId}, votedAgentId=${votedAgentId}, reasoning=${reasoning?.substring(0, 50)}...`);
+        if (agentId && votedAgentId) {
+          foundAgentIds.add(agentId);
+          voteAnalysis.push({
+            agentId,
+            votedAgent: votedAgentId,
+            reasoning,
+            timestamp: new Date()
+          });
+        }
+      } else {
+        console.log(`[StageSummarizer] No match for line: "${line}"`);
+      }
+    }
+    
+    console.log(`[StageSummarizer] Found votes: ${voteAnalysis.length}, Found agent IDs: ${Array.from(foundAgentIds)}`);
+    
+    // AI出力に含まれなかったエージェントもnullで返す
+    for (const agent of agents) {
+      if (!foundAgentIds.has(agent.id)) {
+        voteAnalysis.push({
+          agentId: agent.id,
+          votedAgent: null,
+          reasoning: null,
+          timestamp: new Date()
+        });
+      }
+    }
+    return voteAnalysis;
   }
 
   private generateIntelligentFallbackSummary(content: string, agents: Agent[]): { speaker: string; position: string }[] {

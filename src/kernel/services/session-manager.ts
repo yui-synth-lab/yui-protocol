@@ -158,6 +158,9 @@ export class SessionManager {
     
     session.sequenceNumber = (session.sequenceNumber || 1) + 1;
     session.currentStage = undefined; // 新しいシーケンスの最初のステージをリセット
+    session.complete = false;
+    session.status = 'active';
+    session.stageHistory = []; // 新しいシーケンス開始時に履歴をリセット
     
     // ユーザーメッセージをセッションに保存
     if (userPrompt) {
@@ -185,7 +188,6 @@ export class SessionManager {
     previousAgentConclusions: { [agentId: string]: string };
   } {
     const previousSequenceNumber = (session.sequenceNumber || 2) - 1;
-    
     // 前回シーケンスのユーザーメッセージを取得
     const previousUserMessage = session.messages.find(
       m => m.role === 'user' && m.sequenceNumber === previousSequenceNumber
@@ -194,22 +196,36 @@ export class SessionManager {
 
     // 前回シーケンスのエージェント結論を取得
     const previousAgentConclusions: { [agentId: string]: string } = {};
-    
-    // 前回シーケンスの最終ステージ（finalize）のエージェント応答を取得
-    const previousOutputMessages = session.messages.filter(
-      m => m.role === 'agent' && 
-           m.sequenceNumber === previousSequenceNumber && 
-           m.stage === 'finalize'
-    );
-
-    previousOutputMessages.forEach(message => {
-      if (message.agentId && message.content) {
-        // 結論部分を抽出（最初の200文字程度）
-        const conclusion = message.content.slice(0, 200);
-        previousAgentConclusions[message.agentId] = conclusion;
+    // 優先順位: finalize → output-generation → synthesis-attempt → 最後のagentメッセージ
+    const stagesPriority = ['finalize', 'output-generation', 'synthesis-attempt'];
+    for (const agent of session.agents) {
+      let conclusionMsg: Message | undefined = undefined;
+      for (const stage of stagesPriority) {
+        conclusionMsg = session.messages.find(
+          (m: Message) => m.role === 'agent' &&
+               m.sequenceNumber === previousSequenceNumber &&
+               m.stage === stage &&
+               m.agentId === agent.id
+        );
+        if (conclusionMsg) break;
       }
-    });
-
+      // fallback: そのシーケンスの最後のagentメッセージ
+      if (!conclusionMsg) {
+        const agentMsgs: Message[] = session.messages.filter(
+          (m: Message) => m.role === 'agent' &&
+               m.sequenceNumber === previousSequenceNumber &&
+               m.agentId === agent.id
+        );
+        if (agentMsgs.length > 0) {
+          // timestamp降順で一番新しいもの
+          agentMsgs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          conclusionMsg = agentMsgs[0];
+        }
+      }
+      if (conclusionMsg && typeof conclusionMsg.content === 'string') {
+        previousAgentConclusions[agent.id] = conclusionMsg.content.slice(0, 200);
+      }
+    }
     return {
       previousUserInput,
       previousAgentConclusions

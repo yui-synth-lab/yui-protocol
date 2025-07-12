@@ -20,6 +20,13 @@ export interface Agent {
   reasoning?: string;
   assumptions?: string[];
   approach?: string;
+  // Enhanced personality fields for more concrete expression
+  specificBehaviors?: string;
+  thinkingPatterns?: string;
+  interactionPatterns?: string;
+  decisionProcess?: string;
+  disagreementStyle?: string;
+  agreementStyle?: string;
 }
 
 export interface Message {
@@ -255,17 +262,6 @@ export interface StageSummarizerOptions {
   language?: Language;
   maxSummaryLength?: number;
   includeConfidence?: boolean;
-}
-
-export interface DelayOptions {
-  // エージェント間の応答間隔
-  agentResponseDelayMS?: number;
-  // ステージサマリー生成前の待機時間
-  stageSummarizerDelayMS?: number;
-  // 最終サマリー生成前の待機時間
-  finalSummaryDelayMS?: number;
-  // デフォルト値
-  defaultDelayMS?: number;
 }
 
 export type ProgressUpdate = { message?: Message; session?: Session };

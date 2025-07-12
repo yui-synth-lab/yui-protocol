@@ -608,7 +608,7 @@ describe('BaseAgent', () => {
       
       expect(reflections).toHaveLength(1);
       expect(reflections[0].targetAgentId).toBe('eiro-001');
-      expect(reflections[0].reaction).toBe('No specific engagement detected');
+      expect(reflections[0].reaction).toBe('No direct engagement with this agent\'s perspective');
       expect(reflections[0].agreement).toBe(false);
       expect(reflections[0].questions).toEqual([]);
     });
@@ -753,7 +753,7 @@ describe('BaseAgent (overrides)', () => {
     const content = 'これは誰にも言及していません。';
     const result = agent['parseReflectionsFromContent'](content, otherThoughts, agents);
     expect(result[0].agreement).toBe(false);
-    expect(result[0].reaction).toBe('No specific engagement detected');
+    expect(result[0].reaction).toBe('No direct engagement with this agent\'s perspective');
   });
 
   it('parseReflectionsFromContent should handle mixed agreement and disagreement', () => {

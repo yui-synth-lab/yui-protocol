@@ -43,13 +43,6 @@ const sharedInteractionLogger = new InteractionLogger();
 // Initialize stage summarizer options
 const stageSummarizerOptions = {};
 
-// Initialize delay options - 統一的なdelay設定
-const delayOptions = {
-  agentResponseDelayMS: 120000,      // エージェント間の応答間隔: 120秒
-  stageSummarizerDelayMS: 120000,    // ステージサマリー生成前の待機時間: 120秒
-  finalSummaryDelayMS: 120000,       // 最終サマリー生成前の待機時間: 120秒
-  defaultDelayMS: 120000             // デフォルト値: 120秒
-};
 
 // Initialize realtime router with shared session storage, output storage, interaction logger, stage summarizer options, and delay options
 const realtimeRouter = new YuiProtocolRouter(
@@ -57,7 +50,7 @@ const realtimeRouter = new YuiProtocolRouter(
   sharedOutputStorage,
   sharedInteractionLogger,
   stageSummarizerOptions,
-  delayOptions
+  120000
 );
 
 // WebSocket connection management
@@ -124,18 +117,33 @@ async function startSessionExecution(sessionId: string, userPrompt: string) {
   console.log(`[SessionExecutor] Starting execution for session ${sessionId} with prompt: ${userPrompt.substring(0, 100)}...`);
   
   try {
-    const session = await realtimeRouter.getSession(sessionId);
+    let session = await realtimeRouter.getSession(sessionId);
     if (!session) {
       throw new Error(`Session ${sessionId} not found`);
     }
 
     // Check if all stages are completed
-    const completedStages = session.stageHistory?.filter(h => h.endTime) || [];
-    const isAllStagesCompleted = completedStages.length >= 8; // 5 main + 3 summary stages
+    let completedStages = session.stageHistory?.filter(h => h.endTime) || [];
+    let isAllStagesCompleted = completedStages.length >= 8; // 5 main + 3 summary stages
 
     if (isAllStagesCompleted) {
       console.log(`[SessionExecutor] All stages completed, starting new sequence`);
       await realtimeRouter.startNewSequence(sessionId, userPrompt);
+      // 新しいシーケンスの状態を取得し直す
+      session = await realtimeRouter.getSession(sessionId);
+      if (!session) {
+        console.error(`Session ${sessionId} not found after starting new sequence`);
+        return;
+      }
+      // 最新のユーザーメッセージを取得し、userPromptを上書き
+      const latestUserMessage = session.messages
+        .filter(m => m.role === 'user' && m.sequenceNumber === session!.sequenceNumber)
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
+      if (latestUserMessage && latestUserMessage.content) {
+        userPrompt = latestUserMessage.content;
+      }
+      completedStages = session.stageHistory?.filter(h => h.endTime) || [];
+      isAllStagesCompleted = completedStages.length >= 8;
     }
 
     // Define all stages including summary stages
@@ -156,11 +164,9 @@ async function startSessionExecution(sessionId: string, userPrompt: string) {
     const remainingStages = allStages.slice(currentProgress);
 
     console.log(`[SessionExecutor] Current progress: ${currentProgress}/${allStages.length}, remaining stages: ${remainingStages.join(', ')}`);
-
-    // Execute remaining stages
+    console.log(`[SessionExecutor] Remaining stages:`, remainingStages);
     for (const stage of remainingStages) {
-      console.log(`[SessionExecutor] Executing stage: ${stage}`);
-      
+      console.log(`[SessionExecutor] About to execute stage: ${stage} (userPrompt: ${userPrompt})`);
       // Notify clients about stage start
       io.to(sessionId).emit('stage-start', { 
         sessionId, 
@@ -169,7 +175,8 @@ async function startSessionExecution(sessionId: string, userPrompt: string) {
       });
 
       try {
-        const result = await executeStageWithWebSocket(sessionId, userPrompt, stage as import('../types/index.js').DialogueStage, session.language || 'en');
+        console.log(`[SessionExecutor] Calling executeStageWithWebSocket for stage: ${stage}`);
+        const result = await executeStageWithWebSocket(sessionId, userPrompt, stage as import('../types/index.js').DialogueStage, session!.language || 'en');
         console.log(`[SessionExecutor] Stage ${stage} completed successfully`);
         
         // Notify clients about stage completion

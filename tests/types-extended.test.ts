@@ -601,32 +601,7 @@ describe('Type Definitions', () => {
       expect(options.includeConfidence).toBeUndefined();
     });
   });
-
-  describe('DelayOptions', () => {
-    it('should have correct structure', () => {
-      const options: DelayOptions = {
-        agentResponseDelayMS: 15000,
-        stageSummarizerDelayMS: 45000,
-        finalSummaryDelayMS: 90000,
-        defaultDelayMS: 15000
-      };
-
-      expect(options.agentResponseDelayMS).toBe(15000);
-      expect(options.stageSummarizerDelayMS).toBe(45000);
-      expect(options.finalSummaryDelayMS).toBe(90000);
-      expect(options.defaultDelayMS).toBe(15000);
-    });
-
-    it('should allow optional properties', () => {
-      const options: DelayOptions = {};
-
-      expect(options.agentResponseDelayMS).toBeUndefined();
-      expect(options.stageSummarizerDelayMS).toBeUndefined();
-      expect(options.finalSummaryDelayMS).toBeUndefined();
-      expect(options.defaultDelayMS).toBeUndefined();
-    });
-  });
-
+  
   describe('ProgressCallback', () => {
     it('should be a function type', () => {
       const callback: ProgressCallback = (update: { message?: Message; session?: Session }) => {

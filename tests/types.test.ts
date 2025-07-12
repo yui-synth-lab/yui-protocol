@@ -44,6 +44,57 @@ describe('Type Definitions', () => {
       expect(agent.communicationStyle).toBe('formal');
     });
 
+    it('should support enhanced personality fields', () => {
+      const agent: Agent = {
+        id: 'test-agent',
+        name: 'Test Agent',
+        furigana: 'テストエージェント',
+        style: 'logical',
+        priority: 'precision',
+        memoryScope: 'session',
+        personality: 'Test personality',
+        preferences: ['test'],
+        tone: 'professional',
+        communicationStyle: 'formal',
+        specificBehaviors: 'Custom behavior pattern',
+        thinkingPatterns: 'Custom thinking approach',
+        interactionPatterns: 'Custom interaction style',
+        decisionProcess: 'Custom decision method',
+        disagreementStyle: 'Custom disagreement approach',
+        agreementStyle: 'Custom agreement method'
+      };
+
+      expect(agent.specificBehaviors).toBe('Custom behavior pattern');
+      expect(agent.thinkingPatterns).toBe('Custom thinking approach');
+      expect(agent.interactionPatterns).toBe('Custom interaction style');
+      expect(agent.decisionProcess).toBe('Custom decision method');
+      expect(agent.disagreementStyle).toBe('Custom disagreement approach');
+      expect(agent.agreementStyle).toBe('Custom agreement method');
+    });
+
+    it('should make enhanced personality fields optional', () => {
+      const agent: Agent = {
+        id: 'test-agent',
+        name: 'Test Agent',
+        furigana: 'テストエージェント',
+        style: 'logical',
+        priority: 'precision',
+        memoryScope: 'session',
+        personality: 'Test personality',
+        preferences: ['test'],
+        tone: 'professional',
+        communicationStyle: 'formal'
+        // Enhanced fields are optional and can be omitted
+      };
+
+      expect(agent.specificBehaviors).toBeUndefined();
+      expect(agent.thinkingPatterns).toBeUndefined();
+      expect(agent.interactionPatterns).toBeUndefined();
+      expect(agent.decisionProcess).toBeUndefined();
+      expect(agent.disagreementStyle).toBeUndefined();
+      expect(agent.agreementStyle).toBeUndefined();
+    });
+
     it('should accept valid style values', () => {
       const validStyles = ['logical', 'critical', 'intuitive', 'meta', 'emotive', 'analytical'] as const;
       validStyles.forEach(style => {
@@ -145,7 +196,10 @@ describe('Type Definitions', () => {
           reasoning: 'Test reasoning',
           confidence: 0.8,
           references: ['ref1', 'ref2'],
-          stageData: { test: 'data' }
+          stageData: { 
+            agentId: 'test-agent',
+            content: 'Test stage data content'
+          }
         }
       };
 
@@ -153,7 +207,10 @@ describe('Type Definitions', () => {
       expect(message.metadata?.reasoning).toBe('Test reasoning');
       expect(message.metadata?.confidence).toBe(0.8);
       expect(message.metadata?.references).toEqual(['ref1', 'ref2']);
-      expect(message.metadata?.stageData).toEqual({ test: 'data' });
+      expect(message.metadata?.stageData).toEqual({ 
+        agentId: 'test-agent',
+        content: 'Test stage data content'
+      });
     });
   });
 
@@ -167,7 +224,8 @@ describe('Type Definitions', () => {
         createdAt: new Date('2023-01-01T00:00:00.000Z'),
         updatedAt: new Date('2023-01-01T00:00:00.000Z'),
         status: 'active',
-        stageHistory: []
+        stageHistory: [],
+        language: 'en'
       };
 
       expect(session.id).toBe('test-session');
@@ -178,6 +236,7 @@ describe('Type Definitions', () => {
       expect(session.updatedAt).toEqual(new Date('2023-01-01T00:00:00.000Z'));
       expect(session.status).toBe('active');
       expect(session.stageHistory).toEqual([]);
+      expect(session.language).toBe('en');
     });
 
     it('should accept valid status values', () => {
@@ -191,7 +250,8 @@ describe('Type Definitions', () => {
           createdAt: new Date('2023-01-01T00:00:00.000Z'),
           updatedAt: new Date('2023-01-01T00:00:00.000Z'),
           status,
-          stageHistory: []
+          stageHistory: [],
+          language: 'en'
         };
         expect(session.status).toBe(status);
       });
@@ -226,7 +286,10 @@ describe('Type Definitions', () => {
         confidence: 0.8,
         references: ['ref1', 'ref2'],
         stage: 'individual-thought',
-        stageData: { test: 'data' }
+        stageData: { 
+          agentId: 'test-agent',
+          content: 'Test stage data content'
+        }
       };
 
       expect(response.agentId).toBe('test-agent');
@@ -235,7 +298,10 @@ describe('Type Definitions', () => {
       expect(response.confidence).toBe(0.8);
       expect(response.references).toEqual(['ref1', 'ref2']);
       expect(response.stage).toBe('individual-thought');
-      expect(response.stageData).toEqual({ test: 'data' });
+      expect(response.stageData).toEqual({ 
+        agentId: 'test-agent',
+        content: 'Test stage data content'
+      });
     });
   });
 

@@ -154,15 +154,32 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
       role: 'user'
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    // 新しいシーケンス開始時は仮想的にメッセージを追加しない
+    if (session.status !== 'completed') {
+      setMessages(prev => [...prev, userMessage]);
+    }
 
     try {
+      // 新しいシーケンスが必要な場合はAPI経由で開始
+      if (session.status === 'completed') {
+        const response = await fetch(`/api/sessions/${session.id}/start-new-sequence`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userPrompt: promptToSend })
+        });
+        if (response.ok) {
+          const data = await response.json();
+          // セッション情報をリロード
+          await reloadSessionData();
+        } else {
+          throw new Error('Failed to start new sequence');
+        }
+      }
       // Start session execution via WebSocket
       socket.emit('start-session-execution', {
         sessionId: session.id,
         userPrompt: promptToSend
       });
-
       console.log(`[UI] Started session execution for session: ${session.id}`);
     } catch (error) {
       console.error('Error starting session execution:', error);
@@ -174,7 +191,6 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
 
   const handleSendPrompt = async (prompt: string) => {
     if (!prompt.trim() || isProcessing || !socket || !isConnected) return;
-    
     setUserPrompt('');
     setIsProcessing(true);
     setShouldAutoScroll(true);
@@ -187,15 +203,28 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
       role: 'user'
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    if (session.status !== 'completed') {
+      setMessages(prev => [...prev, userMessage]);
+    }
 
     try {
-      // Start session execution via WebSocket
+      if (session.status === 'completed') {
+        const response = await fetch(`/api/sessions/${session.id}/start-new-sequence`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userPrompt: prompt })
+        });
+        if (response.ok) {
+          const data = await response.json();
+          await reloadSessionData();
+        } else {
+          throw new Error('Failed to start new sequence');
+        }
+      }
       socket.emit('start-session-execution', {
         sessionId: session.id,
         userPrompt: prompt
       });
-
       console.log(`[UI] Started session execution for session: ${session.id}`);
     } catch (error) {
       console.error('Error starting session execution:', error);

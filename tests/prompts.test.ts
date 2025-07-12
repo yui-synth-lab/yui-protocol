@@ -1,64 +1,75 @@
 import { describe, it, expect } from 'vitest';
-import {
-  getPersonalityPrompt,
-  getStagePrompt,
+import { 
+  PERSONALITY_PROMPT_TEMPLATE, 
+  getPersonalityPrompt, 
   formatPrompt,
-  PERSONALITY_PROMPT_TEMPLATE,
-  UNIFIED_LANGUAGE_INSTRUCTION,
-  STAGE_PROMPTS
+  Language 
 } from '../src/templates/prompts.js';
-import { DialogueStage } from '../src/types/index.js';
 
 describe('Prompt Templates', () => {
   describe('PERSONALITY_PROMPT_TEMPLATE', () => {
-    it('should contain placeholders for agent properties', () => {
+    it('should include all required fields', () => {
       expect(PERSONALITY_PROMPT_TEMPLATE).toContain('{name}');
+      expect(PERSONALITY_PROMPT_TEMPLATE).toContain('{furigana}');
       expect(PERSONALITY_PROMPT_TEMPLATE).toContain('{style}');
       expect(PERSONALITY_PROMPT_TEMPLATE).toContain('{priority}');
       expect(PERSONALITY_PROMPT_TEMPLATE).toContain('{personality}');
       expect(PERSONALITY_PROMPT_TEMPLATE).toContain('{preferences}');
       expect(PERSONALITY_PROMPT_TEMPLATE).toContain('{memoryScope}');
-      expect(PERSONALITY_PROMPT_TEMPLATE).toContain('{languageInstruction}');
-    });
-  });
-
-  describe('UNIFIED_LANGUAGE_INSTRUCTION', () => {
-    it('should contain language instruction', () => {
-      expect(UNIFIED_LANGUAGE_INSTRUCTION).toContain('respond in the specified language');
-    });
-  });
-
-  describe('STAGE_PROMPTS', () => {
-    it('should contain all dialogue stages', () => {
-      const stages: DialogueStage[] = [
-        'individual-thought',
-        'mutual-reflection',
-        'conflict-resolution',
-        'synthesis-attempt',
-        'output-generation'
-      ];
-      
-      stages.forEach(stage => {
-        expect(STAGE_PROMPTS[stage]).toBeDefined();
-        expect(typeof STAGE_PROMPTS[stage]).toBe('string');
-      });
+      expect(PERSONALITY_PROMPT_TEMPLATE).toContain('{tone}');
+      expect(PERSONALITY_PROMPT_TEMPLATE).toContain('{communicationStyle}');
     });
 
-    it('should contain English stage 1 prompt', () => {
-      const prompt = STAGE_PROMPTS['individual-thought'];
-      expect(prompt).toContain('STAGE 1 - INDIVIDUAL THOUGHT');
-      expect(prompt).toContain('Think independently');
+    it('should include new enhanced personality fields', () => {
+      expect(PERSONALITY_PROMPT_TEMPLATE).toContain('{specificBehaviors}');
+      expect(PERSONALITY_PROMPT_TEMPLATE).toContain('{thinkingPatterns}');
+      expect(PERSONALITY_PROMPT_TEMPLATE).toContain('{interactionPatterns}');
+      expect(PERSONALITY_PROMPT_TEMPLATE).toContain('{decisionProcess}');
+      expect(PERSONALITY_PROMPT_TEMPLATE).toContain('{disagreementStyle}');
+      expect(PERSONALITY_PROMPT_TEMPLATE).toContain('{agreementStyle}');
     });
 
-    it('should contain stage 2 prompt', () => {
-      const prompt = STAGE_PROMPTS['mutual-reflection'];
-      expect(prompt).toContain('STAGE 2 - MUTUAL REFLECTION');
-      expect(prompt).toContain("Engage directly and critically with the substance of other agents' thoughts about the QUERY");
+    it('should include growth and evolution guidelines', () => {
+      expect(PERSONALITY_PROMPT_TEMPLATE).toContain('Growth and Evolution');
+      expect(PERSONALITY_PROMPT_TEMPLATE).toContain('Show how your thinking evolves through dialogue');
+      expect(PERSONALITY_PROMPT_TEMPLATE).toContain('Demonstrate learning and adaptation');
+    });
+
+    it('should include concrete expression guidelines', () => {
+      expect(PERSONALITY_PROMPT_TEMPLATE).toContain('Concrete Expression Guidelines');
+      expect(PERSONALITY_PROMPT_TEMPLATE).toContain('Use specific examples and concrete scenarios');
+      expect(PERSONALITY_PROMPT_TEMPLATE).toContain('Reference actual dialogue exchanges');
     });
   });
 
   describe('getPersonalityPrompt', () => {
-    it('should generate English personality prompt', () => {
+    it('should generate prompt with all required fields', () => {
+      const agent = {
+        name: 'Test Agent',
+        furigana: 'テストエージェント',
+        style: 'logical',
+        priority: 'precision',
+        personality: 'Test personality',
+        preferences: ['test1', 'test2'],
+        memoryScope: 'session',
+        tone: 'formal',
+        communicationStyle: 'direct'
+      };
+
+      const result = getPersonalityPrompt(agent);
+      
+      expect(result).toContain('Test Agent');
+      expect(result).toContain('テストエージェント');
+      expect(result).toContain('logical');
+      expect(result).toContain('precision');
+      expect(result).toContain('Test personality');
+      expect(result).toContain('test1, test2');
+      expect(result).toContain('session');
+      expect(result).toContain('formal');
+      expect(result).toContain('direct');
+    });
+
+    it('should use default values for optional enhanced fields when not provided', () => {
       const agent = {
         name: 'Test Agent',
         furigana: 'テストエージェント',
@@ -67,44 +78,22 @@ describe('Prompt Templates', () => {
         personality: 'Test personality',
         preferences: ['test'],
         memoryScope: 'session',
-        tone: 'professional',
-        communicationStyle: 'formal'
+        tone: 'formal',
+        communicationStyle: 'direct'
       };
 
-      const prompt = getPersonalityPrompt(agent, 'en');
-      expect(prompt).toContain('Test Agent');
-      expect(prompt).toContain('logical');
-      expect(prompt).toContain('precision');
-      expect(prompt).toContain('Test personality');
-      expect(prompt).toContain('test');
-      expect(prompt).toContain('session');
-      expect(prompt).toContain('en');
+      const result = getPersonalityPrompt(agent);
+      
+      // Check that default values are used
+      expect(result).toContain('analyze systematically and consider multiple perspectives');
+      expect(result).toContain('approach problems methodically while considering emotional and logical aspects');
+      expect(result).toContain('engage respectfully with others while maintaining your unique perspective');
+      expect(result).toContain('weigh evidence carefully and consider both immediate and long-term implications');
+      expect(result).toContain('express differences constructively while seeking common ground');
+      expect(result).toContain('acknowledge shared understanding while adding your unique insights');
     });
 
-    it('should generate Japanese personality prompt', () => {
-      const agent = {
-        name: 'テストエージェント',
-        furigana: 'テストエージェント',
-        style: '論理的',
-        priority: '精密性',
-        personality: 'テスト性格',
-        preferences: ['テスト'],
-        memoryScope: 'セッション',
-        tone: 'プロフェッショナル',
-        communicationStyle: 'フォーマル'
-      };
-
-      const prompt = getPersonalityPrompt(agent, 'ja');
-      expect(prompt).toContain('テストエージェント');
-      expect(prompt).toContain('論理的');
-      expect(prompt).toContain('精密性');
-      expect(prompt).toContain('テスト性格');
-      expect(prompt).toContain('テスト');
-      expect(prompt).toContain('セッション');
-      expect(prompt).toContain('Japanese');
-    });
-
-    it('should default to English for unknown language', () => {
+    it('should use provided values for enhanced fields when available', () => {
       const agent = {
         name: 'Test Agent',
         furigana: 'テストエージェント',
@@ -113,86 +102,116 @@ describe('Prompt Templates', () => {
         personality: 'Test personality',
         preferences: ['test'],
         memoryScope: 'session',
-        tone: 'professional',
-        communicationStyle: 'formal'
+        tone: 'formal',
+        communicationStyle: 'direct',
+        specificBehaviors: 'Custom behavior pattern',
+        thinkingPatterns: 'Custom thinking approach',
+        interactionPatterns: 'Custom interaction style',
+        decisionProcess: 'Custom decision method',
+        disagreementStyle: 'Custom disagreement approach',
+        agreementStyle: 'Custom agreement method'
       };
 
-      const prompt = getPersonalityPrompt(agent, 'fr' as any);
-      expect(prompt).toContain('English');
+      const result = getPersonalityPrompt(agent);
+      
+      // Check that custom values are used instead of defaults
+      expect(result).toContain('Custom behavior pattern');
+      expect(result).toContain('Custom thinking approach');
+      expect(result).toContain('Custom interaction style');
+      expect(result).toContain('Custom decision method');
+      expect(result).toContain('Custom disagreement approach');
+      expect(result).toContain('Custom agreement method');
+      
+      // Check that default values are NOT used
+      expect(result).not.toContain('analyze systematically and consider multiple perspectives');
+      expect(result).not.toContain('approach problems methodically while considering emotional and logical aspects');
     });
-  });
 
-  describe('getStagePrompt', () => {
-    it('should generate English stage prompt', () => {
-      const personalityPrompt = 'You are Test Agent';
-      const variables = {
-        query: 'Test query',
-        context: 'Test context'
+    it('should handle Japanese language correctly', () => {
+      const agent = {
+        name: 'Test Agent',
+        furigana: 'テストエージェント',
+        style: 'logical',
+        priority: 'precision',
+        personality: 'Test personality',
+        preferences: ['test'],
+        memoryScope: 'session',
+        tone: 'formal',
+        communicationStyle: 'direct'
       };
 
-      const prompt = getStagePrompt('individual-thought', personalityPrompt, variables, 'en');
-      expect(prompt).toContain('You are Test Agent');
-      expect(prompt).toContain('STAGE 1 - INDIVIDUAL THOUGHT');
-      expect(prompt).toContain('Test query');
+      const result = getPersonalityPrompt(agent, 'ja');
+      
+      expect(result).toContain('Respond ONLY in Japanese');
+      expect(result).toContain('Japanese');
     });
 
-    it('should generate stage prompt', () => {
-      const personalityPrompt = 'あなたはテストエージェントです';
-      const variables = {
-        query: 'テストクエリ',
-        context: 'テストコンテキスト'
+    it('should handle English language correctly', () => {
+      const agent = {
+        name: 'Test Agent',
+        furigana: 'テストエージェント',
+        style: 'logical',
+        priority: 'precision',
+        personality: 'Test personality',
+        preferences: ['test'],
+        memoryScope: 'session',
+        tone: 'formal',
+        communicationStyle: 'direct'
       };
 
-      const prompt = getStagePrompt('individual-thought', personalityPrompt, variables, 'ja');
-      expect(prompt).toContain('あなたはテストエージェントです');
-      expect(prompt).toContain('STAGE 1 - INDIVIDUAL THOUGHT');
-      expect(prompt).toContain('テストクエリ');
+      const result = getPersonalityPrompt(agent, 'en');
+      
+      expect(result).toContain('Respond ONLY in English');
+      expect(result).toContain('English');
     });
 
-    it('should handle all stages', () => {
-      const personalityPrompt = 'You are Test Agent';
-      const variables = { query: 'Test', context: 'Test' };
-      const stages: DialogueStage[] = [
-        'individual-thought',
-        'mutual-reflection',
-        'conflict-resolution',
-        'synthesis-attempt',
-        'output-generation'
-      ];
+    it('should handle summarizer mode correctly', () => {
+      const agent = {
+        name: 'Test Agent',
+        furigana: 'テストエージェント',
+        style: 'logical',
+        priority: 'precision',
+        personality: 'Test personality',
+        preferences: ['test'],
+        memoryScope: 'session',
+        tone: 'formal',
+        communicationStyle: 'direct'
+      };
 
-      stages.forEach(stage => {
-        const prompt = getStagePrompt(stage, personalityPrompt, variables, 'en');
-        expect(prompt).toContain('You are Test Agent');
-        expect(prompt).toContain('Test');
-      });
+      const result = getPersonalityPrompt(agent, 'en', true);
+      
+      // Should include summarizer-specific instruction
+      expect(result).toContain('Create a comprehensive and detailed summary');
+      expect(result).toContain('Thoroughly summarize the outputs');
     });
   });
 
   describe('formatPrompt', () => {
-    it('should format prompt with variables', () => {
-      const template = 'Hello {name}, you are {role}';
-      const variables = { name: 'Alice', role: 'developer' };
+    it('should replace all variables in template', () => {
+      const template = 'Hello {name}, you are {age} years old.';
+      const variables = { name: 'John', age: '25' };
+      
       const result = formatPrompt(template, variables);
-      expect(result).toBe('Hello Alice, you are developer');
+      
+      expect(result).toBe('Hello John, you are 25 years old.');
     });
 
-    it('should handle missing variables', () => {
-      const template = 'Hello {name}, you are {role}';
-      const variables = { name: 'Alice' };
+    it('should handle missing variables gracefully', () => {
+      const template = 'Hello {name}, you are {age} years old.';
+      const variables = { name: 'John' };
+      
       const result = formatPrompt(template, variables);
-      expect(result).toBe('Hello Alice, you are {role}');
+      
+      expect(result).toBe('Hello John, you are {age} years old.');
     });
 
-    it('should handle empty variables', () => {
-      const template = 'Hello {name}';
-      const result = formatPrompt(template, {});
-      expect(result).toBe('Hello {name}');
-    });
-
-    it('should handle template without variables', () => {
-      const template = 'Hello world';
-      const result = formatPrompt(template, { name: 'Alice' });
-      expect(result).toBe('Hello world');
+    it('should handle empty variables object', () => {
+      const template = 'Hello {name}, you are {age} years old.';
+      const variables = {};
+      
+      const result = formatPrompt(template, variables);
+      
+      expect(result).toBe('Hello {name}, you are {age} years old.');
     });
   });
 }); 
