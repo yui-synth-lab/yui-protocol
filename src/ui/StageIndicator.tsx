@@ -2,22 +2,18 @@ import React from 'react';
 import { DialogueStage, StageHistory } from '../types/index';
 
 interface StageIndicatorProps {
-  stageHistory: StageHistory[];
   currentStage?: DialogueStage | null;
   complete?: boolean;
-  sequenceNumber?: number;
 }
 
-const StageIndicator: React.FC<StageIndicatorProps> = ({ 
-  stageHistory, 
-  currentStage, 
+const StageIndicator: React.FC<StageIndicatorProps> = ({
+  currentStage,
   complete = false,
-  sequenceNumber = 1
 }) => {
   // Main stages for UI display (summary stages are hidden)
   const stages: DialogueStage[] = [
     'individual-thought',
-    'mutual-reflection', 
+    'mutual-reflection',
     'conflict-resolution',
     'synthesis-attempt',
     'output-generation',
@@ -39,26 +35,12 @@ const StageIndicator: React.FC<StageIndicatorProps> = ({
     return stageInfo[stage];
   };
 
-  // Filter stageHistory to only include current sequence
-  const currentSequenceStageHistory = stageHistory?.filter(h => 
-    h.sequenceNumber === sequenceNumber
-  ) || [];
 
-  // デバッグ用: 現在のシーケンスのstageHistoryを出力
-  console.log('DEBUG: currentSequenceStageHistory', currentSequenceStageHistory);
-
-  const isStageCompleted = (stage: DialogueStage) => {
-    return currentSequenceStageHistory.some(h => h.stage === stage && h.endTime);
-  };
-
-  const isCurrentStage = (stage: DialogueStage) => {
-    return currentStage === stage && !complete;
-  };
 
   const getStageStatus = (stage: DialogueStage) => {
-    if (complete && isStageCompleted(stage)) return 'completed';
-    if (isCurrentStage(stage)) return 'current';
-    if (isStageCompleted(stage)) return 'completed';
+    if (complete) return 'completed';
+    if (currentStage === stage) return 'current';
+    if (currentStage && stages.indexOf(stage) < stage.indexOf(currentStage)) return 'completed';
     return 'pending';
   };
 
@@ -94,20 +76,21 @@ const StageIndicator: React.FC<StageIndicatorProps> = ({
   };
 
   const getCompletedStagesCount = () => {
-    // main stagesごとに、最初の1件だけカウント
-    let count = 0;
-    for (const stage of stages) {
-          const found = currentSequenceStageHistory?.find(
-      h => h.stage === stage && h.endTime && !h.stage.includes('summary')
-    );
-      if (found) count++;
+    if (currentStage) {
+      return stages.indexOf(currentStage) + 1;
     }
-    return count;
+    else {
+      0;
+    }
   };
 
   const getTotalStagesCount = () => {
     // Always return the total number of main stages, not the stageHistory length
     return stages.length;
+  };
+
+  const isStageCompleted = (stage: DialogueStage) => {
+    return getStageStatus(stage) === 'completed';
   };
 
   // Always render the stage indicator, even if stageHistory is empty
@@ -121,7 +104,7 @@ const StageIndicator: React.FC<StageIndicatorProps> = ({
         const stageInfo = getStageInfo(stage);
         const status = getStageStatus(stage);
         const colorClasses = getColorClasses(status, stageInfo.color);
-        
+
         return (
           <div key={stage} className="flex items-center">
             <div className={`

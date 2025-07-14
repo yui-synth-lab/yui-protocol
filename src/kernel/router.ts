@@ -183,7 +183,7 @@ export class YuiProtocolRouter implements IRealtimeRouter {
       throw new Error(`Session ${sessionId} not found`);
     }
 
-    if (stage === 'individual-thought' && session.complete) {
+    if (stage === 'individual-thought' && session.status === 'completed') {
       session.sequenceNumber = (session.sequenceNumber || 0) + 1;
     }
     const stageStart = new Date();
@@ -205,11 +205,10 @@ export class YuiProtocolRouter implements IRealtimeRouter {
     // ステージ履歴の更新
     await this.updateSessionStageHistory(session, stage, responses, stageStart);
 
-    // ステージサマリーの生成（遅延実行）- finalizeステージは除外
-    if (stage !== 'finalize') {
-      const stageSummaryDelay = this.delay
-      console.log(`[Router] Setting up stage summary generation for ${stage} in session ${sessionId} with delay ${stageSummaryDelay}ms`);
-      await sleep(stageSummaryDelay);
+    // Generate stage summary (delayed execution) - skip for 'finalize' and 'output-generation' stages
+    if (stage !== 'finalize' && stage !== 'output-generation') {
+      console.log(`[Router] Setting up stage summary generation for ${stage} in session ${sessionId} with delay ${this.delay}ms`);
+      await sleep(this.delay);
 
       console.log(`[Router] Starting stage summary generation for ${stage} in session ${sessionId}`);
       try {
@@ -266,16 +265,20 @@ export class YuiProtocolRouter implements IRealtimeRouter {
 
     // output-generationステージが完了した場合、AIベースの投票解析を最初に実行
     if (stage === 'output-generation' && responses.length > 0) {
+      // ★ 修正: voteAnalysisをtry-catchの外で宣言
+      let voteAnalysis: any = undefined;
       try {
+        await sleep(this.delay);
+        console.log(`[Router] AI-based vote analysis delay: ${this.delay}ms`);
         console.log(`[Router] Starting AI-based vote analysis for ${responses.length} agents`);
-        const voteAnalysis = await this.stageSummarizer.analyzeVotes(
+        voteAnalysis = await this.stageSummarizer.analyzeVotes(
           responses,
           session.agents,
           sessionId,
           effectiveLanguage
         );
         // 投票解析結果をメッセージのメタデータに反映
-        for (const analysis of voteAnalysis) {
+        for (const analysis of voteAnalysis.voteAnalysis) {
           const message = session.messages.find(m => 
             m.agentId === analysis.agentId && 
             m.sequenceNumber === (session.sequenceNumber || 1) &&
@@ -290,36 +293,44 @@ export class YuiProtocolRouter implements IRealtimeRouter {
             console.log(`[Router] Could not find message for ${analysis.agentId} in output-generation stage`);
           }
         }
-        // セッションを保存
+        // システムメッセージとしてmessagesにも追加
+        const summaryMessage: Message = {
+          id: uuidv4(),
+          agentId: 'system',
+          content: `${stage} summary:\n${voteAnalysis.content}`,
+          timestamp: new Date(),
+          role: 'system',
+          stage: stage,
+          sequenceNumber: session.sequenceNumber || 1
+        };
+        session.messages.push(summaryMessage);
         await this.sessionManager.saveSession(session);
-        console.log(`[Router] AI-based vote analysis completed for ${voteAnalysis.length} agents`);
+        // UIに通知
+        if (onProgress) {
+          onProgress({ message: summaryMessage });
+        }
+        console.log(`[Router] AI-based vote analysis completed for ${voteAnalysis.voteAnalysis.length} agents`);
       } catch (error) {
         console.error(`[Router] Error in AI-based vote analysis:`, error);
         // エラーが発生しても処理を継続
+        voteAnalysis = { voteAnalysis: [] };
       }
 
       // --- ここから下はAI解析済みの投票情報で集計・summarizer選出・finalize ---
       const currentSequenceNumber = session.sequenceNumber || 1;
       console.log(`[Router] Processing voting results for final output generation (sequence ${currentSequenceNumber})`);
-      // session.messagesから現在のシーケンスのoutput-generationの投票を集計
-      const voteMessages = session.messages.filter(
-        m => (m.stage === 'output-generation' || !m.stage) && // stageフィールドが存在しない場合も含める
-             m.sequenceNumber === currentSequenceNumber && 
-             m.metadata?.voteFor
-      );
-      const votes = voteMessages.map(m => ({
-        agentId: m.agentId,
-        voteFor: m.metadata?.voteFor,
-        voteReasoning: m.metadata?.voteReasoning,
-      }));
-      console.log(`[Router] Votes collected from messages (${votes.length} votes):`, votes.map(v => `${v.agentId} → ${v.voteFor}`).join(', '));
-      // 最も多く投票されたエージェントを特定
-      const voteCounts: Record<string, number> = {};
-      votes.forEach(vote => {
-        if (vote.voteFor) {
-          voteCounts[vote.voteFor] = (voteCounts[vote.voteFor] || 0) + 1;
+      // voteAnalysis.voteAnalysis を直接使って集計
+      let voteCounts: Record<string, number> = {};
+      let votes: { agentId: string, voteFor: string | undefined, voteReasoning?: string }[] = [];
+      if (voteAnalysis && Array.isArray(voteAnalysis.voteAnalysis)) {
+        for (const analysis of voteAnalysis.voteAnalysis) {
+          if (analysis.votedAgent) {
+            voteCounts[analysis.votedAgent] = (voteCounts[analysis.votedAgent] || 0) + 1;
+            votes.push({ agentId: analysis.agentId, voteFor: analysis.votedAgent, voteReasoning: analysis.reasoning });
+          }
         }
-      });
+      }
+      console.log(`[Router] Votes collected from AI vote analysis (${votes.length} votes):`, votes.map(v => `${v.agentId} → ${v.voteFor}`).join(', '));
       let selectedAgentId = Object.entries(voteCounts)
         .sort(([, a], [, b]) => b - a)[0]?.[0];
       if (!selectedAgentId) {
@@ -343,6 +354,8 @@ export class YuiProtocolRouter implements IRealtimeRouter {
               }
             });
             // 最終出力を生成
+            await sleep(this.delay);
+            console.log(`[Router] Finalize delay: ${this.delay}ms`);
             const finalOutput = await agentInstance.stage5_1Finalize(votingResults, responses, session.messages);
             // 最終出力をメッセージとして追加
             const finalMessage: Message = {
@@ -360,8 +373,13 @@ export class YuiProtocolRouter implements IRealtimeRouter {
               }
             };
             session.messages.push(finalMessage);
+            session.status = 'completed';
+            session.currentStage = 'finalize';
             await this.sessionManager.saveSession(session);
             console.log(`[Router] Final output generated by ${selectedAgentId}`);
+            if (onProgress) {
+              onProgress({ message: finalMessage });
+            }
           }
         }
       }

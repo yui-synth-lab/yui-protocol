@@ -111,18 +111,12 @@ export class SessionStorage {
         console.error(`Error parsing session JSON for ${sessionId}:`, jsonError);
         return null;
       }
-      
-      // デバッグログ: 読み込み前の状態
-      console.log(`[SessionStorage] Loading session ${sessionId}:`);
-      console.log(`[SessionStorage] - Original sequenceNumber: ${session.sequenceNumber}`);
-      console.log(`[SessionStorage] - Original messages count: ${session.messages?.length || 0}`);
       if (session.messages) {
         const sequenceCounts: { [key: number]: number } = {};
         session.messages.forEach((msg: any) => {
           const seqNum = msg.sequenceNumber || 1;
           sequenceCounts[seqNum] = (sequenceCounts[seqNum] || 0) + 1;
         });
-        console.log(`[SessionStorage] - Original sequence counts:`, sequenceCounts);
       }
       
       // Convert date strings back to Date objects with validation
@@ -165,18 +159,12 @@ export class SessionStorage {
       if (session.status === undefined) {
         session.status = 'completed';
       }
-      
-      // デバッグログ: 読み込み後の状態
-      console.log(`[SessionStorage] After processing session ${sessionId}:`);
-      console.log(`[SessionStorage] - Final sequenceNumber: ${session.sequenceNumber}`);
-      console.log(`[SessionStorage] - Final messages count: ${session.messages?.length || 0}`);
       if (session.messages) {
         const finalSequenceCounts: { [key: number]: number } = {};
         session.messages.forEach((msg: any) => {
           const seqNum = msg.sequenceNumber || 1;
           finalSequenceCounts[seqNum] = (finalSequenceCounts[seqNum] || 0) + 1;
         });
-        console.log(`[SessionStorage] - Final sequence counts:`, finalSequenceCounts);
       }
       
       return session;

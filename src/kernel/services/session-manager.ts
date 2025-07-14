@@ -158,7 +158,6 @@ export class SessionManager {
     
     session.sequenceNumber = (session.sequenceNumber || 1) + 1;
     session.currentStage = undefined; // 新しいシーケンスの最初のステージをリセット
-    session.complete = false;
     session.status = 'active';
     session.stageHistory = []; // 新しいシーケンス開始時に履歴をリセット
     

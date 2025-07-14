@@ -1,8 +1,8 @@
 import { v4 as uuidv4 } from 'uuid';
-import { 
-  Session, 
-  Message, 
-  DialogueStage, 
+import {
+  Session,
+  Message,
+  DialogueStage,
   Agent,
   AgentResponse,
   Language
@@ -26,7 +26,12 @@ export interface VoteAnalysis {
   agentId: string;
   votedAgent: string | null;
   reasoning: string | null;
-  timestamp: Date;
+  timestamp: Date
+}
+
+export interface VoteAnalysisResult {
+  voteAnalysis: VoteAnalysis[];
+  content: string | null;
 }
 
 export interface StageSummarizerOptions {
@@ -60,7 +65,7 @@ export class StageSummarizer {
         model: this.options.model,
         provider: this.options.provider,
         temperature: 0.5, // ステージサマライザーは中程度のtemperatureを使用
-        customConfig: { 
+        customConfig: {
           maxTokens: this.options.maxTokens,
           language: this.options.language // 設定された言語を使用
         }
@@ -73,8 +78,8 @@ export class StageSummarizer {
    * 指定ステージの対話ログを要約する
    */
   async summarizeStage(
-    stage: DialogueStage, 
-    logs: Message[], 
+    stage: DialogueStage,
+    logs: Message[],
     agents: Agent[],
     sessionId?: string,
     language: Language = 'en'
@@ -82,7 +87,7 @@ export class StageSummarizer {
     const startTime = Date.now();
     const stageNumber = this.getStageNumber(stage);
     const stageName = this.getStageDisplayName(stage);
-    
+
     // finalizeステージの場合はサマリーを生成しない
     if (stage === 'finalize') {
       const summary = {
@@ -106,9 +111,9 @@ export class StageSummarizer {
 
       return summary;
     }
-    
+
     // ステージ内のAI発言のみを抽出
-    const stageMessages = logs.filter(msg => 
+    const stageMessages = logs.filter(msg =>
       msg.stage === stage && msg.role === 'agent'
     );
 
@@ -159,14 +164,14 @@ export class StageSummarizer {
     try {
       const executor = await this.ensureAIExecutor();
       const result = await executor.execute(prompt);
-      
+
       if (!result.success) {
         throw new Error(`AI execution failed: ${result.error}`);
       }
 
       // サマリーをパース
       const summary = this.parseSummary(result.content, agents);
-      
+
       const finalSummary = {
         stage,
         summary,
@@ -190,7 +195,7 @@ export class StageSummarizer {
     } catch (error) {
       const duration = Date.now() - startTime;
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      
+
       // ログ出力（エラー）
       if (sessionId) {
         await this.logInteraction(
@@ -205,7 +210,7 @@ export class StageSummarizer {
       }
 
       console.error(`[StageSummarizer] Error summarizing stage ${stage}:`, error);
-      
+
       // フォールバック: シンプルなサマリーを生成
       return this.generateFallbackSummary(stage, stageMessages, agents, stageNumber);
     }
@@ -219,11 +224,14 @@ export class StageSummarizer {
     agents: Agent[],
     sessionId?: string,
     language: Language = 'en'
-  ): Promise<VoteAnalysis[]> {
+  ): Promise<VoteAnalysisResult> {
     const startTime = Date.now();
-    
+
     if (agentResponses.length === 0) {
-      return [];
+      return {
+        voteAnalysis: [],
+        content: null
+      };
     }
 
     // エージェント名マッピングを作成
@@ -248,14 +256,14 @@ export class StageSummarizer {
     try {
       const executor = await this.ensureAIExecutor();
       const result = await executor.execute(prompt);
-      
+
       if (!result.success) {
         throw new Error(`AI execution failed: ${result.error}`);
       }
 
       // 投票解析結果をパース
       const voteAnalysis = this.parseVoteAnalysis(result.content, agents);
-      
+
       // ログ出力（成功）
       if (sessionId) {
         await this.logInteraction(
@@ -267,12 +275,15 @@ export class StageSummarizer {
           'success'
         );
       }
-
-      return voteAnalysis;
+      const voteAnalysisResult: VoteAnalysisResult = {
+        voteAnalysis,
+        content: result.content
+      };
+      return voteAnalysisResult;
     } catch (error) {
       const duration = Date.now() - startTime;
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      
+
       // ログ出力（エラー）
       if (sessionId) {
         await this.logInteraction(
@@ -287,14 +298,17 @@ export class StageSummarizer {
       }
 
       console.error(`[StageSummarizer] Error analyzing votes:`, error);
-      
+
       // フォールバック: 空の投票解析を返す
-      return agentResponses.map(response => ({
-        agentId: response.agentId,
-        votedAgent: null,
-        reasoning: null,
-        timestamp: new Date()
-      }));
+      return {
+        voteAnalysis: agentResponses.map(response => ({
+          agentId: response.agentId,
+          votedAgent: null,
+          reasoning: null,
+          timestamp: new Date()
+        })),
+        content: null
+      };
     }
   }
 
@@ -311,7 +325,7 @@ export class StageSummarizer {
 
     if (stageSummaries.length === 0) {
       const result = "No stage summaries available.";
-      
+
       // ログ出力（空のサマリー）
       if (sessionId) {
         await this.logInteraction(
@@ -349,7 +363,7 @@ export class StageSummarizer {
     try {
       const executor = await this.ensureAIExecutor();
       const result = await executor.execute(prompt);
-      
+
       if (!result.success) {
         throw new Error(`AI execution failed: ${result.error}`);
       }
@@ -370,7 +384,7 @@ export class StageSummarizer {
     } catch (error) {
       const duration = Date.now() - startTime;
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      
+
       // ログ出力（エラー）
       if (sessionId) {
         await this.logInteraction(
@@ -423,7 +437,7 @@ export class StageSummarizer {
     const summary: { speaker: string; position: string }[] = [];
     const agentNames = agents.map(a => a.name);
     const processedAgents = new Set<string>(); // 重複を防ぐためのセット
-    
+
     // モックレスポンスの場合の処理
     if (content.includes('Mock response') || content.includes('Please configure your AI implementation')) {
       // モックレスポンスの場合は、各エージェントに対してデフォルトのサマリーを生成
@@ -432,10 +446,10 @@ export class StageSummarizer {
         position: `モックレスポンス: ${agent.name}の視点から分析を行いました。`
       }));
     }
-    
+
     // 行ごとにパース
     const lines = content.split('\n').filter(line => line.trim());
-    
+
     for (const line of lines) {
       // より柔軟なパターンマッチング
       const patterns = [
@@ -444,38 +458,38 @@ export class StageSummarizer {
         /^[-•]\s*([^:]+)\s*-\s*(.+)$/, // - エージェント名 - 内容
         /^([^:]+)\s*-\s*(.+)$/       // エージェント名 - 内容（ダッシュなし）
       ];
-      
+
       let match: RegExpMatchArray | null = null;
       for (const pattern of patterns) {
         match = line.match(pattern);
         if (match) break;
       }
-      
+
       if (match) {
         const speaker = match[1].trim();
         const position = match[2].trim();
-        
+
         // エージェント名が存在するかチェック（より柔軟に）
-        const matchedAgent = agentNames.find(name => 
-          speaker.includes(name) || 
+        const matchedAgent = agentNames.find(name =>
+          speaker.includes(name) ||
           name.includes(speaker) ||
           speaker.toLowerCase().includes(name.toLowerCase()) ||
           name.toLowerCase().includes(speaker.toLowerCase())
         );
-        
+
         if (matchedAgent && !processedAgents.has(matchedAgent)) {
           summary.push({ speaker: matchedAgent, position });
           processedAgents.add(matchedAgent); // 重複を防ぐ
         }
       }
     }
-    
+
     // パース結果が空の場合は、AIのレスポンスから情報を抽出してフォールバックサマリーを生成
     if (summary.length === 0) {
       console.warn(`[StageSummarizer] Failed to parse summary content: ${content.substring(0, 200)}...`);
       return this.generateIntelligentFallbackSummary(content, agents);
     }
-    
+
     return summary;
   }
 
@@ -483,20 +497,37 @@ export class StageSummarizer {
     const lines = content.split('\n').filter(line => line.trim());
     const voteAnalysis: VoteAnalysis[] = [];
     const foundAgentIds = new Set<string>();
-    
+
     // デバッグ用ログ
     console.log(`[StageSummarizer] Parsing vote analysis content: ${content.substring(0, 200)}...`);
-    
+
     for (const line of lines) {
       console.log(`[StageSummarizer] Processing line: "${line}"`);
-      // 例: - 結心 (yui-000): 観至 (kanshi-001) - ...
-      const match = line.match(/^\-\s*[^(]+\(([^)]+)\):\s*[^(]+\(([^)]+)\)\s*-\s*(.+)$/);
+      // 複数のパターンを試す
+      const patterns = [
+        // パターン1: - agent-id: voted-agent-id - reasoning
+        /^\-\s*([a-zA-Z0-9\-_]+):\s*([a-zA-Z0-9\-_]+)\s*-\s*(.+)$/,
+        // パターン2: - agent-name (agent-id): voted-agent-name (voted-agent-id) - reasoning
+        /^\-\s*[^(]+\(([^)]+)\):\s*[^(]+\(([^)]+)\)\s*-\s*(.+)$/,
+        // パターン3: - agent-id: voted-agent-id - reasoning (より柔軟)
+        /^\-\s*([^:]+):\s*([^\s]+)\s*-\s*(.+)$/
+      ];
+
+      let match: RegExpMatchArray | null = null;
+      for (const pattern of patterns) {
+        match = line.match(pattern);
+        if (match) break;
+      }
+
       if (match) {
         const agentId = match[1]?.trim();
         const votedAgentId = match[2]?.trim();
         const reasoning = match[3]?.trim();
         console.log(`[StageSummarizer] Matched: agentId=${agentId}, votedAgentId=${votedAgentId}, reasoning=${reasoning?.substring(0, 50)}...`);
-        if (agentId && votedAgentId) {
+        
+        // エージェントIDが有効かチェック
+        const validAgentIds = agents.map(a => a.id);
+        if (agentId && votedAgentId && validAgentIds.includes(agentId) && validAgentIds.includes(votedAgentId)) {
           foundAgentIds.add(agentId);
           voteAnalysis.push({
             agentId,
@@ -504,14 +535,16 @@ export class StageSummarizer {
             reasoning,
             timestamp: new Date()
           });
+        } else {
+          console.log(`[StageSummarizer] Invalid agent IDs: agentId=${agentId}, votedAgentId=${votedAgentId}`);
         }
       } else {
         console.log(`[StageSummarizer] No match for line: "${line}"`);
       }
     }
-    
+
     console.log(`[StageSummarizer] Found votes: ${voteAnalysis.length}, Found agent IDs: ${Array.from(foundAgentIds)}`);
-    
+
     // AI出力に含まれなかったエージェントもnullで返す
     for (const agent of agents) {
       if (!foundAgentIds.has(agent.id)) {
@@ -528,11 +561,11 @@ export class StageSummarizer {
 
   private generateIntelligentFallbackSummary(content: string, agents: Agent[]): { speaker: string; position: string }[] {
     const summary: { speaker: string; position: string }[] = [];
-    
+
     // AIのレスポンスから各エージェントの情報を抽出
     for (const agent of agents) {
       let position = `${agent.name}が議論に参加し、独自の視点を提供しました。`;
-      
+
       // エージェント名を含む行を探す
       const lines = content.split('\n');
       for (const line of lines) {
@@ -548,10 +581,10 @@ export class StageSummarizer {
           }
         }
       }
-      
+
       summary.push({ speaker: agent.name, position });
     }
-    
+
     return summary;
   }
 
@@ -568,10 +601,10 @@ export class StageSummarizer {
 
     const summary = messages.map(msg => {
       const agentName = agentMap.get(msg.agentId) || msg.agentId;
-      const position = msg.content.length > 100 
+      const position = msg.content.length > 100
         ? msg.content.substring(0, 100) + '...'
         : msg.content;
-      
+
       return {
         speaker: agentName,
         position: position

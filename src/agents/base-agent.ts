@@ -104,10 +104,8 @@ export abstract class BaseAgent {
 
     previousOutputMessages.forEach(message => {
       if (message.agentId && message.content) {
-        // 結論部分を抽出（最初の200文字程度）
-        const conclusion = message.content.slice(0, 200);
-        previousAgentConclusions[message.agentId] = conclusion;
-        console.log(`[BaseAgent] Added conclusion for ${message.agentId}: "${conclusion}"`);
+        previousAgentConclusions[message.agentId] = message.content;
+        console.log(`[BaseAgent] Added conclusion for ${message.agentId}: "${message.content.slice(0, 200)}"`);
       }
     });
 

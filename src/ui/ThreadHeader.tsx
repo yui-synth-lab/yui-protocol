@@ -38,10 +38,8 @@ const ThreadHeader: React.FC<ThreadHeaderProps> = ({ session }) => {
         </div>
         
         <StageIndicator 
-          stageHistory={session.stageHistory} 
           currentStage={session.currentStage}
-          complete={session.complete}
-          sequenceNumber={session.sequenceNumber}
+          complete={session.status === 'completed'}
         />
       </div>
     </div>

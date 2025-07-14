@@ -104,44 +104,45 @@ describe('Vote Analysis', () => {
   });
 
   it('should analyze votes correctly', async () => {
-    const voteAnalysis = await stageSummarizer.analyzeVotes(
+    const voteAnalysisResult = await stageSummarizer.analyzeVotes(
       testResponses,
       testAgents,
       'test-session-id',
       'ja'
     );
 
-    expect(voteAnalysis).toBeDefined();
-    expect(voteAnalysis.length).toBe(3);
+    expect(voteAnalysisResult).toBeDefined();
+    expect(voteAnalysisResult.voteAnalysis).toBeDefined();
+    expect(voteAnalysisResult.voteAnalysis.length).toBe(3);
 
     // yui-000 should vote for kanshi-001
-    const yuiVote = voteAnalysis.find(v => v.agentId === 'yui-000');
+    const yuiVote = voteAnalysisResult.voteAnalysis.find(v => v.agentId === 'yui-000');
     expect(yuiVote).toBeDefined();
     expect(yuiVote?.votedAgent).toBe('kanshi-001');
     expect(typeof yuiVote?.reasoning === 'string' || yuiVote?.reasoning === null).toBe(true);
 
     // eiro-001 should vote for kanshi-001
-    const eiroVote = voteAnalysis.find(v => v.agentId === 'eiro-001');
+    const eiroVote = voteAnalysisResult.voteAnalysis.find(v => v.agentId === 'eiro-001');
     expect(eiroVote).toBeDefined();
     expect(eiroVote?.votedAgent).toBe('kanshi-001');
     expect(typeof eiroVote?.reasoning === 'string' || eiroVote?.reasoning === null).toBe(true);
 
     // kanshi-001 should vote for yui-000
-    const kanshiVote = voteAnalysis.find(v => v.agentId === 'kanshi-001');
+    const kanshiVote = voteAnalysisResult.voteAnalysis.find(v => v.agentId === 'kanshi-001');
     expect(kanshiVote).toBeDefined();
     expect(kanshiVote?.votedAgent).toBe('yui-000');
     expect(typeof kanshiVote?.reasoning === 'string' || kanshiVote?.reasoning === null).toBe(true);
   });
 
   it('should handle empty responses', async () => {
-    const voteAnalysis = await stageSummarizer.analyzeVotes(
+    const voteAnalysisResult = await stageSummarizer.analyzeVotes(
       [],
       testAgents,
       'test-session-id',
       'ja'
     );
 
-    expect(voteAnalysis).toEqual([]);
+    expect(voteAnalysisResult.voteAnalysis).toEqual([]);
   });
 
   it('should handle responses without clear votes', async () => {
@@ -161,16 +162,16 @@ describe('Vote Analysis', () => {
       }
     ];
 
-    const voteAnalysis = await stageSummarizer.analyzeVotes(
+    const voteAnalysisResult = await stageSummarizer.analyzeVotes(
       unclearResponses,
       testAgents,
       'test-session-id',
       'ja'
     );
 
-    expect(voteAnalysis).toBeDefined();
-    expect(voteAnalysis.length).toBe(3);
+    expect(voteAnalysisResult).toBeDefined();
+    expect(voteAnalysisResult.voteAnalysis.length).toBe(3);
     // votedAgent: nullが1つ以上含まれること
-    expect(voteAnalysis.filter(v => v.votedAgent === null).length).toBeGreaterThanOrEqual(1);
+    expect(voteAnalysisResult.voteAnalysis.filter(v => v.votedAgent === null).length).toBeGreaterThanOrEqual(1);
   });
 }); 

@@ -290,10 +290,8 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
       {/* Stage Indicator - Fixed below header */}
       <div className="flex-shrink-0 border-b border-gray-700 p-4 bg-gray-800">
         <StageIndicator
-          stageHistory={session.stageHistory}
           currentStage={currentStage}
           complete={session.status === 'completed'}
-          sequenceNumber={session.sequenceNumber || 1}
         />
       </div>
 

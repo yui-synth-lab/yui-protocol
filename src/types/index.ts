@@ -61,7 +61,6 @@ export interface Session {
   currentStage?: DialogueStage;
   stageHistory: StageHistory[];
   stageSummaries?: StageSummary[];
-  complete?: boolean;
   outputFileName?: string;
   sequenceOutputFiles?: { [sequenceNumber: number]: string };
   sequenceNumber?: number;
