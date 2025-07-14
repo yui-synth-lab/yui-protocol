@@ -107,7 +107,6 @@ temp/
 outputs/
 sessions/
 *.json.bak
-src/kernel/ai-executor-impl.ts 
 /.cursor
 package-lock.json
 

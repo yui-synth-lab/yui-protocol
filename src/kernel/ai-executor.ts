@@ -43,7 +43,7 @@ export abstract class AIExecutor {
   constructor(options: AIExecutorOptions) {
     this.agentName = options.agentName;
     this.model = options.model || 'default';
-    this.provider = options.provider || 'gemini';
+    this.provider = options.provider || 'gemini-cli';
     this.maxTokens = options.customConfig?.maxTokens || 4000;
     this.customConfig = options.customConfig || {};
     this.temperature = options.temperature || 0.7;
