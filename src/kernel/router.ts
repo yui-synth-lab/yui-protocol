@@ -278,14 +278,16 @@ export class YuiProtocolRouter implements IRealtimeRouter {
         for (const analysis of voteAnalysis) {
           const message = session.messages.find(m => 
             m.agentId === analysis.agentId && 
-            m.stage === 'output-generation' &&
-            m.sequenceNumber === (session.sequenceNumber || 1)
+            m.sequenceNumber === (session.sequenceNumber || 1) &&
+            (m.stage === 'output-generation' || !m.stage) // stageフィールドが存在しない場合も含める
           );
           if (message) {
             if (!message.metadata) message.metadata = {};
             message.metadata.voteFor = analysis.votedAgent ?? undefined;
             message.metadata.voteReasoning = analysis.reasoning || undefined;
             console.log(`[Router] Updated vote for ${analysis.agentId}: ${analysis.votedAgent}`);
+          } else {
+            console.log(`[Router] Could not find message for ${analysis.agentId} in output-generation stage`);
           }
         }
         // セッションを保存
@@ -301,7 +303,7 @@ export class YuiProtocolRouter implements IRealtimeRouter {
       console.log(`[Router] Processing voting results for final output generation (sequence ${currentSequenceNumber})`);
       // session.messagesから現在のシーケンスのoutput-generationの投票を集計
       const voteMessages = session.messages.filter(
-        m => m.stage === 'output-generation' && 
+        m => (m.stage === 'output-generation' || !m.stage) && // stageフィールドが存在しない場合も含める
              m.sequenceNumber === currentSequenceNumber && 
              m.metadata?.voteFor
       );
