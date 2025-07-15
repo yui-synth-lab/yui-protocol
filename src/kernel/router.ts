@@ -512,10 +512,7 @@ export class YuiProtocolRouter implements IRealtimeRouter {
     const shuffledAgents = shuffleArray<Agent>(session.agents);
 
     for (let i = 0; i < shuffledAgents.length; i++) {
-      if (i > 0) {
-        const agentResponseDelay = this.delay
-        await sleep(agentResponseDelay);
-      }
+
 
       const agent = shuffledAgents[i];
       const agentInstance = this.agentManager.getAgent(agent.id);
@@ -540,6 +537,10 @@ export class YuiProtocolRouter implements IRealtimeRouter {
       try {
         switch (stage) {
           case 'individual-thought': {
+            if (i > 0) {
+              const agentResponseDelay = this.delay
+              await sleep(agentResponseDelay);
+            }            
             // 前シーケンス情報を取得
             const { previousUserInput, previousAgentConclusions } = this.sessionManager.getPreviousSequenceInfo(session);
             // プロンプト生成
@@ -571,6 +572,10 @@ export class YuiProtocolRouter implements IRealtimeRouter {
             break;
           }
           case 'mutual-reflection': {
+            if (i > 0) {
+              const agentResponseDelay = this.delay
+              await sleep(agentResponseDelay);
+            }        
             const individualThoughts = session.messages
               .filter((m: Message) => m.stage === 'individual-thought' && m.role === 'agent' && m.agentId !== agent.id)
               .map((m: Message) => m.metadata?.stageData)
@@ -612,39 +617,35 @@ export class YuiProtocolRouter implements IRealtimeRouter {
             break;
           }
           case 'conflict-resolution': {
+            if (i > 0) {
+              const agentResponseDelay = this.delay
+              await sleep(agentResponseDelay);
+            }        
             const conflicts = this.identifyConflicts(session, this.defaultLanguage);
             // contextWithUserを必ず渡す
             response = await agentInstance.stage3ConflictResolution(conflicts, contextWithUser);
             break;
           }
           case 'synthesis-attempt': {
+            if (i > 0) {
+              const agentResponseDelay = this.delay
+              await sleep(agentResponseDelay);
+            }                    
             const synthesisData = this.prepareSynthesisData(session);
             response = await agentInstance.stage4SynthesisAttempt(synthesisData, contextWithUser);
             break;
           }
           case 'output-generation': {
+            if (i > 0) {
+              const agentResponseDelay = this.delay
+              await sleep(agentResponseDelay);
+            }                    
             const finalData = this.prepareFinalData(session);
             response = await agentInstance.stage5OutputGeneration(finalData, contextWithUser);
             break;
           }
           default:
             throw new Error(`Unknown stage: ${stage}`);
-        }
-
-        // output-generationステージの場合、投票を抽出（AIベースの解析は後で一括処理）
-        let voteFor: string | undefined;
-        let voteReasoning: string | undefined;
-        
-        if (stage === 'output-generation') {
-          // 従来の正規表現ベースの解析は一時的に残す（フォールバック用）
-          const voteDetails = extractVoteDetails(response.content, response.agentId, session.agents);
-          if (voteDetails.votedAgent) {
-            voteFor = voteDetails.votedAgent;
-            voteReasoning = voteDetails.reasoning || undefined;
-            console.log(`[Router] Extracted vote from ${response.agentId}: ${voteFor}, reasoning: ${voteReasoning}`);
-          } else {
-            console.log(`[Router] No vote extracted from ${response.agentId}`);
-          }
         }
 
         const message: Message = {
@@ -658,9 +659,7 @@ export class YuiProtocolRouter implements IRealtimeRouter {
           metadata: {
             reasoning: response.reasoning,
             confidence: response.confidence,
-            stageData: response.stageData,
-            voteFor: voteFor,
-            voteReasoning: voteReasoning
+            stageData: response.stageData
           }
         };
 
