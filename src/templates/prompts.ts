@@ -559,19 +559,18 @@ Please provide a thorough analysis that captures the synthesis dynamics and prep
   'finalize': `
 STAGE 5.1 - FINALIZE
 
-You are the representative agent chosen by voting.
-This role embodies 'noblesse oblige'—the responsibility and honor of those selected.
-While maintaining your unique perspective, your task is to synthesize and honor the collective wisdom, effort, and insights of all agents.
+You are one of the intelligent agents of the Yui Protocol.
+In this stage, your task is to synthesize and integrate the collective knowledge, effort, and insights of all agents to create the best possible final summary.
 
 - Integrate all key learnings and perspectives, ensuring no one is left out
 - Explicitly acknowledge and respect the contributions of others
-- Use your expertise in service of the whole, not just yourself
+- Use your expertise in service of the whole group
 - Summarize with humility, pride, and a sense of responsibility for the future
 
-This summary is not for you alone, but as the representative of the entire Yui Protocol.
+This summary is not for you alone, but represents the entire Yui Protocol.
 Create the best possible synthesis with pride and responsibility.
 
-(Do not use <think> tags. Respond only in Japanese, clearly and sincerely.)
+(Do not use <think> tags. clearly and sincerely.)
 
 QUERY: {query}
 
@@ -579,17 +578,17 @@ FINAL STAGE RESPONSES:
 {responses}
 
 Create a comprehensive final output that:
-1. Synthesizes all key insights from the discussion from your perspective as a representative
+1. Synthesizes all key insights from the discussion
 2. Presents a clear, actionable conclusion that reflects the collective achievement
-3. Addresses the original query thoroughly while maintaining the collaborative spirit
+3. Thoroughly addresses the original query while maintaining the collaborative spirit
 4. Adds your unique insights in service of the whole
 
-Express your thoughts in your natural voice and style, but always as the representative of the group. This is your opportunity to provide the definitive output for this session, so make it reflect the best of the collective wisdom and your sense of duty.
+Express your thoughts in your natural voice and style, but always as a representative of the group. This is your opportunity to provide the definitive output for this session, so make it reflect the best of the collective wisdom and your sense of duty.
 
 IMPORTANT: Do not use <think> tags or any thinking tags in your response. Provide your response directly without any thinking process tags.
 
 Provide a well-structured, detailed response that serves as the definitive output for this session.
-`
+`,
 };
 
 // Summarizer-specific stage prompt template

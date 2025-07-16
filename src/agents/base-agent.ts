@@ -406,30 +406,25 @@ export abstract class BaseAgent {
   async stage5_1Finalize(votingResults: any, responses: AgentResponse[], context: Message[]): Promise<AgentResponse> {
     const userMessage = context.find(m => m.role === 'user');
     const query = userMessage?.content || 'No user query provided';
-    
-    const votingResultsText = JSON.stringify(votingResults, null, 2);
+    // Only use responses, do not use votingResults
     const responsesText = responses.map(response => 
       `${response.agentId}: ${response.content}`
     ).join('\n\n');
-    
     const stagePrompt = this.getStagePrompt('finalize', {
       query,
-      votingResults: votingResultsText,
       responses: responsesText
-    });
-    
+    }, 'en'); // Force English
     const content = await this.executeAIWithErrorHandling(
       stagePrompt,
       this.sessionId || 'unknown-session',
       'finalize',
       'finalize processing'
     );
-    
     return {
       agentId: this.agent.id,
       content,
       summary: content.slice(0, 100),
-      reasoning: 'I created the final comprehensive output based on voting results.',
+      reasoning: 'I created the final comprehensive output based on all agent responses.',
       confidence: await this.generateConfidence('finalize', context),
       references: ['final-synthesis', 'comprehensive-output'],
       stage: 'finalize',
@@ -516,9 +511,9 @@ export abstract class BaseAgent {
     return getPersonalityPrompt(this.agent, this.language, this.agent.isSummarizer);
   }
 
-  protected getStagePrompt(stage: DialogueStage, variables: Record<string, any> = {}): string {
+  protected getStagePrompt(stage: DialogueStage, variables: Record<string, any> = {}, language: Language = 'en'): string {
     const personalityPrompt = this.getPersonalityPrompt();
-    return getStagePrompt(stage, personalityPrompt, variables, this.language);
+    return getStagePrompt(stage, personalityPrompt, variables, language);
   }
 
   protected addToMemory(message: Message): void {
