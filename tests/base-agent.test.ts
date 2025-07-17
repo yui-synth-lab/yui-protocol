@@ -5,43 +5,43 @@ import { AIExecutor, createAIExecutor } from '../src/kernel/ai-executor.js';
 
 // Create a concrete implementation of BaseAgent for testing
 class TestAgent extends BaseAgent {
-  async respond(prompt: string, context: Message[]): Promise<any> {
+  async respond(prompt: string, context: Message[], language: Language): Promise<any> {
     return { content: 'Test response' };
   }
 
-  async stage1IndividualThought(prompt: string, context: Message[]): Promise<any> {
+  async stage1IndividualThought(prompt: string, context: Message[], language: Language): Promise<any> {
     return { content: 'Individual thought' };
   }
 
-  async stage2MutualReflection(prompt: string, otherThoughts: any[], context: Message[], AgentList: any[] = []): Promise<any> {
+  async stage2MutualReflection(prompt: string, otherThoughts: any[], context: Message[], AgentList: any[] = [], language: Language): Promise<any> {
     return { content: 'Mutual reflection' };
   }
 
-  async stage3ConflictResolution(conflicts: any[], context: Message[]): Promise<any> {
+  async stage3ConflictResolution(conflicts: any[], context: Message[], language: Language): Promise<any> {
     return { content: 'Conflict resolution' };
   }
 
-  async stage4SynthesisAttempt(synthesisData: any, context: Message[]): Promise<any> {
+  async stage4SynthesisAttempt(synthesisData: any, context: Message[], language: Language): Promise<any> {
     return { content: 'Synthesis attempt' };
   }
 
-  async stage5OutputGeneration(finalData: any, context: Message[]): Promise<any> {
+  async stage5OutputGeneration(finalData: any, context: Message[], language: Language): Promise<any> {
     return { content: 'Output generation' };
   }
 
-  async stage2_5MutualReflectionSummary(responses: any[], context: Message[] = []): Promise<any> {
+  async stage2_5MutualReflectionSummary(responses: any[], context: Message[] = [], language: Language): Promise<any> {
     return { content: 'Mutual reflection summary' };
   }
 
-  async stage3_5ConflictResolutionSummary(responses: any[], context: Message[] = []): Promise<any> {
+  async stage3_5ConflictResolutionSummary(responses: any[], context: Message[] = [], language: Language): Promise<any> {
     return { content: 'Conflict resolution summary' };
   }
 
-  async stage4_5SynthesisAttemptSummary(responses: any[], context: Message[] = []): Promise<any> {
+  async stage4_5SynthesisAttemptSummary(responses: any[], context: Message[] = [], language: Language): Promise<any> {
     return { content: 'Synthesis attempt summary' };
   }
 
-  async stage5_1Finalize(votingResults: any, responses: any[], context: Message[] = []): Promise<any> {
+  async stage5_1Finalize(votingResults: any, responses: any[], context: Message[] = [], language: Language): Promise<any> {
     return { content: 'Finalize' };
   }
 }
@@ -119,9 +119,10 @@ describe('BaseAgent', () => {
       expect(agent.getMemory()).toEqual([]);
     });
 
-    it('should initialize with default language', () => {
-      expect(agent.getLanguage()).toBe('en');
-    });
+    // Remove or comment out the test for getLanguage in 'should initialize with default language'
+    // it('should initialize with default language', () => {
+    //   expect(agent.getLanguage()).toBe('en');
+    // });
 
     it('should initialize AI executor promise', () => {
       expect(agent['aiExecutorPromise']).toBeDefined();
@@ -429,46 +430,34 @@ describe('BaseAgent', () => {
     });
   });
 
-  describe('setLanguage and getLanguage', () => {
-    it('should set and get language correctly', () => {
-      expect(agent.getLanguage()).toBe('en');
-      
-      agent.setLanguage('ja');
-      expect(agent.getLanguage()).toBe('ja');
-      
-      agent.setLanguage('en');
-      expect(agent.getLanguage()).toBe('en');
-    });
-  });
-
   describe('abstract methods', () => {
     it('should implement respond method', async () => {
-      const response = await agent.respond('Test prompt', []);
+      const response = await agent.respond('Test prompt', [], 'en');
       expect(response).toEqual({ content: 'Test response' });
     });
 
     it('should implement stage1IndividualThought method', async () => {
-      const thought = await agent.stage1IndividualThought('Test prompt', []);
+      const thought = await agent.stage1IndividualThought('Test prompt', [], 'en');
       expect(thought).toEqual({ content: 'Individual thought' });
     });
 
     it('should implement stage2MutualReflection method', async () => {
-      const reflection = await agent.stage2MutualReflection('Test prompt', [], []);
+      const reflection = await agent.stage2MutualReflection('Test prompt', [], [], [], 'en');
       expect(reflection).toEqual({ content: 'Mutual reflection' });
     });
 
     it('should implement stage3ConflictResolution method', async () => {
-      const resolution = await agent.stage3ConflictResolution([], []);
+      const resolution = await agent.stage3ConflictResolution([], [], 'en');
       expect(resolution).toEqual({ content: 'Conflict resolution' });
     });
 
     it('should implement stage4SynthesisAttempt method', async () => {
-      const synthesis = await agent.stage4SynthesisAttempt({}, []);
+      const synthesis = await agent.stage4SynthesisAttempt({}, [], 'en');
       expect(synthesis).toEqual({ content: 'Synthesis attempt' });
     });
 
     it('should implement stage5OutputGeneration method', async () => {
-      const output = await agent.stage5OutputGeneration({}, []);
+      const output = await agent.stage5OutputGeneration({}, [], 'en');
       expect(output).toEqual({ content: 'Output generation' });
     });
   });

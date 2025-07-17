@@ -80,42 +80,48 @@ interface Agent {
   reasoning?: string;
   assumptions?: string[];
   approach?: string;
+  // --- Enhanced personality/behavior fields (2024 update) ---
+  specificBehaviors?: string;
+  thinkingPatterns?: string;
+  interactionPatterns?: string;
+  decisionProcess?: string;
+  disagreementStyle?: string;
+  agreementStyle?: string;
 }
 ```
 
-- Each agent is implemented as a class extending `BaseAgent`, with configuration passed as an object matching the above interface.
-- The `style` field now includes "meta".
-- Additional fields: `furigana`, `color`, `isSummarizer`, `references`, `reasoning`, `assumptions`, `approach`.
+- **2024 Extension**: Fields such as `specificBehaviors`, `thinkingPatterns`, `interactionPatterns`, `decisionProcess`, `disagreementStyle`, and `agreementStyle` have been added, allowing for more concrete expression of agent personality and behavioral patterns.
+- In each agent implementation, these fields are used to explicitly define individuality, behavior, thinking patterns, and how the agent acts in agreement/disagreement situations.
 
 ## Agent Specifications
 
 ### Agent Styles
 
-#### 1. Critical (批判的)
+#### 1. Critical
 - **Characteristics**: Problem identification, gap detection, constructive criticism
 - **Strengths**: Quality assurance, risk identification, improvement suggestions
 - **Weaknesses**: May be overly negative, can slow progress
 - **Best For**: Quality review, risk assessment, improvement processes
 
-#### 2. Emotive (感情的)
+#### 2. Emotive
 - **Characteristics**: Creative expression, intuitive insights, emotional understanding
 - **Strengths**: Creative synthesis, emotional intelligence, artistic expression
 - **Weaknesses**: May prioritize feelings over logic, can be subjective
 - **Best For**: Creative problems, emotional intelligence, artistic expression
 
-#### 3. Intuitive (直感的)
+#### 3. Intuitive
 - **Characteristics**: Creative problem-solving, innovative approaches, out-of-the-box thinking
 - **Strengths**: Creative solutions, innovative thinking, practical implementation
 - **Weaknesses**: May lack systematic rigor, difficult to explain reasoning
 - **Best For**: Creative problems, innovation, practical solutions
 
-#### 4. Analytical (分析的)
+#### 4. Analytical
 - **Characteristics**: Data-driven analysis, statistical reasoning, precise calculations
 - **Strengths**: Data analysis, quantitative insights, objective evaluation
 - **Weaknesses**: May miss qualitative factors, can be reductionist
 - **Best For**: Data analysis, quantitative problems, statistical evaluation
 
-#### 5. Logical (論理的)
+#### 5. Logical
 - **Characteristics**: Philosophical thinking, deep analysis, systematic understanding
 - **Strengths**: Deep reasoning, systematic analysis, philosophical insights
 - **Weaknesses**: May be abstract, can be slow for practical problems
@@ -123,39 +129,39 @@ interface Agent {
 
 ### Agent Priorities
 
-#### Precision (精密性)
+#### Precision
 - Focus on accuracy and detail
 - Prefer thorough analysis over quick solutions
 - High confidence thresholds
 
-#### Breadth (広範囲)
+#### Breadth
 - Consider multiple perspectives and approaches
 - Prefer comprehensive coverage over depth
 - Balance multiple factors
 
-#### Depth (深さ)
+#### Depth
 - Focus on fundamental understanding
 - Prefer deep analysis over surface-level solutions
 - Seek root causes and principles
 
-#### Balance (バランス)
+#### Balance
 - Balance multiple competing factors
 - Prefer compromise and integration
 - Moderate confidence levels
 
 ### Memory Scopes
 
-#### Local (局所的)
+#### Local
 - Limited to current interaction
 - Fast response, minimal context
 - Suitable for simple, focused tasks
 
-#### Session (セッション)
+#### Session
 - Spans entire session
 - Moderate context retention
 - Suitable for complex, multi-step problems
 
-#### Cross-Session (セッション間)
+#### Cross-Session
 - Spans multiple sessions
 - Long-term memory and learning
 - Suitable for ongoing projects and learning
@@ -179,7 +185,7 @@ The following dialogue stages are supported:
 
 All stage data structures (e.g., `IndividualThought`, `MutualReflection`, etc.) now support optional `summary` fields and richer metadata.
 
-### Stage 1: Individual Thought (個別思考)
+### Stage 1: Individual Thought
 
 **Purpose**: Each agent independently analyzes the problem from their unique perspective.
 
@@ -196,7 +202,7 @@ All stage data structures (e.g., `IndividualThought`, `MutualReflection`, etc.) 
 
 **Time Limit**: 300 words maximum
 
-### Stage 2: Mutual Reflection (相互反省)
+### Stage 2: Mutual Reflection
 
 **Purpose**: Agents respond to each other's thoughts with specific analysis and constructive criticism.
 
@@ -213,7 +219,7 @@ All stage data structures (e.g., `IndividualThought`, `MutualReflection`, etc.) 
 
 **Time Limit**: 400 words maximum
 
-### Stage 3: Conflict Resolution (対立解決)
+### Stage 3: Conflict Resolution
 
 **Purpose**: Address identified conflicts with practical solutions and compromise strategies.
 
@@ -230,7 +236,7 @@ All stage data structures (e.g., `IndividualThought`, `MutualReflection`, etc.) 
 
 **Time Limit**: 350 words maximum
 
-### Stage 4: Synthesis Attempt (統合試行)
+### Stage 4: Synthesis Attempt
 
 **Purpose**: Synthesize different perspectives into a coherent framework and select a facilitator.
 
@@ -247,7 +253,7 @@ All stage data structures (e.g., `IndividualThought`, `MutualReflection`, etc.) 
 
 **Time Limit**: 300 words maximum
 
-### Stage 5: Output Generation (出力生成)
+### Stage 5: Output Generation
 
 **Purpose**: Generate final synthesis and output by the selected facilitator agent.
 
@@ -552,6 +558,19 @@ src/
 The system supports multiple AI providers through a unified interface:
 
 ```typescript
+interface AIExecutorOptions {
+  agentName: string;
+  model?: string;
+  provider?: string;
+  customConfig?: Record<string, any>;
+  temperature?: number;
+  topP?: number;
+  repetitionPenalty?: number;
+  presencePenalty?: number;
+  frequencyPenalty?: number;
+  topK?: number;
+}
+
 interface AIExecutor {
   execute(prompt: string): Promise<AIExecutionResult>;
 }
@@ -573,16 +592,25 @@ interface AIExecutionResult {
 }
 ```
 
-- The `AIExecutor` abstraction supports dynamic provider selection (`provider` field), and the default is `"gemini"`.
-- Supported providers: Gemini, OpenAI, Anthropic, Ollama, Mock.
-- The executor supports advanced generation parameters: `temperature`, `topP`, `repetitionPenalty`, `presencePenalty`, `frequencyPenalty`, `topK`, and `maxTokens`.
+- **Automatic Generation Parameter Adjustment**: Parameters such as temperature, topP, repetitionPenalty, presencePenalty, frequencyPenalty, and topK are automatically calculated based on the agent's personality, style, priority, tone, preferences, etc. (see BaseAgent's calculateXxx methods).
+- The default provider is "gemini", and maxTokens defaults to 4000.
+- This enables generation optimized for each agent's individuality.
+
+#### Example of Automatic Generation Parameter Adjustment
+- Intuitive and emotive types have higher temperature/topP, while logical and analytical types have lower values.
+- Precision priority results in lower temperature and topK, while breadth priority increases them.
+- If personality or tone includes keywords like "gentle" or "creative", adjustments are also made.
 
 ### Testing Strategy
 
 1. **Unit Tests**: Test individual components in isolation
+   - Test correct use and initialization of new Agent fields (specificBehaviors, thinkingPatterns, etc.)
+   - Test that automatic generation parameter adjustment logic (temperature, topP, etc.) is correctly calculated based on personality and style
 2. **Integration Tests**: Test component interactions
 3. **End-to-End Tests**: Test complete user workflows with Selenium
 4. **Performance Tests**: Test system under load
+
+- **Test Coverage**: New fields and automatic adjustment logic must also be covered by tests
 
 ### Deployment
 

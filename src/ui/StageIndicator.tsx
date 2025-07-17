@@ -4,11 +4,13 @@ import { DialogueStage, StageHistory } from '../types/index';
 interface StageIndicatorProps {
   currentStage?: DialogueStage | null;
   complete?: boolean;
+  stageHistory?: StageHistory[];
 }
 
 const StageIndicator: React.FC<StageIndicatorProps> = ({
   currentStage,
   complete = false,
+  stageHistory = [],
 }) => {
   // Main stages for UI display (summary stages are hidden)
   const stages: DialogueStage[] = [
@@ -37,10 +39,23 @@ const StageIndicator: React.FC<StageIndicatorProps> = ({
 
 
 
+  // Refactor: isStageCompleted only checks stageHistory, no call to getStageStatus
+  const isStageCompleted = (stage: DialogueStage) => {
+    if (stageHistory && stageHistory.length > 0) {
+      // If the stage exists in stageHistory and has endTime, it's completed
+      const found = stageHistory.find(h => h.stage === stage);
+      return !!(found && found.endTime);
+    } else {
+      return false;
+    }
+  };
+
+  // Refactor: getStageStatus uses isStageCompleted, but does not call itself or isStageCompleted in a way that causes recursion
   const getStageStatus = (stage: DialogueStage) => {
-    if (complete) return 'completed';
+    if (isStageCompleted(stage)) return 'completed';
     if (currentStage === stage) return 'current';
-    if (currentStage && stages.indexOf(stage) < stage.indexOf(currentStage)) return 'completed';
+    if (currentStage && stages.indexOf(stage) < stages.indexOf(currentStage)) return 'completed';
+    if (complete) return 'completed';
     return 'pending';
   };
 
@@ -76,21 +91,19 @@ const StageIndicator: React.FC<StageIndicatorProps> = ({
   };
 
   const getCompletedStagesCount = () => {
-    if (currentStage) {
+    if (stageHistory && stageHistory.length > 0) {
+      // Count stages in stageHistory that have endTime (completed)
+      return stageHistory.filter(h => h.endTime).length;
+    } else if (currentStage) {
       return stages.indexOf(currentStage) + 1;
-    }
-    else {
-      0;
+    } else {
+      return 0;
     }
   };
 
   const getTotalStagesCount = () => {
     // Always return the total number of main stages, not the stageHistory length
     return stages.length;
-  };
-
-  const isStageCompleted = (stage: DialogueStage) => {
-    return getStageStatus(stage) === 'completed';
   };
 
   // Always render the stage indicator, even if stageHistory is empty

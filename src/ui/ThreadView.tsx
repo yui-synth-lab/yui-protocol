@@ -23,6 +23,8 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
   const [isConnected, setIsConnected] = useState(false);
   const [showContinueButton, setShowContinueButton] = useState(false);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+  // Track if we are waiting to auto-start a new sequence
+  const [pendingAutoStartPrompt, setPendingAutoStartPrompt] = useState<string | null>(null);
 
   // Refs
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -154,13 +156,11 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
       role: 'user'
     };
 
-    // 新しいシーケンス開始時は仮想的にメッセージを追加しない
     if (session.status !== 'completed') {
       setMessages(prev => [...prev, userMessage]);
     }
 
     try {
-      // 新しいシーケンスが必要な場合はAPI経由で開始
       if (session.status === 'completed') {
         const response = await fetch(`/api/sessions/${session.id}/start-new-sequence`, {
           method: 'POST',
@@ -168,14 +168,14 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
           body: JSON.stringify({ userPrompt: promptToSend })
         });
         if (response.ok) {
-          const data = await response.json();
-          // セッション情報をリロード
+          // セッション情報をリロードし、emitはuseEffectで新しいsession.idで行う
+          setPendingAutoStartPrompt(promptToSend);
           await reloadSessionData();
         } else {
           throw new Error('Failed to start new sequence');
         }
+        return;
       }
-      // Start session execution via WebSocket
       socket.emit('start-session-execution', {
         sessionId: session.id,
         userPrompt: promptToSend
@@ -188,6 +188,19 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
       resetTextareaHeight();
     }
   };
+
+  // Effect: when pendingAutoStartPrompt is set and session.sequenceNumber has changed, emit start-session-execution
+  useEffect(() => {
+    if (pendingAutoStartPrompt && socket && isConnected) {
+      // 新しいシーケンスが始まった直後はsession.statusがactive、sequenceNumberが増えている
+      socket.emit('start-session-execution', {
+        sessionId: session.id,
+        userPrompt: pendingAutoStartPrompt
+      });
+      console.log(`[UI] Auto-started session execution for new sequence: ${session.id}`);
+      setPendingAutoStartPrompt(null);
+    }
+  }, [session.id, session.sequenceNumber, pendingAutoStartPrompt, socket, isConnected]);
 
   const handleSendPrompt = async (prompt: string) => {
     if (!prompt.trim() || isProcessing || !socket || !isConnected) return;
@@ -215,11 +228,12 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
           body: JSON.stringify({ userPrompt: prompt })
         });
         if (response.ok) {
-          const data = await response.json();
+          setPendingAutoStartPrompt(prompt);
           await reloadSessionData();
         } else {
           throw new Error('Failed to start new sequence');
         }
+        return;
       }
       socket.emit('start-session-execution', {
         sessionId: session.id,

@@ -1,5 +1,5 @@
 import { BaseAgent } from './base-agent.js';
-import { AgentResponse, Message, IndividualThought, MutualReflection, DialogueStage, Agent } from '../types/index.js';
+import { AgentResponse, Message, IndividualThought, MutualReflection, DialogueStage, Agent, Language } from '../types/index.js';
 import { InteractionLogger } from '../kernel/interaction-logger.js';
 
 const yogaConfig: Agent = {
@@ -43,6 +43,16 @@ export class YogaAgent extends BaseAgent {
     super(yogaConfig, interactionLogger);
   }
 
-  // Remove all stage methods; use BaseAgent's implementation for all stages.
-  // Keep only the protected methods for agent-specific logic.
+  async respond(prompt: string, context: Message[], language: Language): Promise<AgentResponse> {
+    const individualThought = await this.stage1IndividualThought(prompt, context, language);
+    return {
+      agentId: this.agent.id,
+      content: individualThought.content,
+      reasoning: individualThought.reasoning,
+      confidence: await this.generateConfidence('individual-thought', context),
+      references: ['creative reasoning', 'intuitive analysis', 'innovative thinking'],
+      stage: 'individual-thought',
+      stageData: individualThought
+    };
+  }
 } 

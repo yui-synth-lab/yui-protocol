@@ -223,15 +223,14 @@ export interface StageData {
 
 export interface AgentInstance {
   getAgent(): Agent;
-  setLanguage(language: Language): void;
   setSessionId(sessionId: string): void;
   setIsSummarizer(isSummarizer: boolean): void;
-  stage1IndividualThought(prompt: string, context: Message[]): Promise<AgentResponse>;
-  stage2MutualReflection(prompt: string, individualThoughts: IndividualThought[], context: Message[], AgentList: Agent[]): Promise<AgentResponse>;
-  stage3ConflictResolution(conflicts: Conflict[], context: Message[]): Promise<AgentResponse>;
-  stage4SynthesisAttempt(synthesisData: SynthesisData, context: Message[]): Promise<AgentResponse>;
-  stage5OutputGeneration(finalData: FinalData, context: Message[]): Promise<AgentResponse>;
-  stage5_1Finalize(votingResults: VotingResults, responses: AgentResponse[], context: Message[]): Promise<AgentResponse>;
+  stage1IndividualThought(prompt: string, context: Message[], language: Language): Promise<AgentResponse>;
+  stage2MutualReflection(prompt: string, individualThoughts: IndividualThought[], context: Message[], AgentList: Agent[], language: Language): Promise<AgentResponse>;
+  stage3ConflictResolution(conflicts: Conflict[], context: Message[], language: Language): Promise<AgentResponse>;
+  stage4SynthesisAttempt(synthesisData: SynthesisData, context: Message[], language: Language): Promise<AgentResponse>;
+  stage5OutputGeneration(finalData: FinalData, context: Message[], language: Language): Promise<AgentResponse>;
+  stage5_1Finalize(votingResults: VotingResults, responses: AgentResponse[], context: Message[], language: Language): Promise<AgentResponse>;
 }
 
 export interface SynthesisData {

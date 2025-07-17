@@ -356,7 +356,7 @@ export class YuiProtocolRouter implements IRealtimeRouter {
             // 最終出力を生成
             await sleep(this.delay);
             console.log(`[Router] Finalize delay: ${this.delay}ms`);
-            const finalOutput = await agentInstance.stage5_1Finalize(votingResults, responses, session.messages);
+            const finalOutput = await agentInstance.stage5_1Finalize(votingResults, responses, session.messages, session.language || 'ja');
             // 最終出力をメッセージとして追加
             const finalMessage: Message = {
               id: uuidv4(),
@@ -446,7 +446,6 @@ export class YuiProtocolRouter implements IRealtimeRouter {
       for (const agent of session.agents) {
         const agentInstance = this.agentManager.getAgent(agent.id);
         if (agentInstance) {
-          agentInstance.setLanguage(language);
           agentInstance.setSessionId(sessionId);
         }
       }
@@ -462,7 +461,7 @@ export class YuiProtocolRouter implements IRealtimeRouter {
 
   private addUserMessageIfNeeded(session: Session, userPrompt: string, stage: DialogueStage): void {
     const existingUserMessage = session.messages.find((m: Message) => m.role === 'user' && m.sequenceNumber === (session.sequenceNumber || 1));
-    console.log(`[Router] addUserMessageIfNeeded: existingUserMessage=${!!existingUserMessage}, userPrompt=${userPrompt}, sequenceNumber=${session.sequenceNumber}`);
+    console.log(`[Router][addUserMessageIfNeeded] existingUserMessage=${!!existingUserMessage}, userPrompt="${userPrompt}", sequenceNumber=${session.sequenceNumber}, stage=${stage}`);
     if (!existingUserMessage) {
       const userMessage: Message = {
         id: uuidv4(),
@@ -474,6 +473,9 @@ export class YuiProtocolRouter implements IRealtimeRouter {
       };
       session.messages.push(userMessage);
       session.updatedAt = new Date();
+      console.log(`[Router][addUserMessageIfNeeded] Added user message:`, userMessage);
+    } else {
+      console.log(`[Router][addUserMessageIfNeeded] Skipped adding user message (already exists for this sequence)`);
     }
   }
 
@@ -512,13 +514,20 @@ export class YuiProtocolRouter implements IRealtimeRouter {
     const shuffledAgents = shuffleArray<Agent>(session.agents);
 
     for (let i = 0; i < shuffledAgents.length; i++) {
-
-
       const agent = shuffledAgents[i];
       const agentInstance = this.agentManager.getAgent(agent.id);
-      console.log(`[Router] generateAgentResponses: agent=${agent.id}, agentInstance=${!!agentInstance}, stage=${stage}, userPrompt=${userPrompt}, sequenceNumber=${session.sequenceNumber}`);
-      if (!agentInstance)
+      console.log(`[Router][generateAgentResponses] agent=${agent.id}, agentInstance=${!!agentInstance}, stage=${stage}, userPrompt="${userPrompt}", sequenceNumber=${session.sequenceNumber}`);
+      if (!agentInstance) {
+        console.log(`[Router][generateAgentResponses] Skipping agent ${agent.id} (no instance)`);
         continue;
+      }
+
+      // --- finalizeステージはここで個別エージェント応答を生成しない ---
+      if (stage === 'finalize') {
+        console.log(`[Router][generateAgentResponses] Skipping agent response generation for finalize stage.`);
+        continue;
+      }
+      // --- ここまで ---
 
       const interactionStart = new Date();
       let response;
@@ -546,7 +555,7 @@ export class YuiProtocolRouter implements IRealtimeRouter {
             // プロンプト生成
             const personalityPrompt = getPersonalityPrompt(
               agentInstance.getAgent(),
-              (agentInstance as any).getLanguage(),
+              session.language || 'ja',
               (agentInstance as any).getIsSummarizer()
             );
             const prompt = getStagePrompt(
@@ -560,7 +569,7 @@ export class YuiProtocolRouter implements IRealtimeRouter {
               },
               session.language || 'ja'
             );
-            const thought = await agentInstance.stage1IndividualThought(prompt, contextWithUser);
+            const thought = await agentInstance.stage1IndividualThought(prompt, contextWithUser, session.language || 'ja');
             response = {
               agentId: thought.agentId,
               content: thought.content,
@@ -605,7 +614,7 @@ export class YuiProtocolRouter implements IRealtimeRouter {
             }));
 
             // userPromptを必ず渡す
-            const reflection = await agentInstance.stage2MutualReflection(userPrompt, individualThoughtsForReflection, contextWithUser, session.agents);
+            const reflection = await agentInstance.stage2MutualReflection(userPrompt, individualThoughtsForReflection, contextWithUser, session.agents, session.language || 'ja');
             response = {
               agentId: reflection.agentId,
               content: reflection.content,
@@ -621,9 +630,9 @@ export class YuiProtocolRouter implements IRealtimeRouter {
               const agentResponseDelay = this.delay
               await sleep(agentResponseDelay);
             }        
-            const conflicts = this.identifyConflicts(session, this.defaultLanguage);
+            const conflicts = this.identifyConflicts(session, session.language || 'ja');
             // contextWithUserを必ず渡す
-            response = await agentInstance.stage3ConflictResolution(conflicts, contextWithUser);
+            response = await agentInstance.stage3ConflictResolution(conflicts, contextWithUser, session.language || 'ja');
             break;
           }
           case 'synthesis-attempt': {
@@ -632,7 +641,7 @@ export class YuiProtocolRouter implements IRealtimeRouter {
               await sleep(agentResponseDelay);
             }                    
             const synthesisData = this.prepareSynthesisData(session);
-            response = await agentInstance.stage4SynthesisAttempt(synthesisData, contextWithUser);
+            response = await agentInstance.stage4SynthesisAttempt(synthesisData, contextWithUser, session.language || 'ja');
             break;
           }
           case 'output-generation': {
@@ -641,7 +650,7 @@ export class YuiProtocolRouter implements IRealtimeRouter {
               await sleep(agentResponseDelay);
             }                    
             const finalData = this.prepareFinalData(session);
-            response = await agentInstance.stage5OutputGeneration(finalData, contextWithUser);
+            response = await agentInstance.stage5OutputGeneration(finalData, contextWithUser, session.language || 'ja');
             break;
           }
           default:
@@ -662,17 +671,9 @@ export class YuiProtocolRouter implements IRealtimeRouter {
             stageData: response.stageData
           }
         };
-
-        console.log(`[Router] Created message for ${response.agentId} in stage ${stage}:`, {
-          id: message.id,
-          agentId: message.agentId,
-          stage: message.stage,
-          voteFor: message.metadata?.voteFor,
-          voteReasoning: message.metadata?.voteReasoning
-        });
-
         session.messages.push(message);
         session.updatedAt = new Date();
+        console.log(`[Router][generateAgentResponses] Added agent message:`, message);
 
         if (onProgress)
           onProgress({ message: message });
@@ -683,6 +684,7 @@ export class YuiProtocolRouter implements IRealtimeRouter {
         responses.push(response as AgentResponse);
         console.log(`[Router] Agent response generated for ${agent.id} in stage ${stage}:`, response);
       } catch (error) {
+        console.log(`[Router][generateAgentResponses] Error for agent ${agent.id}:`, error);
         continue;
       }
     }

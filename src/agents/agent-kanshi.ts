@@ -1,5 +1,5 @@
 import { BaseAgent } from './base-agent.js';
-import { AgentResponse, Message, IndividualThought, MutualReflection, DialogueStage, Agent } from '../types/index.js';
+import { AgentResponse, Message, IndividualThought, MutualReflection, DialogueStage, Agent, Language } from '../types/index.js';
 import { InteractionLogger } from '../kernel/interaction-logger.js';
 
 const kanshiConfig: Agent = {
@@ -43,10 +43,8 @@ export class KanshiAgent extends BaseAgent {
     super(kanshiConfig, interactionLogger);
   }
 
-  async respond(prompt: string, context: Message[]): Promise<AgentResponse> {
-    // For backward compatibility, this calls the individual thought stage
-    const individualThought = await this.stage1IndividualThought(prompt, context);
-    
+  async respond(prompt: string, context: Message[], language: Language): Promise<AgentResponse> {
+    const individualThought = await this.stage1IndividualThought(prompt, context, language);
     return {
       agentId: this.agent.id,
       content: individualThought.content,

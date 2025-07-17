@@ -42,9 +42,8 @@ export class yuiAgent extends BaseAgent {
     super(yuiConfig, interactionLogger);
   }
 
-  async respond(prompt: string, context: Message[]): Promise<AgentResponse> {
-    // For backward compatibility, this calls the individual thought stage
-    const individualThought = await this.stage1IndividualThought(prompt, context);
+  async respond(prompt: string, context: Message[], language: Language): Promise<AgentResponse> {
+    const individualThought = await this.stage1IndividualThought(prompt, context, language);
     
     return {
       agentId: this.agent.id,

@@ -6,7 +6,6 @@ import { AIExecutor, createAIExecutor } from '../kernel/ai-executor.js';
 export abstract class BaseAgent {  
   protected agent: Agent;
   protected memory: Message[] = [];
-  protected language: Language = 'en';
   protected interactionLogger: InteractionLogger;
   protected sessionId?: string;
   protected aiExecutor?: AIExecutor;
@@ -16,10 +15,8 @@ export abstract class BaseAgent {
   constructor(agent: Agent, interactionLogger?: InteractionLogger) {
     this.agent = agent;
     this.interactionLogger = interactionLogger || new InteractionLogger();
-    
-    // エージェント固有の生成パラメータを計算
+    // Use 'en' as default for generation parameters in constructor
     const generationParams = this.getGenerationParameters();
-    
     this.aiExecutorPromise = createAIExecutor(agent.name, {
       temperature: generationParams.temperature,
       topP: generationParams.topP,
@@ -40,8 +37,8 @@ export abstract class BaseAgent {
   }
 
   // Main response method for the full dialogue process
-  async respond(prompt: string, context: Message[]): Promise<AgentResponse> {
-    const individualThought = await this.stage1IndividualThought(prompt, context);
+  async respond(prompt: string, context: Message[], language: Language): Promise<AgentResponse> {
+    const individualThought = await this.stage1IndividualThought(prompt, context, language);
     const relevantContext = this.getRelevantContext(context);
     const contextAnalysis = this.analyzeContext(relevantContext);
     return {
@@ -58,7 +55,7 @@ export abstract class BaseAgent {
   /**
    * 前回シーケンスの情報を取得
    */
-  protected getPreviousSequenceInfo(context: Message[]): {
+  protected getPreviousSequenceInfo(context: Message[], language: Language): {
     previousUserInput: string;
     previousAgentConclusions: { [agentId: string]: string };
   } {
@@ -116,14 +113,14 @@ export abstract class BaseAgent {
   }
 
   // Stage-specific methods for Yui Protocol
-  async stage1IndividualThought(prompt: string, context: Message[]): Promise<IndividualThought> {
+  async stage1IndividualThought(prompt: string, context: Message[], language: Language): Promise<IndividualThought> {
     const userMessage = context.find(m => m.role === 'user');
     const query = userMessage?.content || prompt || 'No user query provided';
     const relevantContext = this.getRelevantContext(context);
     const contextAnalysis = this.analyzeContext(relevantContext);
     
     // 前回シーケンスの情報を取得
-    const previousInfo = this.getPreviousSequenceInfo(context);
+    const previousInfo = this.getPreviousSequenceInfo(context, language);
     const previousConclusionsText = Object.entries(previousInfo.previousAgentConclusions)
       .map(([agentId, conclusion]) => `${agentId}: ${conclusion}`)
       .join('\n\n');
@@ -133,7 +130,7 @@ export abstract class BaseAgent {
       context: contextAnalysis,
       previousInput: previousInfo.previousUserInput,
       previousConclusions: previousConclusionsText
-    });
+    }, language);
     const content = await this.executeAIWithErrorHandling(
       stagePrompt,
       this.sessionId || 'unknown-session',
@@ -150,7 +147,7 @@ export abstract class BaseAgent {
     };
   }
 
-  async stage2MutualReflection(prompt: string, otherThoughts: IndividualThought[], context: Message[], AgentList: Agent[]): Promise<MutualReflection> {
+  async stage2MutualReflection(prompt: string, otherThoughts: IndividualThought[], context: Message[], AgentList: Agent[], language: Language): Promise<MutualReflection> {
     const userMessage = context.find(m => m.role === 'user');
     const query = userMessage?.content || prompt || 'No user query provided';
     const otherThoughtsText = otherThoughts.map(thought => 
@@ -159,7 +156,7 @@ export abstract class BaseAgent {
     const contextAnalysis = this.analyzeContext(context);
     
     // 前回シーケンスの情報を取得
-    const previousInfo = this.getPreviousSequenceInfo(context);
+    const previousInfo = this.getPreviousSequenceInfo(context, language);
     const previousConclusionsText = Object.entries(previousInfo.previousAgentConclusions)
       .map(([agentId, conclusion]) => `${agentId}: ${conclusion}`)
       .join('\n\n');
@@ -170,7 +167,7 @@ export abstract class BaseAgent {
       context: contextAnalysis,
       previousInput: previousInfo.previousUserInput,
       previousConclusions: previousConclusionsText
-    });
+    }, language);
     const content = await this.executeAIWithErrorHandling(
       stagePrompt,
       this.sessionId || 'unknown-session',
@@ -186,7 +183,7 @@ export abstract class BaseAgent {
     };
   }
 
-  async stage3ConflictResolution(conflicts: any[], context: Message[]): Promise<AgentResponse> {
+  async stage3ConflictResolution(conflicts: any[], context: Message[], language: Language): Promise<AgentResponse> {
     const userMessage = context.find(m => m.role === 'user');
     const query = userMessage?.content || 'No user query provided';
     const contextAnalysis = this.analyzeContext(context);
@@ -194,7 +191,7 @@ export abstract class BaseAgent {
       query,
       conflicts: JSON.stringify(conflicts, null, 2),
       context: contextAnalysis
-    });
+    }, language);
     const content = await this.executeAIWithErrorHandling(
       stagePrompt,
       this.sessionId || 'unknown-session',
@@ -217,7 +214,7 @@ export abstract class BaseAgent {
     };
   }
 
-  async stage4SynthesisAttempt(synthesisData: any, context: Message[]): Promise<AgentResponse> {
+  async stage4SynthesisAttempt(synthesisData: any, context: Message[], language: Language): Promise<AgentResponse> {
     const userMessage = context.find(m => m.role === 'user');
     const query = userMessage?.content || 'No user query provided';
     const contextAnalysis = this.analyzeContext(context);
@@ -225,7 +222,7 @@ export abstract class BaseAgent {
       query,
       synthesisData: JSON.stringify(synthesisData, null, 2),
       context: contextAnalysis
-    });
+    }, language);
     const content = await this.executeAIWithErrorHandling(
       stagePrompt,
       this.sessionId || 'unknown-session',
@@ -248,7 +245,7 @@ export abstract class BaseAgent {
     };
   }
 
-  async stage5OutputGeneration(finalData: any, context: Message[]): Promise<AgentResponse> {
+  async stage5OutputGeneration(finalData: any, context: Message[], language: Language): Promise<AgentResponse> {
     const userMessage = context.find(m => m.role === 'user');
     const query = userMessage?.content || 'No user query provided';
     const contextAnalysis = this.analyzeContext(context);
@@ -258,13 +255,13 @@ export abstract class BaseAgent {
         query,
         finalData: JSON.stringify(finalData, null, 2),
         context: contextAnalysis
-      });
+      }); // Remove language argument here
     } else {
       stagePrompt = this.getStagePrompt('output-generation', {
         query,
         finalData: JSON.stringify(finalData, null, 2),
         context: contextAnalysis
-      });
+      }, language);
     }
     const content = await this.executeAIWithErrorHandling(
       stagePrompt,
@@ -295,7 +292,7 @@ export abstract class BaseAgent {
   }
 
   // Summary stage methods
-  async stage2_5MutualReflectionSummary(responses: AgentResponse[], context: Message[]): Promise<AgentResponse> {
+  async stage2_5MutualReflectionSummary(responses: AgentResponse[], context: Message[], language: Language): Promise<AgentResponse> {
     const userMessage = context.find(m => m.role === 'user');
     const query = userMessage?.content || 'No user query provided';
     
@@ -306,7 +303,7 @@ export abstract class BaseAgent {
     const stagePrompt = this.getStagePrompt('mutual-reflection-summary', {
       query,
       responses: responsesText
-    });
+    }, language);
     
     const content = await this.executeAIWithErrorHandling(
       stagePrompt,
@@ -331,7 +328,7 @@ export abstract class BaseAgent {
     };
   }
 
-  async stage3_5ConflictResolutionSummary(responses: AgentResponse[], context: Message[]): Promise<AgentResponse> {
+  async stage3_5ConflictResolutionSummary(responses: AgentResponse[], context: Message[], language: Language): Promise<AgentResponse> {
     const userMessage = context.find(m => m.role === 'user');
     const query = userMessage?.content || 'No user query provided';
     
@@ -342,7 +339,7 @@ export abstract class BaseAgent {
     const stagePrompt = this.getStagePrompt('conflict-resolution-summary', {
       query,
       responses: responsesText
-    });
+    }, language);
     
     const content = await this.executeAIWithErrorHandling(
       stagePrompt,
@@ -367,7 +364,7 @@ export abstract class BaseAgent {
     };
   }
 
-  async stage4_5SynthesisAttemptSummary(responses: AgentResponse[], context: Message[]): Promise<AgentResponse> {
+  async stage4_5SynthesisAttemptSummary(responses: AgentResponse[], context: Message[], language: Language): Promise<AgentResponse> {
     const userMessage = context.find(m => m.role === 'user');
     const query = userMessage?.content || 'No user query provided';
     
@@ -378,7 +375,7 @@ export abstract class BaseAgent {
     const stagePrompt = this.getStagePrompt('synthesis-attempt-summary', {
       query,
       responses: responsesText
-    });
+    }, language);
     
     const content = await this.executeAIWithErrorHandling(
       stagePrompt,
@@ -403,7 +400,7 @@ export abstract class BaseAgent {
     };
   }
 
-  async stage5_1Finalize(votingResults: any, responses: AgentResponse[], context: Message[]): Promise<AgentResponse> {
+  async stage5_1Finalize(votingResults: any, responses: AgentResponse[], context: Message[], language: Language): Promise<AgentResponse> {
     const userMessage = context.find(m => m.role === 'user');
     const query = userMessage?.content || 'No user query provided';
     // Only use responses, do not use votingResults
@@ -413,7 +410,7 @@ export abstract class BaseAgent {
     const stagePrompt = this.getStagePrompt('finalize', {
       query,
       responses: responsesText
-    }, 'en'); // Force English
+    }, language);
     const content = await this.executeAIWithErrorHandling(
       stagePrompt,
       this.sessionId || 'unknown-session',
@@ -437,7 +434,7 @@ export abstract class BaseAgent {
   }
 
   // Generic AI execution methods for all agents
-  protected async executeAI(prompt: string): Promise<string> {
+  protected async executeAI(prompt: string, language: Language): Promise<string> {
     const executor = await this.ensureAIExecutor();
     const result = await executor.execute(prompt);
     if (!result.success) {
@@ -458,7 +455,7 @@ export abstract class BaseAgent {
     return result.content;
   }
 
-  protected async executeAIWithTruncation(prompt: string): Promise<string> {
+  protected async executeAIWithTruncation(prompt: string, language: Language): Promise<string> {
     const executor = await this.ensureAIExecutor();
     const result = await executor.execute(prompt);
     if (!result.success) {
@@ -507,12 +504,12 @@ export abstract class BaseAgent {
     await this.interactionLogger.saveInteractionLog(log);
   }
 
-  protected getPersonalityPrompt(): string {
-    return getPersonalityPrompt(this.agent, this.language, this.agent.isSummarizer);
+  protected getPersonalityPrompt(language: Language): string {
+    return getPersonalityPrompt(this.agent, language, this.agent.isSummarizer);
   }
 
   protected getStagePrompt(stage: DialogueStage, variables: Record<string, any> = {}, language: Language = 'en'): string {
-    const personalityPrompt = this.getPersonalityPrompt();
+    const personalityPrompt = this.getPersonalityPrompt(language);
     return getStagePrompt(stage, personalityPrompt, variables, language);
   }
 
@@ -719,16 +716,6 @@ export abstract class BaseAgent {
     else if (errorRate < 0.05) return 0.05; // Low error rate
     
     return 0;
-  }
-
-  // Set language for responses
-  public setLanguage(language: Language): void {
-    this.language = language;
-  }
-
-  // Get current language
-  public getLanguage(): Language {
-    return this.language;
   }
 
   // Set session ID for logging
