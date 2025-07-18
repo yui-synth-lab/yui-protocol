@@ -792,7 +792,9 @@ export class YuiProtocolRouter implements IRealtimeRouter {
           finalOutput.content,
           session.messages.find(m => m.role === 'user')?.content || '',
           language as Language,
-          sessionId
+          sessionId,
+          finalOutput.agentId,
+          currentSequenceNumber
         );
         
         // シーケンスごとの出力ファイル名を管理

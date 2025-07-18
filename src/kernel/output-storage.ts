@@ -10,6 +10,8 @@ export interface SavedOutput {
   language: 'en' | 'ja';
   createdAt: Date;
   sessionId: string;
+  agentId: string;
+  sequenceNumber: number;
 }
 
 export class OutputStorage {
@@ -31,9 +33,11 @@ export class OutputStorage {
     content: string,
     userPrompt: string,
     language: 'en' | 'ja',
-    sessionId: string
+    sessionId: string,
+    agentId: string,
+    sequenceNumber: number
   ): Promise<SavedOutput> {
-    const id = `output_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const id = `${sessionId}_${sequenceNumber}`;
     const timestamp = new Date();
 
     const output: SavedOutput = {
@@ -43,7 +47,9 @@ export class OutputStorage {
       userPrompt,
       language,
       createdAt: timestamp,
-      sessionId
+      sessionId,
+      agentId,
+      sequenceNumber
     };
 
     const filename = `${id}.md`;
@@ -59,11 +65,13 @@ export class OutputStorage {
   }
 
   private createMarkdownContent(output: SavedOutput): string {
-    const { title, content, userPrompt, language, createdAt, sessionId } = output;
+    const { title, content, userPrompt, language, createdAt, sessionId, agentId, sequenceNumber } = output;
 
     return `# ${title}
 
 **Session ID:** ${sessionId}  
+**Sequence Number:** ${sequenceNumber}  
+**Agent ID:** ${agentId}  
 **Language:** ${language === 'ja' ? 'Japanese' : 'English'}  
 **Created:** ${createdAt.toISOString()}
 
@@ -115,6 +123,8 @@ ${content}
 
       // Extract metadata
       const sessionIdMatch = content.match(/\*\*Session ID:\*\* (.+)/);
+      const sequenceNumberMatch = content.match(/\*\*Sequence Number:\*\* (\d+)/);
+      const agentIdMatch = content.match(/\*\*Agent ID:\*\* (.+)/);
       const languageMatch = content.match(/\*\*Language:\*\* (.+)/);
       const createdMatch = content.match(/\*\*Created:\*\* (.+)/);
 
@@ -122,7 +132,7 @@ ${content}
       const userQueryMatch = content.match(/## User Query\n([\s\S]*?)\n## AI Collaboration Output/);
       const contentMatch = content.match(/## AI Collaboration Output\n([\s\S]*?)\n---/);
 
-      if (!sessionIdMatch || !languageMatch || !createdMatch || !userQueryMatch || !contentMatch) {
+      if (!sessionIdMatch || !sequenceNumberMatch || !agentIdMatch || !languageMatch || !createdMatch || !userQueryMatch || !contentMatch) {
         return null;
       }
 
@@ -133,7 +143,9 @@ ${content}
         userPrompt: userQueryMatch[1].trim(),
         language: languageMatch[1].trim() === 'Japanese' ? 'ja' : 'en',
         createdAt: new Date(createdMatch[1]),
-        sessionId: sessionIdMatch[1].trim()
+        sessionId: sessionIdMatch[1].trim(),
+        agentId: agentIdMatch[1].trim(),
+        sequenceNumber: parseInt(sequenceNumberMatch[1], 10)
       };
     } catch (error) {
       console.error('[OutputStorage] Error parsing markdown content:', error);
