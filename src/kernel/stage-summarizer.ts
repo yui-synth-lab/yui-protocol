@@ -282,18 +282,27 @@ export class StageSummarizer {
       return voteAnalysisResult;
     } catch (error) {
       const duration = Date.now() - startTime;
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      // エラー詳細を構築
+      let errorDetails = '';
+      if (error instanceof Error) {
+        errorDetails = `message: ${error.message}`;
+        if (error.name) errorDetails += `\nname: ${error.name}`;
+        if (error.stack) errorDetails += `\nstack: ${error.stack}`;
+        if ((error as any).cause) errorDetails += `\ncause: ${(error as any).cause}`;
+      } else {
+        errorDetails = JSON.stringify(error);
+      }
 
-      // ログ出力（エラー）
+      // ログ出力（エラー詳細を含める）
       if (sessionId) {
         await this.logInteraction(
           sessionId,
           'output-generation' as DialogueStage,
           `Vote analysis for ${agentResponses.length} agents`,
-          `Error occurred during vote analysis`,
+          `Error occurred during vote analysis\n${errorDetails}`,
           duration,
           'error',
-          errorMessage
+          errorDetails
         );
       }
 
