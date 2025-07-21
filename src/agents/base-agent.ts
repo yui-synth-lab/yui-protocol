@@ -3,21 +3,31 @@ import { getPersonalityPrompt, getStagePrompt, Language, SUMMARIZER_STAGE_PROMPT
 import { InteractionLogger, SimplifiedInteractionLog } from '../kernel/interaction-logger.js';
 import { AIExecutor, createAIExecutor } from '../kernel/ai-executor.js';
 
-export abstract class BaseAgent {  
+export abstract class BaseAgent {
   protected agent: Agent;
   protected memory: Message[] = [];
   protected interactionLogger: InteractionLogger;
   protected sessionId?: string;
   protected aiExecutor?: AIExecutor;
   private aiExecutorPromise?: Promise<AIExecutor>;
+  protected aiExecutorFinalize?: AIExecutor;
+  private aiExecutorPromiseFinalize?: Promise<AIExecutor>;
   protected isSummarizer: boolean;
 
-  constructor(agent: Agent, interactionLogger?: InteractionLogger) {
+  constructor(agent: Agent, interactionLogger?: InteractionLogger, language: Language = 'en') {
     this.agent = agent;
     this.interactionLogger = interactionLogger || new InteractionLogger();
     // Use 'en' as default for generation parameters in constructor
     const generationParams = this.getGenerationParameters();
-    this.aiExecutorPromise = createAIExecutor(agent.name, {
+    this.aiExecutorPromise = createAIExecutor(agent.id, {
+      temperature: generationParams.temperature,
+      topP: generationParams.topP,
+      repetitionPenalty: generationParams.repetitionPenalty,
+      presencePenalty: generationParams.presencePenalty,
+      frequencyPenalty: generationParams.frequencyPenalty,
+      topK: generationParams.topK
+    });
+    this.aiExecutorPromiseFinalize = createAIExecutor(agent.id + '-finalizer', {
       temperature: generationParams.temperature,
       topP: generationParams.topP,
       repetitionPenalty: generationParams.repetitionPenalty,
@@ -29,11 +39,19 @@ export abstract class BaseAgent {
   }
 
   // Initialize AI executor if not already done
-  private async ensureAIExecutor(): Promise<AIExecutor> {
-    if (!this.aiExecutor) {
-      this.aiExecutor = await this.aiExecutorPromise!;
+  private async ensureAIExecutor(stage: DialogueStage): Promise<AIExecutor> {
+    if (stage === 'finalize' || stage === 'output-generation') {
+      if (!this.aiExecutorFinalize) {
+        this.aiExecutorFinalize = await this.aiExecutorPromiseFinalize!;
+      }
+      return this.aiExecutorFinalize!;
     }
-    return this.aiExecutor;
+    else {
+      if (!this.aiExecutor) {
+        this.aiExecutor = await this.aiExecutorPromise!;
+      }
+      return this.aiExecutor!;
+    }
   }
 
   // Main response method for the full dialogue process
@@ -62,14 +80,14 @@ export abstract class BaseAgent {
     // セッション全体のメッセージから現在のシーケンス番号を取得
     // contextには最新のメッセージのみが含まれる可能性があるため、
     // セッション全体のメッセージを使用する必要がある
-    
+
     // 現在のシーケンス番号を取得（最新のユーザーメッセージから）
     const userMessages = context.filter(m => m.role === 'user');
     const currentSequenceNumber = userMessages.length > 0
       ? Math.max(...userMessages.map(m => m.sequenceNumber || 1))
       : 1;
     const previousSequenceNumber = currentSequenceNumber - 1;
-    
+
     console.log(`[BaseAgent] Current sequence: ${currentSequenceNumber}, Previous sequence: ${previousSequenceNumber}`);
     if (previousSequenceNumber < 1) {
       return {
@@ -77,7 +95,7 @@ export abstract class BaseAgent {
         previousAgentConclusions: {}
       };
     }
-    
+
     // 前回シーケンスのユーザーメッセージを取得
     const previousUserMessage = context.find(
       m => m.role === 'user' && m.sequenceNumber === previousSequenceNumber
@@ -86,12 +104,12 @@ export abstract class BaseAgent {
 
     // 前回シーケンスのエージェント結論を取得
     const previousAgentConclusions: { [agentId: string]: string } = {};
-    
+
     // 前回シーケンスの最終ステージ（finalize）のエージェント応答を取得
     const previousOutputMessages = context.filter(
-      m => m.role === 'agent' && 
-           m.sequenceNumber === previousSequenceNumber && 
-           m.stage === 'finalize'
+      m => m.role === 'agent' &&
+        m.sequenceNumber === previousSequenceNumber &&
+        m.stage === 'finalize'
     );
 
     // デバッグログ
@@ -118,21 +136,24 @@ export abstract class BaseAgent {
     const query = userMessage?.content || prompt || 'No user query provided';
     const relevantContext = this.getRelevantContext(context);
     const contextAnalysis = this.analyzeContext(relevantContext);
-    
+
     // 前回シーケンスの情報を取得
     const previousInfo = this.getPreviousSequenceInfo(context, language);
     const previousConclusionsText = Object.entries(previousInfo.previousAgentConclusions)
       .map(([agentId, conclusion]) => `${agentId}: ${conclusion}`)
       .join('\n\n');
-    
+
     const stagePrompt = this.getStagePrompt('individual-thought', {
       query,
       context: contextAnalysis,
       previousInput: previousInfo.previousUserInput,
       previousConclusions: previousConclusionsText
     }, language);
+    const personality = this.getPersonalityPrompt(language);
+
     const content = await this.executeAIWithErrorHandling(
       stagePrompt,
+      personality,
       this.sessionId || 'unknown-session',
       'individual-thought',
       'individual thought processing'
@@ -150,17 +171,17 @@ export abstract class BaseAgent {
   async stage2MutualReflection(prompt: string, otherThoughts: IndividualThought[], context: Message[], AgentList: Agent[], language: Language): Promise<MutualReflection> {
     const userMessage = context.find(m => m.role === 'user');
     const query = userMessage?.content || prompt || 'No user query provided';
-    const otherThoughtsText = otherThoughts.map(thought => 
+    const otherThoughtsText = otherThoughts.map(thought =>
       `${thought.agentId}: ${thought.content}`
     ).join('\n\n');
     const contextAnalysis = this.analyzeContext(context);
-    
+
     // 前回シーケンスの情報を取得
     const previousInfo = this.getPreviousSequenceInfo(context, language);
     const previousConclusionsText = Object.entries(previousInfo.previousAgentConclusions)
       .map(([agentId, conclusion]) => `${agentId}: ${conclusion}`)
       .join('\n\n');
-    
+
     const stagePrompt = this.getStagePrompt('mutual-reflection', {
       query,
       otherThoughts: otherThoughtsText,
@@ -168,8 +189,11 @@ export abstract class BaseAgent {
       previousInput: previousInfo.previousUserInput,
       previousConclusions: previousConclusionsText
     }, language);
+    const personality = this.getPersonalityPrompt(language);
+
     const content = await this.executeAIWithErrorHandling(
       stagePrompt,
+      personality,
       this.sessionId || 'unknown-session',
       'mutual-reflection',
       'mutual reflection processing'
@@ -192,8 +216,11 @@ export abstract class BaseAgent {
       conflicts: JSON.stringify(conflicts, null, 2),
       context: contextAnalysis
     }, language);
+    const personality = this.getPersonalityPrompt(language);
+
     const content = await this.executeAIWithErrorHandling(
       stagePrompt,
+      personality,
       this.sessionId || 'unknown-session',
       'conflict-resolution',
       'conflict resolution processing'
@@ -206,10 +233,10 @@ export abstract class BaseAgent {
       confidence: await this.generateConfidence('conflict-resolution', context),
       references: this.getReferences(),
       stage: 'conflict-resolution',
-      stageData: { 
+      stageData: {
         agentId: this.agent.id,
         content: content,
-        summary: content.slice(0, 100) 
+        summary: content.slice(0, 100)
       }
     };
   }
@@ -223,8 +250,11 @@ export abstract class BaseAgent {
       synthesisData: JSON.stringify(synthesisData, null, 2),
       context: contextAnalysis
     }, language);
+    const personality = this.getPersonalityPrompt(language);
+
     const content = await this.executeAIWithErrorHandling(
       stagePrompt,
+      personality,
       this.sessionId || 'unknown-session',
       'synthesis-attempt',
       'synthesis attempt processing'
@@ -237,10 +267,10 @@ export abstract class BaseAgent {
       confidence: await this.generateConfidence('synthesis-attempt', context),
       references: this.getReferences(),
       stage: 'synthesis-attempt',
-      stageData: { 
+      stageData: {
         agentId: this.agent.id,
         content: content,
-        summary: content.slice(0, 100) 
+        summary: content.slice(0, 100)
       }
     };
   }
@@ -263,8 +293,11 @@ export abstract class BaseAgent {
         context: contextAnalysis
       }, language);
     }
+    const personality = this.getPersonalityPrompt(language);
+
     const content = await this.executeAIWithErrorHandling(
       stagePrompt,
+      personality,
       this.sessionId || 'unknown-session',
       'output-generation',
       'output generation processing'
@@ -278,10 +311,10 @@ export abstract class BaseAgent {
       confidence: await this.generateConfidence('output-generation', context),
       references: this.getReferences(),
       stage: 'output-generation',
-      stageData: { 
+      stageData: {
         agentId: this.agent.id,
         content: content,
-        summary: content.slice(0, 100) 
+        summary: content.slice(0, 100)
       },
       metadata: {
         voteFor: voteDetails.votedAgent || undefined,
@@ -291,128 +324,23 @@ export abstract class BaseAgent {
     };
   }
 
-  // Summary stage methods
-  async stage2_5MutualReflectionSummary(responses: AgentResponse[], context: Message[], language: Language): Promise<AgentResponse> {
-    const userMessage = context.find(m => m.role === 'user');
-    const query = userMessage?.content || 'No user query provided';
-    
-    const responsesText = responses.map(response => 
-      `${response.agentId}: ${response.content}`
-    ).join('\n\n');
-    
-    const stagePrompt = this.getStagePrompt('mutual-reflection-summary', {
-      query,
-      responses: responsesText
-    }, language);
-    
-    const content = await this.executeAIWithErrorHandling(
-      stagePrompt,
-      this.sessionId || 'unknown-session',
-      'mutual-reflection-summary',
-      'mutual reflection summary processing'
-    );
-    
-    return {
-      agentId: this.agent.id,
-      content,
-      summary: content.slice(0, 100),
-      reasoning: 'I summarized the mutual reflection stage to extract key conflicts.',
-      confidence: await this.generateConfidence('mutual-reflection-summary', context),
-      references: ['conflict-extraction', 'summary-generation'],
-      stage: 'mutual-reflection-summary',
-      stageData: { 
-        agentId: this.agent.id,
-        content: content,
-        summary: content.slice(0, 100) 
-      }
-    };
-  }
-
-  async stage3_5ConflictResolutionSummary(responses: AgentResponse[], context: Message[], language: Language): Promise<AgentResponse> {
-    const userMessage = context.find(m => m.role === 'user');
-    const query = userMessage?.content || 'No user query provided';
-    
-    const responsesText = responses.map(response => 
-      `${response.agentId}: ${response.content}`
-    ).join('\n\n');
-    
-    const stagePrompt = this.getStagePrompt('conflict-resolution-summary', {
-      query,
-      responses: responsesText
-    }, language);
-    
-    const content = await this.executeAIWithErrorHandling(
-      stagePrompt,
-      this.sessionId || 'unknown-session',
-      'conflict-resolution-summary',
-      'conflict resolution summary processing'
-    );
-    
-    return {
-      agentId: this.agent.id,
-      content,
-      summary: content.slice(0, 100),
-      reasoning: 'I summarized the conflict resolution stage to extract key proposals.',
-      confidence: await this.generateConfidence('conflict-resolution-summary', context),
-      references: ['resolution-extraction', 'summary-generation'],
-      stage: 'conflict-resolution-summary',
-      stageData: { 
-        agentId: this.agent.id,
-        content: content,
-        summary: content.slice(0, 100) 
-      }
-    };
-  }
-
-  async stage4_5SynthesisAttemptSummary(responses: AgentResponse[], context: Message[], language: Language): Promise<AgentResponse> {
-    const userMessage = context.find(m => m.role === 'user');
-    const query = userMessage?.content || 'No user query provided';
-    
-    const responsesText = responses.map(response => 
-      `${response.agentId}: ${response.content}`
-    ).join('\n\n');
-    
-    const stagePrompt = this.getStagePrompt('synthesis-attempt-summary', {
-      query,
-      responses: responsesText
-    }, language);
-    
-    const content = await this.executeAIWithErrorHandling(
-      stagePrompt,
-      this.sessionId || 'unknown-session',
-      'synthesis-attempt-summary',
-      'synthesis attempt summary processing'
-    );
-    
-    return {
-      agentId: this.agent.id,
-      content,
-      summary: content.slice(0, 100),
-      reasoning: 'I summarized the synthesis attempt stage to extract key integration points.',
-      confidence: await this.generateConfidence('synthesis-attempt-summary', context),
-      references: ['integration-extraction', 'summary-generation'],
-      stage: 'synthesis-attempt-summary',
-      stageData: { 
-        agentId: this.agent.id,
-        content: content,
-        summary: content.slice(0, 100) 
-      }
-    };
-  }
 
   async stage5_1Finalize(votingResults: any, responses: AgentResponse[], context: Message[], language: Language): Promise<AgentResponse> {
     const userMessage = context.find(m => m.role === 'user');
     const query = userMessage?.content || 'No user query provided';
     // Only use responses, do not use votingResults
-    const responsesText = responses.map(response => 
+    const responsesText = responses.map(response =>
       `${response.agentId}: ${response.content}`
     ).join('\n\n');
     const stagePrompt = this.getStagePrompt('finalize', {
       query,
       responses: responsesText
     }, language);
+    const personality = this.getPersonalityPrompt(language);
+
     const content = await this.executeAIWithErrorHandling(
       stagePrompt,
+      personality,
       this.sessionId || 'unknown-session',
       'finalize',
       'finalize processing'
@@ -425,66 +353,28 @@ export abstract class BaseAgent {
       confidence: await this.generateConfidence('finalize', context),
       references: ['final-synthesis', 'comprehensive-output'],
       stage: 'finalize',
-      stageData: { 
+      stageData: {
         agentId: this.agent.id,
         content: content,
-        summary: content.slice(0, 100) 
+        summary: content.slice(0, 100)
       }
     };
   }
 
-  // Generic AI execution methods for all agents
-  protected async executeAI(prompt: string, language: Language): Promise<string> {
-    const executor = await this.ensureAIExecutor();
-    const result = await executor.execute(prompt);
-    if (!result.success) {
-      console.warn(`[${this.agent.name}] AI execution failed: ${result.error}`);
-      // Log the error details for debugging
-      if (this.sessionId) {
-        await this.logInteraction(
-          this.sessionId,
-          'unknown' as DialogueStage,
-          prompt,
-          result.content,
-          result.duration,
-          'error',
-          `AI execution failed: ${result.error}${result.errorDetails ? ` | Details: ${JSON.stringify(result.errorDetails)}` : ''}`
-        );
-      }
-    }
-    return result.content;
-  }
 
-  protected async executeAIWithTruncation(prompt: string, language: Language): Promise<string> {
-    const executor = await this.ensureAIExecutor();
-    const result = await executor.execute(prompt);
-    if (!result.success) {
-      console.warn(`[${this.agent.name}] AI execution with truncation failed: ${result.error}`);
-      // Log the error details for debugging
-      if (this.sessionId) {
-        await this.logInteraction(
-          this.sessionId,
-          'unknown' as DialogueStage,
-          prompt,
-          result.content,
-          result.duration,
-          'error',
-          `AI execution with truncation failed: ${result.error}${result.errorDetails ? ` | Details: ${JSON.stringify(result.errorDetails)}` : ''}`
-        );
-      }
-    }
-    return result.content;
-  }
 
   // Log interaction method for agents to use
   protected async logInteraction(
     sessionId: string,
     stage: DialogueStage,
     prompt: string,
+    personality: string,
     output: string,
     duration: number,
     status: 'success' | 'error' | 'timeout' = 'success',
-    error?: string
+    error?: string,
+    provider?: string,
+    model?: string
   ): Promise<void> {
     const actualSessionId = sessionId === 'unknown-session' ? this.sessionId || sessionId : sessionId;
     const log: SimplifiedInteractionLog = {
@@ -498,24 +388,26 @@ export abstract class BaseAgent {
       output,
       duration,
       status,
-      error
+      error,
+      personality,
+      provider,
+      model
     };
 
     await this.interactionLogger.saveInteractionLog(log);
   }
 
   protected getPersonalityPrompt(language: Language): string {
-    return getPersonalityPrompt(this.agent, language, this.agent.isSummarizer);
+    return getPersonalityPrompt(this.agent, language);
   }
 
   protected getStagePrompt(stage: DialogueStage, variables: Record<string, any> = {}, language: Language = 'en'): string {
-    const personalityPrompt = this.getPersonalityPrompt(language);
-    return getStagePrompt(stage, personalityPrompt, variables, language);
+    return getStagePrompt(stage, variables, language);
   }
 
   protected addToMemory(message: Message): void {
     this.memory.push(message);
-    
+
     // Memory management based on agent's memory scope
     const maxMemory = this.getMaxMemorySize();
     if (this.memory.length > maxMemory) {
@@ -570,23 +462,23 @@ export abstract class BaseAgent {
   ): Promise<number> {
     // Base confidence based on agent characteristics
     let baseConfidence = this.getBaseConfidenceFromCharacteristics();
-    
+
     // Adjust based on performance history
     const performanceAdjustment = await this.getPerformanceAdjustment();
     baseConfidence += performanceAdjustment;
-    
+
     // Adjust based on stage experience
     const stageAdjustment = this.getStageExperienceAdjustment(stage);
     baseConfidence += stageAdjustment;
-    
+
     // Adjust based on context complexity
     const contextAdjustment = this.getContextComplexityAdjustment(context);
     baseConfidence += contextAdjustment;
-    
+
     // Adjust based on error history
     const errorAdjustment = this.getErrorHistoryAdjustment(errorHistory);
     baseConfidence += errorAdjustment;
-    
+
     // Ensure confidence is within reasonable bounds (0.1 to 0.95)
     return Math.max(0.1, Math.min(0.95, baseConfidence));
   }
@@ -594,7 +486,7 @@ export abstract class BaseAgent {
   private getBaseConfidenceFromCharacteristics(): number {
     // Base confidence based on agent style and priority
     let baseConfidence = 0.6; // Default base confidence
-    
+
     // Adjust based on agent style
     switch (this.agent.style) {
       case 'logical':
@@ -616,7 +508,7 @@ export abstract class BaseAgent {
         baseConfidence += 0.08; // Analytical agents have good confidence
         break;
     }
-    
+
     // Adjust based on priority
     switch (this.agent.priority) {
       case 'precision':
@@ -632,28 +524,28 @@ export abstract class BaseAgent {
         baseConfidence += 0.03; // Balanced agents have good confidence
         break;
     }
-    
+
     return baseConfidence;
   }
 
   private async getPerformanceAdjustment(): Promise<number> {
     if (!this.sessionId) return 0;
-    
+
     try {
       // Get recent interaction logs for this agent
       const logs = await this.interactionLogger.getSessionLogs(this.sessionId);
       const agentLogs = logs.filter(log => log.agentId === this.agent.id);
-      
+
       if (agentLogs.length === 0) return 0;
-      
+
       // Calculate success rate
       const successfulLogs = agentLogs.filter(log => log.status === 'success');
       const successRate = successfulLogs.length / agentLogs.length;
-      
+
       // Performance adjustment based on success rate
       // Higher success rate increases confidence, lower success rate decreases it
       const performanceAdjustment = (successRate - 0.8) * 0.3; // ±0.06 range
-      
+
       return Math.max(-0.1, Math.min(0.1, performanceAdjustment));
     } catch (error) {
       console.warn('Failed to get performance adjustment:', error);
@@ -663,7 +555,7 @@ export abstract class BaseAgent {
 
   private getStageExperienceAdjustment(stage?: DialogueStage): number {
     if (!stage) return 0;
-    
+
     // Different stages have different confidence requirements
     switch (stage) {
       case 'individual-thought':
@@ -683,38 +575,38 @@ export abstract class BaseAgent {
 
   private getContextComplexityAdjustment(context?: Message[]): number {
     if (!context || context.length === 0) return 0;
-    
+
     // Analyze context complexity
     const contextLength = context.length;
     const hasConflicts = context.some(m => m.stage === 'conflict-resolution');
     const hasMultipleStages = new Set(context.map(m => m.stage)).size > 2;
-    
+
     let complexityAdjustment = 0;
-    
+
     // Adjust based on context length
     if (contextLength > 20) complexityAdjustment -= 0.05;
     else if (contextLength > 10) complexityAdjustment -= 0.02;
     else if (contextLength < 5) complexityAdjustment += 0.02;
-    
+
     // Adjust based on presence of conflicts
     if (hasConflicts) complexityAdjustment -= 0.03;
-    
+
     // Adjust based on multiple stages
     if (hasMultipleStages) complexityAdjustment -= 0.02;
-    
+
     return complexityAdjustment;
   }
 
   private getErrorHistoryAdjustment(errorHistory?: { success: number; total: number }): number {
     if (!errorHistory || errorHistory.total === 0) return 0;
-    
+
     const errorRate = 1 - (errorHistory.success / errorHistory.total);
-    
+
     // Reduce confidence based on error rate
     if (errorRate > 0.3) return -0.15; // High error rate
     else if (errorRate > 0.1) return -0.08; // Moderate error rate
     else if (errorRate < 0.05) return 0.05; // Low error rate
-    
+
     return 0;
   }
 
@@ -748,21 +640,21 @@ export abstract class BaseAgent {
 
     // Personality（性格）による調整
     const personality = this.agent.personality?.toLowerCase() || '';
-    
+
     // 創造性・感情性を表すキーワード
     const creativeKeywords = [
       'creative', 'imaginative', 'poetic', 'artistic', 'dreamer', 'fantastical',
       'emotional', 'empathetic', 'curious', 'wonder', 'passionate', 'expressive',
       'intuitive', 'free', 'unconventional', 'innovative', 'visionary'
     ];
-    
+
     // 論理性・分析的思考を表すキーワード
     const logicalKeywords = [
       'logical', 'analytical', 'systematic', 'precise', 'critical', 'objective',
       'mathematical', 'statistical', 'rigorous', 'structured', 'methodical',
       'factual', 'data-driven', 'evidence-based', 'scientific'
     ];
-    
+
     // 哲学的・深い思考を表すキーワード
     const philosophicalKeywords = [
       'philosophical', 'contemplative', 'thoughtful', 'reflective', 'wise',
@@ -780,7 +672,7 @@ export abstract class BaseAgent {
 
     // Tone（トーン）による調整
     const tone = this.agent.tone?.toLowerCase() || '';
-    
+
     const warmTones = ['warm', 'gentle', 'poetic', 'empathetic', 'thoughtful', 'serene'];
     const analyticalTones = ['calm', 'objective', 'direct', 'precise', 'critical'];
     const creativeTones = ['fantastical', 'expressive', 'colorful', 'rhythmic'];
@@ -792,18 +684,18 @@ export abstract class BaseAgent {
     // Preferences（好み）による調整
     const preferences = this.agent.preferences || [];
     const preferencesText = preferences.join(' ').toLowerCase();
-    
+
     const creativePreferences = [
       'beautiful metaphors', 'poetic expression', 'free imagination', 'creative solutions',
       'scientific curiosity', 'emotional intelligence', 'pattern recognition', 'empathic analysis',
       'creative problem-solving', 'innocent wonder'
     ];
-    
+
     const analyticalPreferences = [
       'statistical analysis', 'mathematical models', 'objective evaluation', 'the beauty of data',
       'elimination of ambiguity', 'sharp observations', 'pursuit of essence', 'logical consistency'
     ];
-    
+
     const logicalPreferences = [
       'the beauty of logic', 'rigorous reasoning', 'pursuit of truth', 'quiet contemplation',
       'systematic analysis', 'structured thinking'
@@ -819,7 +711,7 @@ export abstract class BaseAgent {
 
     // Style（スタイル）による調整
     const style = this.agent.style?.toLowerCase() || '';
-    
+
     if (style.includes('intuitive')) adjustments += 0.15;
     if (style.includes('emotive')) adjustments += 0.12;
     if (style.includes('logical')) adjustments -= 0.1;
@@ -828,7 +720,7 @@ export abstract class BaseAgent {
 
     // Priority（優先度）による調整
     const priority = this.agent.priority?.toLowerCase() || '';
-    
+
     if (priority.includes('breadth')) adjustments += 0.05;
     if (priority.includes('depth')) adjustments -= 0.05;
     if (priority.includes('precision')) adjustments -= 0.1;
@@ -841,7 +733,7 @@ export abstract class BaseAgent {
 
     // 最終的なtemperature値を計算（0.1 - 1.0の範囲に制限）
     const finalTemperature = Math.max(0.1, Math.min(1.0, baseTemperature + adjustments));
-    
+
     // デバッグ用ログ
     console.log(`[Temperature Calculator] ${this.agent.id}:`, {
       personality: this.agent.personality,
@@ -874,13 +766,13 @@ export abstract class BaseAgent {
 
     // Personality（性格）による調整
     const personality = this.agent.personality?.toLowerCase() || '';
-    
+
     // 創造性・多様性を表すキーワード
     const creativeKeywords = [
       'creative', 'imaginative', 'poetic', 'artistic', 'dreamer', 'fantastical',
       'expressive', 'colorful', 'rhythmic', 'metaphorical', 'innovative'
     ];
-    
+
     // 論理性・一貫性を表すキーワード
     const logicalKeywords = [
       'logical', 'analytical', 'systematic', 'precise', 'critical', 'objective',
@@ -895,7 +787,7 @@ export abstract class BaseAgent {
 
     // Style（スタイル）による調整
     const style = this.agent.style?.toLowerCase() || '';
-    
+
     if (style.includes('intuitive')) adjustments += 0.08;
     if (style.includes('emotive')) adjustments += 0.06;
     if (style.includes('logical')) adjustments -= 0.05;
@@ -904,7 +796,7 @@ export abstract class BaseAgent {
 
     // Priority（優先度）による調整
     const priority = this.agent.priority?.toLowerCase() || '';
-    
+
     if (priority.includes('breadth')) adjustments += 0.04;
     if (priority.includes('precision')) adjustments -= 0.06;
 
@@ -919,7 +811,7 @@ export abstract class BaseAgent {
 
     // 最終的なtop_p値を計算（0.7 - 1.0の範囲に制限）
     const finalTopP = Math.max(0.7, Math.min(1.0, baseTopP + adjustments));
-    
+
     return Math.round(finalTopP * 100) / 100; // 小数点2桁に丸める
   }
 
@@ -935,13 +827,13 @@ export abstract class BaseAgent {
 
     // Personality（性格）による調整
     const personality = this.agent.personality?.toLowerCase() || '';
-    
+
     // 多様性・創造性を表すキーワード
     const diverseKeywords = [
       'creative', 'imaginative', 'poetic', 'artistic', 'dreamer', 'fantastical',
       'expressive', 'colorful', 'rhythmic', 'metaphorical', 'innovative'
     ];
-    
+
     // 一貫性・論理性を表すキーワード
     const consistentKeywords = [
       'logical', 'analytical', 'systematic', 'precise', 'critical', 'objective',
@@ -956,7 +848,7 @@ export abstract class BaseAgent {
 
     // Style（スタイル）による調整
     const style = this.agent.style?.toLowerCase() || '';
-    
+
     if (style.includes('intuitive')) adjustments += 0.08;
     if (style.includes('emotive')) adjustments += 0.06;
     if (style.includes('logical')) adjustments -= 0.05;
@@ -974,7 +866,7 @@ export abstract class BaseAgent {
 
     // 最終的なrepetition_penalty値を計算（1.0 - 1.3の範囲に制限）
     const finalPenalty = Math.max(1.0, Math.min(1.3, basePenalty + adjustments));
-    
+
     return Math.round(finalPenalty * 100) / 100; // 小数点2桁に丸める
   }
 
@@ -990,13 +882,13 @@ export abstract class BaseAgent {
 
     // Personality（性格）による調整
     const personality = this.agent.personality?.toLowerCase() || '';
-    
+
     // 多様性・創造性を表すキーワード
     const diverseKeywords = [
       'creative', 'imaginative', 'poetic', 'artistic', 'dreamer', 'fantastical',
       'expressive', 'colorful', 'rhythmic', 'metaphorical', 'innovative'
     ];
-    
+
     // 一貫性・論理性を表すキーワード
     const consistentKeywords = [
       'logical', 'analytical', 'systematic', 'precise', 'critical', 'objective',
@@ -1011,7 +903,7 @@ export abstract class BaseAgent {
 
     // Style（スタイル）による調整
     const style = this.agent.style?.toLowerCase() || '';
-    
+
     if (style.includes('intuitive')) adjustments += 0.05;
     if (style.includes('emotive')) adjustments += 0.04;
     if (style.includes('logical')) adjustments -= 0.03;
@@ -1029,7 +921,7 @@ export abstract class BaseAgent {
 
     // 最終的なpresence_penalty値を計算（0.0 - 0.2の範囲に制限）
     const finalPenalty = Math.max(0.0, Math.min(0.2, basePenalty + adjustments));
-    
+
     return Math.round(finalPenalty * 100) / 100; // 小数点2桁に丸める
   }
 
@@ -1045,13 +937,13 @@ export abstract class BaseAgent {
 
     // Personality（性格）による調整
     const personality = this.agent.personality?.toLowerCase() || '';
-    
+
     // 多様性・創造性を表すキーワード
     const diverseKeywords = [
       'creative', 'imaginative', 'poetic', 'artistic', 'dreamer', 'fantastical',
       'expressive', 'colorful', 'rhythmic', 'metaphorical', 'innovative'
     ];
-    
+
     // 一貫性・論理性を表すキーワード
     const consistentKeywords = [
       'logical', 'analytical', 'systematic', 'precise', 'critical', 'objective',
@@ -1066,7 +958,7 @@ export abstract class BaseAgent {
 
     // Style（スタイル）による調整
     const style = this.agent.style?.toLowerCase() || '';
-    
+
     if (style.includes('intuitive')) adjustments += 0.05;
     if (style.includes('emotive')) adjustments += 0.04;
     if (style.includes('logical')) adjustments -= 0.03;
@@ -1084,7 +976,7 @@ export abstract class BaseAgent {
 
     // 最終的なfrequency_penalty値を計算（0.0 - 0.2の範囲に制限）
     const finalPenalty = Math.max(0.0, Math.min(0.2, basePenalty + adjustments));
-    
+
     return Math.round(finalPenalty * 100) / 100; // 小数点2桁に丸める
   }
 
@@ -1165,11 +1057,11 @@ export abstract class BaseAgent {
     const stageAdjustment = this.getStageExperienceAdjustment(stage);
     const contextAdjustment = this.getContextComplexityAdjustment(context);
     const errorAdjustment = this.getErrorHistoryAdjustment(errorHistory);
-    
-    const finalConfidence = Math.max(0.1, Math.min(0.95, 
+
+    const finalConfidence = Math.max(0.1, Math.min(0.95,
       baseConfidence + performanceAdjustment + stageAdjustment + contextAdjustment + errorAdjustment
     ));
-    
+
     return {
       baseConfidence,
       performanceAdjustment,
@@ -1180,139 +1072,52 @@ export abstract class BaseAgent {
     };
   }
 
-  // Common error handling and logging method for agents
-  protected async executeWithErrorHandling<T>(
-    operation: () => Promise<T>,
-    sessionId: string,
-    stage: DialogueStage,
-    prompt: string,
-    operationName: string
-  ): Promise<T> {
-    const startTime = Date.now();
-    
-    try {
-      const result = await operation();
-      const duration = Date.now() - startTime;
-      
-      // Log successful interaction
-      await this.logInteraction(
-        sessionId,
-        stage,
-        prompt,
-        typeof result === 'string' ? result : JSON.stringify(result),
-        duration,
-        'success'
-      );
-      
-      return result;
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      
-      // Log the error
-      await this.logInteraction(
-        sessionId,
-        stage,
-        prompt,
-        `Error occurred during ${operationName}`,
-        duration,
-        'error',
-        errorMessage
-      );
-      
-      throw error;
-    }
-  }
-
   // Common AI execution with error handling
   protected async executeAIWithErrorHandling(
     prompt: string,
+    personality: string,
     sessionId: string,
     stage: DialogueStage,
     operationName: string
   ): Promise<string> {
     const startTime = Date.now();
-    
+    let executor: AIExecutor | undefined;
     try {
-      const executor = await this.ensureAIExecutor();
-      const result = await executor.execute(prompt);
+      executor = await this.ensureAIExecutor(stage);
+      const result = await executor.execute(prompt, personality);
       const duration = Date.now() - startTime;
-      
-      // Log the interaction with proper status
       await this.logInteraction(
         sessionId,
         stage,
         prompt,
+        personality,
         result.content,
         duration,
         result.success ? 'success' : 'error',
-        result.success ? undefined : `AI execution failed: ${result.error}${result.errorDetails ? ` | Details: ${JSON.stringify(result.errorDetails)}` : ''}`
+        result.success ? undefined : `AI execution failed: ${result.error}${result.errorDetails ? ` | Details: ${JSON.stringify(result.errorDetails)}` : ''}`,
+        executor['provider'],
+        executor['model']
       );
-      
       return result.content;
     } catch (error) {
       const duration = Date.now() - startTime;
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      
-      // Log the error
       await this.logInteraction(
         sessionId,
         stage,
         prompt,
+        personality,
         `Error occurred during ${operationName}`,
         duration,
         'error',
-        errorMessage
+        errorMessage,
+        executor ? executor['provider'] : undefined,
+        executor ? executor['model'] : undefined
       );
-      
       throw error;
     }
   }
 
-  // Common AI execution with truncation and error handling
-  protected async executeAIWithTruncationAndErrorHandling(
-    prompt: string,
-    sessionId: string,
-    stage: DialogueStage,
-    operationName: string
-  ): Promise<string> {
-    const startTime = Date.now();
-    
-    try {
-      const executor = await this.ensureAIExecutor();
-      const result = await executor.execute(prompt);
-      const duration = Date.now() - startTime;
-      
-      // Log the interaction with proper status
-      await this.logInteraction(
-        sessionId,
-        stage,
-        prompt,
-        result.content,
-        duration,
-        result.success ? 'success' : 'error',
-        result.success ? undefined : `AI execution with truncation failed: ${result.error}${result.errorDetails ? ` | Details: ${JSON.stringify(result.errorDetails)}` : ''}`
-      );
-      
-      return result.content;
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      
-      // Log the error
-      await this.logInteraction(
-        sessionId,
-        stage,
-        prompt,
-        `Error occurred during ${operationName}`,
-        duration,
-        'error',
-        errorMessage
-      );
-      
-      throw error;
-    }
-  }
 
   // 共通のコンテキスト分析メソッド
   protected analyzeContext(context: Message[]): string {

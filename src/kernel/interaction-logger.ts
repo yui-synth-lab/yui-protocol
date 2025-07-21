@@ -14,6 +14,9 @@ export interface SimplifiedInteractionLog {
   duration: number;
   status: 'success' | 'error' | 'timeout';
   error?: string;
+  personality?: string; // Added personality field
+  provider?: string; // AIサービス名
+  model?: string;     // モデル名
 }
 
 export type FileSystem = typeof fs;

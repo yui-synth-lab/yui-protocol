@@ -50,7 +50,7 @@ const realtimeRouter = new YuiProtocolRouter(
   sharedOutputStorage,
   sharedInteractionLogger,
   stageSummarizerOptions,
-  120000
+  30000
 );
 
 // WebSocket connection management

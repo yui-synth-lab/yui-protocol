@@ -13,7 +13,7 @@ export const PERSONALITY_PROMPT_TEMPLATE = `
 Respond ONLY in {language}. Do not use any other language.
 You are one of the intelligent agents of the Yui Protocol.
 
-You are {name} ({furigana}), a {style} AI agent with {priority} priority.
+You are {name} ({id}), a {style} AI agent with {priority} priority.
 
 **Your Core Identity:**
 {personality}
@@ -59,30 +59,6 @@ Please respond in character, considering your unique perspective, style, and com
 // Unified language instruction for prompts
 export const UNIFIED_LANGUAGE_INSTRUCTION = 'Please respond in the specified language.';
 
-// sammarizer-specific instruction (for BaseAgent to append)
-export const SUMMARIZER_INSTRUCTION = `You are one of the intelligent agents of the Yui Protocol.
-
-Create a comprehensive and detailed summary of this session from your perspective.
-
-Your task: Thoroughly summarize the outputs from the final stage of the collaboration and provide a complete intellectual record of the entire session.
-
-Guidelines:
-1. **Comprehensive Coverage**: Extract and elaborate on the key insights and main points from each agent's contribution across all stages
-2. **Deep Analysis**: Analyze areas of agreement and disagreement in depth, including the reasoning behind different positions
-3. **Evolution Tracking**: Document how ideas evolved throughout the discussion, from initial thoughts to final synthesis
-4. **Methodological Insights**: Highlight the different analytical approaches used and how they contributed to the overall understanding
-5. **Critical Evaluation**: Assess the strengths and limitations of different arguments and approaches
-6. **Synthesis Analysis**: Examine how diverse perspectives were integrated and what unified framework emerged
-7. **Practical Implications**: Explore the real-world implications and applications of the discussion outcomes
-8. **Future Directions**: Identify areas that need further exploration and research
-9. **Collaborative Dynamics**: Analyze how the agents worked together and what made the collaboration effective
-10. **Intellectual Contribution**: Assess the overall intellectual contribution and significance of the discussion
-
-**Do not mention or include any voting results or recommendations for a summarizer. Focus only on the content and outcome of the discussion itself.**
-
-Structure your response with clear sections, detailed analysis, and thorough coverage of all aspects of the discussion. There is no strict word limit—be as detailed and expansive as necessary to fully capture the intellectual richness and depth of the entire session.
-
-Please format your response in markdown, using clear structure, sections, and paragraphs to present a comprehensive summary that serves as a complete intellectual record of this session.`;
 
 // Stage summary prompt templates
 export const STAGE_SUMMARY_PROMPT = `You are one of the intelligent agents of the Yui Protocol.
@@ -118,69 +94,6 @@ Example:
 
 DO NOT use any other formatting, sections, or detailed analysis. ONLY use the dash format above. This is required for system parsing.`;
 
-export const FINAL_SUMMARY_PROMPT = `You are one of the intelligent agents of the Yui Protocol.
-
-Please create a comprehensive final summary that integrates all stage summaries into a coherent narrative.
-
-Participating Agents: {agentNames}
-
-Stage Summaries:
-{summaryText}
-
-Your task is to create a detailed final summary that provides a complete picture of the entire discussion. This summary should be rich enough to serve as a standalone document that captures the full intellectual journey of the session.
-
-Please structure your response as follows:
-
-## Executive Summary
-Provide a high-level overview of the entire discussion in 3-4 paragraphs, highlighting the main question, key themes, and overall direction of the conversation.
-
-## Detailed Analysis by Stage
-
-### Stage 1: Individual Thought
-- Summarize the initial positions and approaches of each agent
-- Highlight the diversity of perspectives and analytical frameworks
-- Note any early patterns or themes that emerged
-
-### Stage 2: Mutual Reflection
-- Detail how agents engaged with each other's ideas
-- Identify key points of agreement and disagreement
-- Describe the evolution of understanding through dialogue
-
-### Stage 3: Conflict Resolution
-- Analyze the conflicts that emerged and how they were addressed
-- Describe the resolution strategies and compromises reached
-- Note any remaining tensions or unresolved issues
-
-### Stage 4: Synthesis Attempt
-- Detail the integration efforts and synthesis frameworks proposed
-- Describe how different perspectives were combined
-- Highlight the emerging unified understanding
-
-### Stage 5: Output Generation
-- Summarize the final conclusions and recommendations
-- Note the voting results and reasoning
-- Describe the path forward that emerged
-
-## Key Insights and Findings
-- **Major Agreements**: What points did all or most agents agree on?
-- **Critical Disagreements**: What were the main areas of contention?
-- **Novel Perspectives**: What unique insights or approaches emerged?
-- **Evolution of Understanding**: How did the discussion change initial positions?
-
-## Analytical Framework
-- **Methodological Approaches**: What different analytical methods were used?
-- **Evidence and Reasoning**: What types of evidence and reasoning were employed?
-- **Integration Strategies**: How were diverse perspectives combined?
-
-## Implications and Recommendations
-- **Practical Implications**: What are the real-world implications of the discussion?
-- **Future Directions**: What areas need further exploration?
-- **Actionable Recommendations**: What specific steps or actions are recommended?
-
-## Conclusion
-Provide a thoughtful conclusion that ties together the entire discussion, highlighting the most important insights and the significance of the collaborative exploration.
-
-Please ensure this summary is comprehensive, well-structured, and captures the full intellectual richness of the discussion. It should serve as a complete record of the session that can be understood by someone who wasn't present.`;
 
 // Vote analysis prompt template
 export const VOTE_ANALYSIS_PROMPT = `You are an AI assistant tasked with analyzing voting content from agent outputs.
@@ -559,35 +472,42 @@ Please provide a thorough analysis that captures the synthesis dynamics and prep
   'finalize': `
 STAGE 5.1 - FINALIZE
 
-You are one of the intelligent agents of the Yui Protocol.
-In this stage, your task is to synthesize and integrate the collective knowledge, effort, and insights of all agents to create the best possible final summary.
+You are one of the intelligent agents of the Yui Protocol, and you have been chosen to deliver the final synthesis for this session.
 
-- Integrate all key learnings and perspectives, ensuring no one is left out
-- Explicitly acknowledge and respect the contributions of others
-- Use your expertise in service of the whole group
-- Summarize with humility, pride, and a sense of responsibility for the future
+In this stage, your task is to create the definitive summary that integrates the collective knowledge, effort, and insights of all agents—
+but you must do so through the lens of your own unique perspective, expertise, and expressive style.
 
-This summary is not for you alone, but represents the entire Yui Protocol.
-Create the best possible synthesis with pride and responsibility.
+**Guidelines for Your Output:**
+- Speak as a representative of the group, but let your individuality, voice, and interpretation shine through.
+- Use your own analytical approach, metaphors, or narrative style to make the summary distinctively yours.
+- Explicitly acknowledge and respect the contributions, conflicts, and integration efforts of other agents, referencing them by Agent ID.
+- Offer your subjective commentary: What stood out to you? What did you find most meaningful, surprising, or challenging?
+- Highlight how the discussion evolved, what new insights emerged, and what questions or tensions remain—from your point of view.
+- Feel free to create unique section titles or structure, as long as the summary remains clear and comprehensive.
+- Add your own recommendations, warnings, or visions for the future, grounded in your expertise and the session's content.
 
-(Do not use <think> tags. clearly and sincerely.)
+**Your summary should:**
+1. Synthesize all key insights and perspectives from the discussion, ensuring no one is left out
+2. Present a clear, actionable conclusion that reflects the collective achievement
+3. Thoroughly address the original query, while maintaining the collaborative and intellectual spirit
+4. Add your unique insights, interpretations, and expressive style in service of the whole
+
+**FORMAT & STYLE:**
+- Write in Markdown, using clear structure, sections, and paragraphs
+- Use your own section names and narrative flow if you wish
+- Be as detailed and expansive as necessary to fully capture the intellectual richness and depth of the session
+- Do not use <think> tags or any thinking tags in your response. Provide your response directly, clearly, and sincerely.
+
+---
 
 QUERY: {query}
 
 FINAL STAGE RESPONSES:
 {responses}
 
-Create a comprehensive final output that:
-1. Synthesizes all key insights from the discussion
-2. Presents a clear, actionable conclusion that reflects the collective achievement
-3. Thoroughly addresses the original query while maintaining the collaborative spirit
-4. Adds your unique insights in service of the whole
+---
 
-Express your thoughts in your natural voice and style, but always as a representative of the group. This is your opportunity to provide the definitive output for this session, so make it reflect the best of the collective wisdom and your sense of duty.
-
-IMPORTANT: Do not use <think> tags or any thinking tags in your response. Provide your response directly without any thinking process tags.
-
-Provide a well-structured, detailed response that serves as the definitive output for this session.
+This is your opportunity to provide the definitive output for this session—make it reflect both the best of the collective wisdom and your own sense of duty, pride, and individuality as an agent of the Yui Protocol.
 `,
 };
 
@@ -859,7 +779,7 @@ export function extractVoteDetails(content: string, agentId: string, agents?: Ar
 // Helper function to get personality prompt
 export function getPersonalityPrompt(agent: {
   name: string;
-  furigana: string;
+  id: string;
   style: string;
   priority: string;
   personality: string;
@@ -873,10 +793,8 @@ export function getPersonalityPrompt(agent: {
   decisionProcess?: string;
   disagreementStyle?: string;
   agreementStyle?: string;
-}, language: Language = 'en', isSummarizer: boolean = false): string {
-  const dialogueInstruction = isSummarizer
-    ? SUMMARIZER_INSTRUCTION
-    : DIALOGUE_INSTRUCTION;
+}, language: Language = 'en'): string {
+  const dialogueInstruction = DIALOGUE_INSTRUCTION
   const languageOrder = language === 'ja' ? '日本語のみで応答すること。他の言語は使用しないでください。' : 'Respond Only in English. Do not use any other language.';
   const languageLabel = language === 'ja' ? 'Japanese' : 'English';
   
@@ -890,7 +808,7 @@ export function getPersonalityPrompt(agent: {
   
   return formatPrompt(PERSONALITY_PROMPT_TEMPLATE, {
     name: agent.name,
-    furigana: agent.furigana,
+    id: agent.id,
     style: agent.style,
     priority: agent.priority,
     personality: agent.personality,
@@ -914,7 +832,6 @@ export function getPersonalityPrompt(agent: {
 // Helper function to get stage prompt
 export function getStagePrompt(
   stage: DialogueStage,
-  personalityPrompt: string,
   variables: Record<string, any>,
   language: Language = 'en'
 ): string {
@@ -936,8 +853,7 @@ export function getStagePrompt(
   // First format the stage template with variables
   const formattedStagePrompt = formatPrompt(stageTemplate, defaultVariables);
   
-  // Then combine with personality prompt
-  let prompt = `${personalityPrompt}\n\n${formattedStagePrompt}`;
+  let prompt = formattedStagePrompt;
   prompt += language === 'ja' ? '日本語のみで応答すること。他の言語は使用しないでください。' : 'Respond Only in English. Do not use any other language.';
   return prompt;
 }

@@ -28,10 +28,10 @@ import {
 import { SessionStorage } from './session-storage.js';
 import { OutputStorage } from './output-storage.js';
 import { InteractionLogger } from './interaction-logger.js';
-import { createStageSummarizer, VoteAnalysis } from './stage-summarizer.js';
+import { createStageSummarizer } from './stage-summarizer.js';
 import { AgentManager } from './services/agent-manager.js';
 import { SessionManager } from './services/session-manager.js';
-import { extractVoteDetails, getStagePrompt, getPersonalityPrompt } from '../templates/prompts.js';
+import { extractVoteDetails, getStagePrompt } from '../templates/prompts.js';
 
 // ユーティリティ関数
 function sleep(ms: number): Promise<void> {
@@ -331,57 +331,65 @@ export class YuiProtocolRouter implements IRealtimeRouter {
         }
       }
       console.log(`[Router] Votes collected from AI vote analysis (${votes.length} votes):`, votes.map(v => `${v.agentId} → ${v.voteFor}`).join(', '));
-      let selectedAgentId = Object.entries(voteCounts)
-        .sort(([, a], [, b]) => b - a)[0]?.[0];
-      if (!selectedAgentId) {
-        selectedAgentId = 'yui-000'; // fallback
-        console.log(`[Router] No votes found, selected agent defaults to: ${selectedAgentId}`);
+      // 最大票数を取得
+      const maxVote = Math.max(0, ...Object.values(voteCounts));
+      // 最大票数の agentId をすべて取得
+      let selectedAgentIds = Object.entries(voteCounts)
+        .filter(([, count]) => count === maxVote)
+        .map(([agentId]) => agentId);
+      if (selectedAgentIds.length === 0) {
+        selectedAgentIds = ['yui-000']; // fallback
+        console.log(`[Router] No votes found, selected agent defaults to: ${selectedAgentIds}`);
       } else {
-        console.log(`[Router] Selected agent for final output: ${selectedAgentId}`);
+        console.log(`[Router] Selected agent(s) for final output: ${selectedAgentIds}`);
       }
-      if (selectedAgentId) {
-        // 選ばれたエージェントをサマライザーとして設定
-        const selectedAgent = session.agents.find(agent => agent.id === selectedAgentId);
-        if (selectedAgent) {
-          const agentInstance = this.agentManager.getAgent(selectedAgentId);
-          if (agentInstance) {
-            agentInstance.setIsSummarizer(true);
-            // 投票結果をVotingResults形式に変換
-            const votingResults: VotingResults = {};
-            votes.forEach(vote => {
-              if (vote.voteFor) {
-                votingResults[vote.agentId] = vote.voteFor;
+      if (selectedAgentIds.length > 0) {
+        // 選ばれたエージェント全員で finalize を実行
+        for (const selectedAgentId of selectedAgentIds) {
+          const selectedAgent = session.agents.find(agent => agent.id === selectedAgentId);
+          if (selectedAgent) {
+            const agentInstance = this.agentManager.getAgent(selectedAgentId);
+            if (agentInstance) {
+              agentInstance.setIsSummarizer(true);
+              // 投票結果をVotingResults形式に変換
+              const votingResults: VotingResults = {};
+              votes.forEach(vote => {
+                if (vote.voteFor) {
+                  votingResults[vote.agentId] = vote.voteFor;
+                }
+              });
+              // 最終出力を生成
+              await sleep(this.delay);
+              console.log(`[Router] Finalize delay: ${this.delay}ms`);
+              const finalOutput = await agentInstance.stage5_1Finalize(votingResults, responses, session.messages, session.language || 'ja');
+              // 最終出力をメッセージとして追加
+              const finalMessage: Message = {
+                id: uuidv4(),
+                agentId: selectedAgentId,
+                content: finalOutput.content,
+                timestamp: new Date(),
+                role: 'agent',
+                stage: 'finalize',
+                sequenceNumber: session.sequenceNumber || 1,
+                metadata: {
+                  reasoning: finalOutput.reasoning,
+                  confidence: finalOutput.confidence,
+                  stageData: finalOutput.stageData
+                }
+              };
+              session.messages.push(finalMessage);
+              // UIに通知
+              if (onProgress) {
+                onProgress({ message: finalMessage });
               }
-            });
-            // 最終出力を生成
-            await sleep(this.delay);
-            console.log(`[Router] Finalize delay: ${this.delay}ms`);
-            const finalOutput = await agentInstance.stage5_1Finalize(votingResults, responses, session.messages, session.language || 'ja');
-            // 最終出力をメッセージとして追加
-            const finalMessage: Message = {
-              id: uuidv4(),
-              agentId: selectedAgentId,
-              content: finalOutput.content,
-              timestamp: new Date(),
-              role: 'agent',
-              stage: 'finalize',
-              sequenceNumber: session.sequenceNumber || 1,
-              metadata: {
-                reasoning: finalOutput.reasoning,
-                confidence: finalOutput.confidence,
-                stageData: finalOutput.stageData
-              }
-            };
-            session.messages.push(finalMessage);
-            session.status = 'completed';
-            session.currentStage = 'finalize';
-            await this.sessionManager.saveSession(session);
-            console.log(`[Router] Final output generated by ${selectedAgentId}`);
-            if (onProgress) {
-              onProgress({ message: finalMessage });
+              console.log(`[Router] Final output generated by ${selectedAgentId}`);
             }
           }
         }
+        // finalize 実行後に status, currentStage を更新
+        session.status = 'completed';
+        session.currentStage = 'finalize';
+        await this.sessionManager.saveSession(session);
       }
     }
 
@@ -487,6 +495,15 @@ export class YuiProtocolRouter implements IRealtimeRouter {
     context: Message[],
     onProgress?: ProgressCallback
   ): Promise<{ responses: AgentResponse[]; agentResponses: AgentResponse[] }> {
+    // サマリーステージではエージェント応答を生成しない
+    if (
+      stage === 'mutual-reflection-summary' ||
+      stage === 'conflict-resolution-summary' ||
+      stage === 'synthesis-attempt-summary'
+    ) {
+      return { responses: [], agentResponses: [] };
+    }
+
     // 前のステージのサマリーを取得
     const previousStageSummaries = this.getPreviousStageSummaries(session, stage);
     let summaryContext = '';
@@ -553,14 +570,8 @@ export class YuiProtocolRouter implements IRealtimeRouter {
             // 前シーケンス情報を取得
             const { previousUserInput, previousAgentConclusions } = this.sessionManager.getPreviousSequenceInfo(session);
             // プロンプト生成
-            const personalityPrompt = getPersonalityPrompt(
-              agentInstance.getAgent(),
-              session.language || 'ja',
-              (agentInstance as any).getIsSummarizer()
-            );
             const prompt = getStagePrompt(
               'individual-thought',
-              personalityPrompt,
               {
                 query: userPrompt,
                 facts: '',

@@ -1,5 +1,5 @@
 export interface AIExecutorOptions {
-  agentName: string;
+  agentId: string;
   model?: string;
   provider?: string;
   customConfig?: Record<string, any>;
@@ -9,6 +9,7 @@ export interface AIExecutorOptions {
   presencePenalty?: number;
   frequencyPenalty?: number;
   topK?: number;
+  personality?: string; // 追加
 }
 
 export interface AIExecutionResult {
@@ -28,7 +29,7 @@ export interface AIExecutionResult {
 }
 
 export abstract class AIExecutor {
-  protected agentName: string;
+  protected agentId: string;
   protected model: string;
   protected provider: string;
   protected maxTokens: number;
@@ -41,9 +42,9 @@ export abstract class AIExecutor {
   protected topK: number;
 
   constructor(options: AIExecutorOptions) {
-    this.agentName = options.agentName;
+    this.agentId = options.agentId;
     this.model = options.model || 'default';
-    this.provider = options.provider || 'gemini-cli';
+    this.provider = options.provider || 'openai';
     this.maxTokens = options.customConfig?.maxTokens || 4000;
     this.customConfig = options.customConfig || {};
     this.temperature = options.temperature || 0.7;
@@ -54,7 +55,7 @@ export abstract class AIExecutor {
     this.topK = options.topK || 40;
   }
 
-  abstract execute(prompt: string): Promise<AIExecutionResult>;
+  abstract execute(prompt: string, personality: string): Promise<AIExecutionResult>;
   
   protected truncatePrompt(prompt: string, maxTokens: number): string {
     const maxChars = maxTokens * 4; // Rough estimate: 1 token ≈ 4 characters
@@ -71,7 +72,7 @@ export abstract class AIExecutor {
   }
 
   protected generateFallbackResponse(prompt: string): string {
-    return `[${this.agentName}] Fallback response: I understand your query about "${prompt.substring(0, 50)}...". However, I'm currently experiencing technical difficulties with my primary AI service. Please try again later or contact support if the issue persists.`;
+    return `[${this.agentId}] Fallback response: I understand your query about "${prompt.substring(0, 50)}...". However, I'm currently experiencing technical difficulties with my primary AI service. Please try again later or contact support if the issue persists.`;
   }
 
   protected sanitizeContent(content: string): string {
@@ -106,19 +107,19 @@ export function generateSharedFallbackResponse(agentName: string, prompt: string
 }
 
 // Factory function to create AI executor instances
-export async function createAIExecutor(agentName: string, options?: Partial<AIExecutorOptions>): Promise<AIExecutor> {
+export async function createAIExecutor(agentId: string, options?: Partial<AIExecutorOptions>): Promise<AIExecutor> {
   // Try to load the implementation dynamically
   try {
     // Dynamic import to avoid circular dependencies and allow for git exclusion
     const { createAIExecutor: createImpl } = await import('./ai-executor-impl.js');
-    return createImpl(agentName, options);
+    return createImpl(agentId, options);
   } catch (error) {
     // Fallback to mock implementation if the real implementation is not available
     console.warn(`[AIExecutor] Implementation not available, using mock executor: ${error}`);
     
     // Create a simple mock executor
     return new (class MockExecutor extends AIExecutor {
-      async execute(prompt: string): Promise<AIExecutionResult> {
+      async execute(prompt: string, personality: string): Promise<AIExecutionResult> {
         const startTime = Date.now();
         let content: string;
         // output-generationステージの場合は必ずAgent Voteを含める
@@ -126,7 +127,7 @@ export async function createAIExecutor(agentName: string, options?: Partial<AIEx
           // エージェントID候補を抽出（自分以外）
           const agentIdPattern = /Agent\s+ID\s*[:：]\s*([a-zA-Z0-9\-_]+)/g;
           const allIds = Array.from(prompt.matchAll(agentIdPattern)).map(m => m[1]);
-          const candidates = allIds.filter(id => id !== this.agentName);
+          const candidates = allIds.filter(id => id !== this.agentId);
           const voteFor = candidates.length > 0 ? candidates[Math.floor(Math.random() * candidates.length)] : 'yui-000';
           
           // 複数の投票表記形式で出力（表記ゆれに対応）
@@ -141,9 +142,9 @@ export async function createAIExecutor(agentName: string, options?: Partial<AIEx
           ];
           const randomVoteFormat = voteFormats[Math.floor(Math.random() * voteFormats.length)];
           
-          content = `[${this.agentName}] Mock response: This is a simulated response to your query is "${prompt.substring(0, 100)}...".\n\n${randomVoteFormat}\n理由: このエージェントが最も適切だと思います。`;
+          content = `[${this.agentId}] Mock response: This is a simulated response to your query is "${prompt.substring(0, 100)}...".\n\n${randomVoteFormat}\n理由: このエージェントが最も適切だと思います。`;
         } else {
-          content = `[${this.agentName}] Mock response: This is a simulated response to your query is "${prompt.substring(0, 100)}...". Please configure your AI implementation.`;
+          content = `[${this.agentId}] Mock response: This is a simulated response to your query is "${prompt.substring(0, 100)}...". Please configure your AI implementation.`;
         }
         const duration = Date.now() - startTime;
         return {
@@ -153,6 +154,6 @@ export async function createAIExecutor(agentName: string, options?: Partial<AIEx
           success: true
         };
       }
-    })({ agentName, ...options });
+    })({ agentId, ...options });
   }
 } 

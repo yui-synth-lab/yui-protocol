@@ -5,10 +5,11 @@ import {
 } from '@google/genai';
 import { Ollama } from 'ollama';
 import { Agent } from 'undici'
+import { agent } from 'supertest';
 
 const noTimeoutFetch = (input: string | URL | globalThis.Request, init?: RequestInit) => {
   const someInit = init || {}
-   
+
   return fetch(input, { ...someInit, dispatcher: new Agent({ headersTimeout: 2700000 }) } as any)
 }
 
@@ -18,12 +19,14 @@ export class GeminiCliExecutor extends AIExecutor {
 
   constructor(options: AIExecutorOptions) {
     super(options);
-    this.path = this.customConfig.path || 'gemini.cmd';
+    this.path = this.customConfig.path || 'C:\\Users\\yuyay\\AppData\\Roaming\\npm\\gemini.cmd';
   }
 
-  async execute(prompt: string): Promise<AIExecutionResult> {
+  async execute(prompt: string, personality:string): Promise<AIExecutionResult> {
     const startTime = Date.now();
-    console.log(`[${this.agentName}] Calling Gemini CLI with prompt: ${prompt.substring(0, 100)}...`);
+    // system message非対応APIなので、personalityがあればpromptの先頭に付与
+    const effectivePrompt = personality ? `${personality}\n\n${prompt}` : prompt;
+    console.log(`[${this.agentId}] Calling Gemini CLI with prompt: ${prompt.substring(0, 100)}...`);
 
     return new Promise((resolve, reject) => {
       const gemini = spawn(this.path, ['-m', this.model], { shell: true });
@@ -32,21 +35,21 @@ export class GeminiCliExecutor extends AIExecutor {
       let error = '';
 
       gemini.stdout.on('data', (data) => {
-        console.log(`[${this.agentName}] Gemini stdout: ${data.toString().substring(0, 100)}...`);
+        console.log(`[${this.agentId}] Gemini stdout: ${data.toString().substring(0, 100)}...`);
         output += data.toString();
       });
 
       gemini.stderr.on('data', (data) => {
-        console.log(`[${this.agentName}] Gemini stderr: ${data.toString().substring(0, 100)}...`);
+        console.log(`[${this.agentId}] Gemini stderr: ${data.toString().substring(0, 100)}...`);
         error += data.toString();
       });
 
       gemini.on('close', (code) => {
         const duration = Date.now() - startTime;
-        console.log(`[${this.agentName}] Gemini process closed with code: ${code}`);
+        console.log(`[${this.agentId}] Gemini process closed with code: ${code}`);
 
         if (code === 0) {
-          console.log(`[${this.agentName}] Gemini CLI executed successfully!`);
+          console.log(`[${this.agentId}] Gemini CLI executed successfully!`);
           resolve({
             content: this.sanitizeContent(output.trim()),
             model: this.model,
@@ -54,7 +57,7 @@ export class GeminiCliExecutor extends AIExecutor {
             success: true
           });
         } else {
-          console.warn(`[${this.agentName}] Gemini CLI failed with code ${code}: ${error}`);
+          console.warn(`[${this.agentId}] Gemini CLI failed with code ${code}: ${error}`);
           resolve({
             content: this.generateFallbackResponse(prompt),
             model: this.model,
@@ -67,7 +70,7 @@ export class GeminiCliExecutor extends AIExecutor {
 
       gemini.on('error', (err) => {
         const duration = Date.now() - startTime;
-        console.warn(`[${this.agentName}] Gemini CLI error: ${err.message}`);
+        console.warn(`[${this.agentId}] Gemini CLI error: ${err.message}`);
         resolve({
           content: this.generateFallbackResponse(prompt),
           model: this.model,
@@ -78,8 +81,8 @@ export class GeminiCliExecutor extends AIExecutor {
       });
 
       // Send the actual prompt via stdin
-      console.log(`[${this.agentName}] Writing prompt to stdin...`);
-      gemini.stdin.write(prompt);
+      console.log(`[${this.agentId}] Writing prompt to stdin...`);
+      gemini.stdin.write(effectivePrompt);
       gemini.stdin.end();
     });
   }
@@ -99,9 +102,10 @@ export class GeminiExecutor extends AIExecutor {
     });
   }
 
-  async execute(prompt: string): Promise<AIExecutionResult> {
+  async execute(prompt: string, personality:string): Promise<AIExecutionResult> {
     const startTime = Date.now();
     const contents = [
+      ...(personality ? [{ role: 'system', parts: [{ text: personality }] }] : []),
       {
         role: 'user',
         parts: [
@@ -146,7 +150,7 @@ export class OpenAIExecutor extends AIExecutor {
     this.baseUrl = this.customConfig.baseUrl || 'https://api.openai.com/v1';
   }
 
-  async execute(prompt: string): Promise<AIExecutionResult> {
+  async execute(prompt: string, personality:string): Promise<AIExecutionResult> {
     const startTime = Date.now();
 
     if (!this.apiKey) {
@@ -169,8 +173,14 @@ export class OpenAIExecutor extends AIExecutor {
         },
         body: JSON.stringify({
           model: this.model,
-          messages: [{ role: 'user', content: prompt }],
-          temperature: this.temperature
+          messages: [
+            ...(personality ? [{ role: 'system', content: personality }] : []),
+            { role: 'user', content: prompt }
+          ],
+          temperature: this.temperature,
+          top_p: this.topP,
+          frequency_penalty: this.frequencyPenalty,
+          presence_penalty: this.presencePenalty,
         })
       });
 
@@ -238,7 +248,7 @@ export class AnthropicExecutor extends AIExecutor {
     this.baseUrl = this.customConfig.baseUrl || 'https://api.anthropic.com/v1';
   }
 
-  async execute(prompt: string): Promise<AIExecutionResult> {
+  async execute(prompt: string, personality:string): Promise<AIExecutionResult> {
     const startTime = Date.now();
 
     if (!this.apiKey) {
@@ -263,8 +273,11 @@ export class AnthropicExecutor extends AIExecutor {
         body: JSON.stringify({
           model: this.model,
           max_tokens: this.maxTokens,
+          system: personality,
           messages: [{ role: 'user', content: prompt }],
-          temperature: this.temperature
+          temperature: this.temperature,
+          top_k: this.topK,
+          top_p: this.topP
         })
       });
 
@@ -324,8 +337,10 @@ export class AnthropicExecutor extends AIExecutor {
 
 // Mock/Simulation Implementation for testing
 export class MockExecutor extends AIExecutor {
-  async execute(prompt: string): Promise<AIExecutionResult> {
+  async execute(prompt: string, personality: string): Promise<AIExecutionResult> {
     const startTime = Date.now();
+    // system message非対応APIなので、personalityがあればpromptの先頭に付与
+    const effectivePrompt = personality? `${personality}\n\n${prompt}` : prompt;
 
     // Simulate processing time
     await new Promise(resolve => setTimeout(resolve, 100 + Math.random() * 200));
@@ -333,9 +348,9 @@ export class MockExecutor extends AIExecutor {
     const duration = Date.now() - startTime;
 
     // ステージサマリー用の特別な処理
-    if (prompt.includes('CRITICAL OUTPUT FORMAT REQUIREMENT') || prompt.includes('You are one of the intelligent agents of the Yui Protocol')) {
+    if (effectivePrompt.includes('CRITICAL OUTPUT FORMAT REQUIREMENT') || effectivePrompt.includes('You are one of the intelligent agents of the Yui Protocol')) {
       // エージェント名を抽出
-      const agentNamesMatch = prompt.match(/Participating Agents: ([^\n]+)/);
+      const agentNamesMatch = effectivePrompt.match(/Participating Agents: ([^\n]+)/);
       if (agentNamesMatch) {
         const agentNames = agentNamesMatch[1].split(',').map(name => name.trim());
         const mockSummaries = agentNames.map(name =>
@@ -352,11 +367,11 @@ export class MockExecutor extends AIExecutor {
     }
 
     // output-generationステージの場合は必ずAgent Voteを含める
-    if (prompt.includes('STAGE 5 - OUTPUT GENERATION')) {
+    if (effectivePrompt.includes('STAGE 5 - OUTPUT GENERATION')) {
       // エージェントID候補を抽出（自分以外）
       const agentIdPattern = /Agent\s+ID\s*[:：]\s*([a-zA-Z0-9\-_]+)/g;
-      const allIds = Array.from(prompt.matchAll(agentIdPattern)).map(m => m[1]);
-      const candidates = allIds.filter(id => id !== this.agentName);
+      const allIds = Array.from(effectivePrompt.matchAll(agentIdPattern)).map(m => m[1]);
+      const candidates = allIds.filter(id => id !== this.agentId);
       const voteFor = candidates.length > 0 ? candidates[Math.floor(Math.random() * candidates.length)] : 'yui-000';
 
       // 複数の投票表記形式で出力（表記ゆれに対応）
@@ -371,7 +386,7 @@ export class MockExecutor extends AIExecutor {
       ];
       const randomVoteFormat = voteFormats[Math.floor(Math.random() * voteFormats.length)];
 
-      const content = `[${this.agentName}] Mock response: This is a simulated response to your query is "${prompt.substring(0, 100)}...".\n\n${randomVoteFormat}\n理由: このエージェントが最も適切だと思います。`;
+      const content = `[${this.agentId}] Mock response: This is a simulated response to your query is "${effectivePrompt.substring(0, 100)}...".\n\n${randomVoteFormat}\n理由: このエージェントが最も適切だと思います。`;
 
       return {
         content,
@@ -382,7 +397,7 @@ export class MockExecutor extends AIExecutor {
     }
 
     return {
-      content: `[${this.agentName}] Mock response: This is a simulated response to your query about "${prompt.substring(0, 50)}...". In a real implementation, this would be processed by ${this.provider} using model ${this.model}.`,
+      content: `[${this.agentId}] Mock response: This is a simulated response to your query about "${effectivePrompt.substring(0, 50)}...". In a real implementation, this would be processed by ${this.provider} using model ${this.model}.`,
       model: this.model,
       duration,
       success: true
@@ -428,10 +443,12 @@ export class OllamaExecutor extends AIExecutor {
     }
   }
 
-  async execute(prompt: string): Promise<AIExecutionResult> {
+  async execute(prompt: string, personality: string): Promise<AIExecutionResult> {
     const startTime = Date.now();
     const maxRetries = 3;
     let lastError: Error | null = null;
+    // system message非対応APIなので、personalityがあればpromptの先頭に付与
+    const effectivePrompt = personality ? `${personality}\n\n${prompt}` : prompt;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
@@ -451,7 +468,7 @@ export class OllamaExecutor extends AIExecutor {
         // このパッケージは内部的にタイムアウト制御を持っている
         const response = await this.ollamaClient.generate({
           model: this.model,
-          prompt: prompt,
+          prompt: effectivePrompt,
           stream: false,
           think: false,
           options: {
@@ -579,24 +596,81 @@ export class OllamaExecutor extends AIExecutor {
 }
 
 // Factory function implementation
-export function createAIExecutor(agentName: string, options?: Partial<AIExecutorOptions>): AIExecutor {
+export function createAIExecutor(agentId: string, options?: Partial<AIExecutorOptions>): AIExecutor {
   //throw new Error('createAIExecutor is not implemented');
 
   const config = {
-    agentName,
-    provider: 'gemini-cli' as const,
+    agentId,
+    provider: 'openai' as const,
     ...options
   };
+  const isSummarizer = agentId.endsWith('-finalizer');
+  const agentIdWithoutPostfix = agentId.replace('-finalizer','')
 
+  switch (agentIdWithoutPostfix) {
+    case 'kanshi-001':
+      config.provider = 'openai';
+      if (isSummarizer) {
+        config.model = 'gpt-4o-2024-08-06'
+      }
+      else {
+        config.model = 'gpt-4.1-mini';
+      }            break;
+    case 'hekito-001':
+      config.provider = 'openai';
+      if (isSummarizer) {
+        config.model = 'gpt-4o-2024-08-06'
+      }
+      else {
+        config.model = 'gpt-4o-2024-08-06';
+      }            break;
+    case 'eiro-001':
+      config.provider = 'openai';
+      if (isSummarizer) {
+        config.model = 'gpt-4o-2024-08-06'
+      }
+      else {
+        config.model = 'gpt-4.1-mini';
+      }      
+      break;
+    case 'yoga-001':
+      config.provider = 'anthropic';
+      if (isSummarizer) {
+        config.model = 'claude-sonnet-4-20250514'
+      }
+      else {
+        config.model = 'claude-3-5-haiku-20241022';
+      }
+      break;
+    case 'yui-000':
+      config.provider = 'anthropic';
+      if (isSummarizer) {
+        config.model = 'claude-sonnet-4-20250514'
+      }
+      else {
+        config.model = 'claude-3-5-haiku-20241022';
+      }
+      break;
+  }
 
+  console.log(JSON.stringify(config));
   switch (config.provider) {
     case 'gemini':
+      config.model = 'gemini-2.5-flash-lite-preview-06-17';
       return new GeminiExecutor(config);
     case 'openai':
+      if (!config.model) {
+        config.model = 'gpt-4.1-mini';
+      }
       return new OpenAIExecutor(config);
     case 'anthropic':
+
       return new AnthropicExecutor(config);
     case 'ollama':
+      if (!config.customConfig) {
+        config.customConfig = {};
+      }
+      config.model = 'hf.co/mmnga/cyberagent-DeepSeek-R1-Distill-Qwen-14B-Japanese-gguf:latest';
       return new OllamaExecutor(config);
     case 'gemini-cli':
       return new GeminiCliExecutor(config);
