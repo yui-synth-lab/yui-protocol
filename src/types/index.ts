@@ -20,6 +20,15 @@ export interface Agent {
   reasoning?: string;
   assumptions?: string[];
   approach?: string;
+  finalizerTargets?: {
+    temperature?: number;
+    topP?: number;
+    repetitionPenalty?: number;
+    presencePenalty?: number;
+    frequencyPenalty?: number;
+    topK?: number;
+    nudgeWeight?: number;
+  };
   // Enhanced personality fields for more concrete expression
   specificBehaviors?: string;
   thinkingPatterns?: string;
@@ -65,6 +74,8 @@ export interface Session {
   sequenceOutputFiles?: { [sequenceNumber: number]: string };
   sequenceNumber?: number;
   language: Language;
+  messageCount?: number;
+  agentCount?: number;
 }
 
 export interface AgentResponse {

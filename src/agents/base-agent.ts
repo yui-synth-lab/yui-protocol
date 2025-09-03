@@ -3,6 +3,11 @@ import { getPersonalityPrompt, getStagePrompt, Language, SUMMARIZER_STAGE_PROMPT
 import { InteractionLogger, SimplifiedInteractionLog } from '../kernel/interaction-logger.js';
 import { AIExecutor, createAIExecutor } from '../kernel/ai-executor.js';
 
+// Helper: Nudge a value toward a target by a given weight
+function nudgeToTarget(calculated: number, target: number, weight: number = 0.2) {
+  return calculated * (1 - weight) + target * weight;
+}
+
 export abstract class BaseAgent {
   protected agent: Agent;
   protected memory: Message[] = [];
@@ -641,30 +646,40 @@ export abstract class BaseAgent {
     // Personality（性格）による調整
     const personality = this.agent.personality?.toLowerCase() || '';
 
+    // 新規: specificBehaviors, thinkingPatterns も考慮
+    const specificBehaviors = (this.agent as any).specificBehaviors?.toLowerCase?.() || '';
+    // 既存の personality, tone, style, preferences も含めて複合的に評価
+
     // 創造性・感情性を表すキーワード
     const creativeKeywords = [
       'creative', 'imaginative', 'poetic', 'artistic', 'dreamer', 'fantastical',
       'emotional', 'empathetic', 'curious', 'wonder', 'passionate', 'expressive',
-      'intuitive', 'free', 'unconventional', 'innovative', 'visionary'
+      'intuitive', 'free', 'unconventional', 'innovative', 'visionary',
+      // 新規: より行動・思考パターンに現れやすい語彙
+      'brainstorm', 'explore', 'invent', 'novel', 'spontaneous', 'playful', 'metaphor', 'analogy', 'association', 'divergent', 'open-ended'
     ];
 
     // 論理性・分析的思考を表すキーワード
     const logicalKeywords = [
       'logical', 'analytical', 'systematic', 'precise', 'critical', 'objective',
       'mathematical', 'statistical', 'rigorous', 'structured', 'methodical',
-      'factual', 'data-driven', 'evidence-based', 'scientific'
+      'factual', 'data-driven', 'evidence-based', 'scientific',
+      // 新規: 行動・思考パターン向け
+      'proof', 'premise', 'framework', 'deduction', 'induction', 'consistency', 'assumption', 'reasoning', 'step-by-step', 'evaluate', 'analyze', 'examine', 'counterargument'
     ];
 
     // 哲学的・深い思考を表すキーワード
     const philosophicalKeywords = [
       'philosophical', 'contemplative', 'thoughtful', 'reflective', 'wise',
-      'truth-seeking', 'profound', 'deep', 'meditative', 'serene'
+      'truth-seeking', 'profound', 'deep', 'meditative', 'serene',
+      // 新規: 行動・思考パターン向け
+      'underlying', 'principle', 'broader', 'implication', 'ethical', 'dimension', 'wisdom', 'shared understanding', 'perspective', 'meaning', 'existential', 'metaphysical'
     ];
 
-    // Personalityによる調整
-    const creativeScore = creativeKeywords.filter(keyword => personality.includes(keyword)).length;
-    const logicalScore = logicalKeywords.filter(keyword => personality.includes(keyword)).length;
-    const philosophicalScore = philosophicalKeywords.filter(keyword => personality.includes(keyword)).length;
+    // Personality, specificBehaviors, thinkingPatterns すべてを合算してスコア化
+    const creativeScore = creativeKeywords.filter(keyword => personality.includes(keyword) || specificBehaviors.includes(keyword)).length;
+    const logicalScore = logicalKeywords.filter(keyword => personality.includes(keyword) || specificBehaviors.includes(keyword)).length;
+    const philosophicalScore = philosophicalKeywords.filter(keyword => personality.includes(keyword) || specificBehaviors.includes(keyword)).length;
 
     adjustments += (creativeScore * 0.1); // 創造性キーワード: +0.1 each
     adjustments -= (logicalScore * 0.08); // 論理性キーワード: -0.08 each
@@ -732,8 +747,7 @@ export abstract class BaseAgent {
     adjustments -= (gentleScore * 0.08); // 柔らかさはtemperatureを下げる
 
     // 最終的なtemperature値を計算（0.1 - 1.0の範囲に制限）
-    const finalTemperature = Math.max(0.1, Math.min(1.0, baseTemperature + adjustments));
-
+    let calculated = Math.max(0.1, Math.min(1.0, baseTemperature + adjustments));
     // デバッグ用ログ
     console.log(`[Temperature Calculator] ${this.agent.id}:`, {
       personality: this.agent.personality,
@@ -743,10 +757,10 @@ export abstract class BaseAgent {
       preferences: this.agent.preferences,
       baseTemperature,
       adjustments,
-      finalTemperature: finalTemperature.toFixed(2)
+      finalTemperature: calculated.toFixed(2)
     });
 
-    return Math.round(finalTemperature * 100) / 100; // 小数点2桁に丸める
+    return Math.round(calculated * 100) / 100; // 小数点2桁に丸める
   }
 
   // エージェント固有のtemperatureを取得するメソッド
@@ -810,9 +824,9 @@ export abstract class BaseAgent {
     adjustments += (gentleScore * 0.05); // 柔らかさはtopPを上げる
 
     // 最終的なtop_p値を計算（0.7 - 1.0の範囲に制限）
-    const finalTopP = Math.max(0.7, Math.min(1.0, baseTopP + adjustments));
+    let calculated = Math.max(0.7, Math.min(1.0, baseTopP + adjustments));
 
-    return Math.round(finalTopP * 100) / 100; // 小数点2桁に丸める
+    return Math.round(calculated * 100) / 100; // 小数点2桁に丸める
   }
 
   // エージェントの属性からrepetition_penalty値を自動算出するメソッド
@@ -865,9 +879,9 @@ export abstract class BaseAgent {
     adjustments -= (gentleScore * 0.03); // 柔らかさはペナルティを下げる
 
     // 最終的なrepetition_penalty値を計算（1.0 - 1.3の範囲に制限）
-    const finalPenalty = Math.max(1.0, Math.min(1.3, basePenalty + adjustments));
+    let calculated = Math.max(1.0, Math.min(1.3, basePenalty + adjustments));
 
-    return Math.round(finalPenalty * 100) / 100; // 小数点2桁に丸める
+    return Math.round(calculated * 100) / 100; // 小数点2桁に丸める
   }
 
   // エージェントの属性からpresence_penalty値を自動算出するメソッド
@@ -920,9 +934,8 @@ export abstract class BaseAgent {
     adjustments -= (gentleScore * 0.01); // 柔らかさはpresence_penaltyを下げる
 
     // 最終的なpresence_penalty値を計算（0.0 - 0.2の範囲に制限）
-    const finalPenalty = Math.max(0.0, Math.min(0.2, basePenalty + adjustments));
-
-    return Math.round(finalPenalty * 100) / 100; // 小数点2桁に丸める
+    let calculated = Math.max(0.0, Math.min(0.2, basePenalty + adjustments));
+    return Math.round(calculated * 100) / 100; // 小数点2桁に丸める
   }
 
   // エージェントの属性からfrequency_penalty値を自動算出するメソッド
@@ -975,9 +988,8 @@ export abstract class BaseAgent {
     adjustments -= (gentleScore * 0.01); // 柔らかさはfrequency_penaltyを下げる
 
     // 最終的なfrequency_penalty値を計算（0.0 - 0.2の範囲に制限）
-    const finalPenalty = Math.max(0.0, Math.min(0.2, basePenalty + adjustments));
-
-    return Math.round(finalPenalty * 100) / 100; // 小数点2桁に丸める
+    let calculated = Math.max(0.0, Math.min(0.2, basePenalty + adjustments));
+    return Math.round(calculated * 100) / 100; // 小数点2桁に丸める
   }
 
   // エージェントの属性からtop_k値を自動算出するメソッド
@@ -1016,8 +1028,8 @@ export abstract class BaseAgent {
     if (priority.includes('precision')) adjustments -= 10;
 
     // 最終的なtop_k値を計算（10 - 100の範囲に制限）
-    const finalTopK = Math.max(10, Math.min(100, baseTopK + adjustments));
-    return Math.round(finalTopK); // 整数で返す
+    let calculated = Math.max(10, Math.min(100, baseTopK + adjustments));
+    return Math.round(calculated); // 整数で返す
   }
 
   // 全パラメータを取得するメソッド
@@ -1029,6 +1041,7 @@ export abstract class BaseAgent {
     frequencyPenalty: number;
     topK: number;
   } {
+    // Only dynamic calculation now, nudging is handled in each method
     return {
       temperature: this.calculateTemperature(),
       topP: this.calculateTopP(),

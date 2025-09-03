@@ -296,7 +296,7 @@ describe('ThreadView', () => {
     consoleSpy.mockRestore();
   });
 
-  it('updates messages when session changes', () => {
+  it('updates messages when session changes', async () => {
     const sessionWithMessages = {
       ...mockSession,
       messages: [
@@ -309,7 +309,10 @@ describe('ThreadView', () => {
     
     rerender(<ThreadView session={sessionWithMessages} onSessionUpdate={mockOnSessionUpdate} />);
     
-    expect(screen.getByText('Hello')).toBeInTheDocument();
-    expect(screen.getByText('Hi there')).toBeInTheDocument();
+    // メッセージが表示されるまで待機
+    await waitFor(() => {
+      expect(screen.getByText('Hello')).toBeInTheDocument();
+      expect(screen.getByText('Hi there')).toBeInTheDocument();
+    });
   });
 }); 

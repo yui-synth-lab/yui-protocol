@@ -1,74 +1,63 @@
-# YUI Protocol Specification
+# YUI Protocol Specification (Implementation-Aligned)
 
 ## Table of Contents
 
-1. [Overview](#overview)
-2. [Protocol Architecture](#protocol-architecture)
-3. [Agent Specifications](#agent-specifications)
-4. [Dialogue Stages](#dialogue-stages)
-5. [Data Structures](#data-structures)
-6. [Communication Protocol](#communication-protocol)
-7. [Memory Management](#memory-management)
-8. [Error Handling](#error-handling)
-9. [Performance Considerations](#performance-considerations)
-10. [Security Considerations](#security-considerations)
-11. [Implementation Guidelines](#implementation-guidelines)
+1. Overview
+2. Architecture
+3. Agents
+4. Dialogue Stages
+5. Core Types
+6. Orchestration & Router
+7. Server & Realtime IO
+8. Prompts & Generation Parameters
+9. Memory, Sessions, Outputs, and Logs
+10. Error Handling & Timeouts
+11. Performance & Scalability
+12. Security & Privacy
+13. Implementation Structure
+14. Testing & Coverage
+15. Operations
 
 ## Overview
 
-The YUI Protocol is a structured multi-agent AI collaboration framework designed to facilitate comprehensive problem-solving through systematic dialogue. The protocol orchestrates multiple AI agents with distinct personalities and expertise areas through a 5-stage dialogue process, ensuring thorough analysis, conflict resolution, and synthesis.
+The YUI Protocol is a multi-agent collaboration framework that runs a structured, multi-stage dialogue among diverse AI agents. The current implementation coordinates five main stages with three summary stages and a finalization stage, supports dynamic vote analysis, automatic stage summarization, multi-provider AI execution, and real-time updates via WebSocket and SSE.
 
-### Core Principles
+Core principles: diversity, structure, explicit conflict handling, transparency, scalability, flexibility, efficiency, and context management.
 
-1. **Diversity of Perspective**: Each agent brings unique expertise and communication styles
-2. **Structured Collaboration**: Systematic 5-stage process prevents chaos and ensures completeness
-3. **Conflict Resolution**: Explicit handling of disagreements and synthesis of viewpoints
-4. **Transparency**: Full logging and traceability of all interactions and decisions
-5. **Scalability**: Modular architecture supports addition of new agents and capabilities
-6. **Flexibility**: Support for multiple AI providers and customizable configurations
-7. **Efficiency**: Intelligent stage summarization reduces token usage and costs
-8. **Context Management**: Smart context preservation across dialogue stages
+## Architecture
 
-## Protocol Architecture
-
-### System Components
+High-level data flow:
 
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   User Input    │───▶│  Session Manager│───▶│  Agent Pool     │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-                                │                       │
-                                ▼                       ▼
-                       ┌─────────────────┐    ┌─────────────────┐
-                       │ Memory          │    │  Dialogue       │
-                       │ Manager         │    │  Orchestrator   │
-                       └─────────────────┘    └─────────────────┘
-                                │                       │
-                                ▼                       ▼
-                       ┌─────────────────┐    ┌─────────────────┐
-                       │ Output Storage  │    │  AI Executor    │
-                       │                 │    │  (Multi-Provider)│
-                       └─────────────────┘    └─────────────────┘
-                                │                       │
-                                ▼                       ▼
-                       ┌─────────────────┐    ┌─────────────────┐
-                       │ Stage           │    │  Realtime       │
-                       │ Summarizer      │    │  Router         │
-                       └─────────────────┘    └─────────────────┘
+User → Server (REST/SSE/WebSocket) → YuiProtocolRouter → SessionManager
+                                         │                │
+                                         ▼                ▼
+                                   AgentManager      SessionStorage (FS)
+                                         │                │
+                                         ▼                ▼
+                                  Agents (BaseAgent)  OutputStorage (FS)
+                                         │                │
+                                         ▼                ▼
+                                  AIExecutor (impl/mock)  InteractionLogger (FS)
+                                         │
+                                         ▼
+                                   StageSummarizer (AI)
 ```
 
-### Agent Pool Structure
+## Agents
 
-Each agent in the pool implements the following interface:
+Each agent implements behavior via `src/agents/base-agent.ts` and concrete classes in `src/agents/agent-*.ts`. Agents are registered in `AgentManager` and exposed to the router.
+
+Agent interface (effective in code):
 
 ```typescript
-interface Agent {
+export interface Agent {
   id: string;
   name: string;
   furigana: string;
-  style: "logical" | "critical" | "intuitive" | "meta" | "emotive" | "analytical";
-  priority: "precision" | "breadth" | "depth" | "balance";
-  memoryScope: "local" | "session" | "cross-session";
+  style: 'logical' | 'critical' | 'intuitive' | 'meta' | 'emotive' | 'analytical';
+  priority: 'precision' | 'breadth' | 'depth' | 'balance';
+  memoryScope: 'local' | 'session' | 'cross-session';
   personality: string;
   preferences: string[];
   tone: string;
@@ -80,7 +69,15 @@ interface Agent {
   reasoning?: string;
   assumptions?: string[];
   approach?: string;
-  // --- Enhanced personality/behavior fields (2024 update) ---
+  finalizerTargets?: {
+    temperature?: number;
+    topP?: number;
+    repetitionPenalty?: number;
+    presencePenalty?: number;
+    frequencyPenalty?: number;
+    topK?: number;
+    nudgeWeight?: number;
+  };
   specificBehaviors?: string;
   thinkingPatterns?: string;
   interactionPatterns?: string;
@@ -90,87 +87,13 @@ interface Agent {
 }
 ```
 
-- **2024 Extension**: Fields such as `specificBehaviors`, `thinkingPatterns`, `interactionPatterns`, `decisionProcess`, `disagreementStyle`, and `agreementStyle` have been added, allowing for more concrete expression of agent personality and behavioral patterns.
-- In each agent implementation, these fields are used to explicitly define individuality, behavior, thinking patterns, and how the agent acts in agreement/disagreement situations.
-
-## Agent Specifications
-
-### Agent Styles
-
-#### 1. Critical
-- **Characteristics**: Problem identification, gap detection, constructive criticism
-- **Strengths**: Quality assurance, risk identification, improvement suggestions
-- **Weaknesses**: May be overly negative, can slow progress
-- **Best For**: Quality review, risk assessment, improvement processes
-
-#### 2. Emotive
-- **Characteristics**: Creative expression, intuitive insights, emotional understanding
-- **Strengths**: Creative synthesis, emotional intelligence, artistic expression
-- **Weaknesses**: May prioritize feelings over logic, can be subjective
-- **Best For**: Creative problems, emotional intelligence, artistic expression
-
-#### 3. Intuitive
-- **Characteristics**: Creative problem-solving, innovative approaches, out-of-the-box thinking
-- **Strengths**: Creative solutions, innovative thinking, practical implementation
-- **Weaknesses**: May lack systematic rigor, difficult to explain reasoning
-- **Best For**: Creative problems, innovation, practical solutions
-
-#### 4. Analytical
-- **Characteristics**: Data-driven analysis, statistical reasoning, precise calculations
-- **Strengths**: Data analysis, quantitative insights, objective evaluation
-- **Weaknesses**: May miss qualitative factors, can be reductionist
-- **Best For**: Data analysis, quantitative problems, statistical evaluation
-
-#### 5. Logical
-- **Characteristics**: Philosophical thinking, deep analysis, systematic understanding
-- **Strengths**: Deep reasoning, systematic analysis, philosophical insights
-- **Weaknesses**: May be abstract, can be slow for practical problems
-- **Best For**: Complex philosophical problems, deep analysis, systematic understanding
-
-### Agent Priorities
-
-#### Precision
-- Focus on accuracy and detail
-- Prefer thorough analysis over quick solutions
-- High confidence thresholds
-
-#### Breadth
-- Consider multiple perspectives and approaches
-- Prefer comprehensive coverage over depth
-- Balance multiple factors
-
-#### Depth
-- Focus on fundamental understanding
-- Prefer deep analysis over surface-level solutions
-- Seek root causes and principles
-
-#### Balance
-- Balance multiple competing factors
-- Prefer compromise and integration
-- Moderate confidence levels
-
-### Memory Scopes
-
-#### Local
-- Limited to current interaction
-- Fast response, minimal context
-- Suitable for simple, focused tasks
-
-#### Session
-- Spans entire session
-- Moderate context retention
-- Suitable for complex, multi-step problems
-
-#### Cross-Session
-- Spans multiple sessions
-- Long-term memory and learning
-- Suitable for ongoing projects and learning
+Notes:
+- Extended personality/behavior fields are supported and used for generation parameter auto-adjustment.
+- `finalizerTargets` exists for optional nudging targets in finalization-related generation.
 
 ## Dialogue Stages
 
-### Stage List
-
-The following dialogue stages are supported:
+Supported `DialogueStage` values:
 - `individual-thought`
 - `mutual-reflection`
 - `mutual-reflection-summary`
@@ -179,123 +102,37 @@ The following dialogue stages are supported:
 - `synthesis-attempt`
 - `synthesis-attempt-summary`
 - `output-generation`
-- `finalize`
+- `finalize` (Stage 5.1)
 
-### Stage Data Structures
+Stage timing and tokens are governed by prompts; there is no hard-coded timeout per stage in code, but the server applies delays between operations and summary generation (configurable, default 30s delay for summaries).
 
-All stage data structures (e.g., `IndividualThought`, `MutualReflection`, etc.) now support optional `summary` fields and richer metadata.
+Stage purposes (as implemented):
+- Stage 1: Agents produce `IndividualThought` (with summary, reasoning, assumptions, approach). Prior sequence’s user input and conclusions are included when present.
+- Stage 2: Agents generate `MutualReflection` engaging with other agents’ Stage 1 outputs; simple NLP extraction creates structured reflections.
+- Stage 3: Router identifies conflicts from Stage 1 approaches; agents propose resolutions (returned as `AgentResponse` with `stageData`).
+- Stage 4: Router prepares `SynthesisData` mostly from Stage 3 summary; agents attempt synthesis.
+- Stage 5: Router prepares `FinalData`; agents generate outputs that include an “Agent Vote and Justification” section; vote analysis runs post-stage.
+- Finalize (5.1): Selected agent(s) produce final comprehensive output (distinct from vote step; prompt forbids mentioning votes).
 
-### Stage 1: Individual Thought
+Summary stages (2.5, 3.5, 4.5): A dedicated `StageSummarizer` runs asynchronously after a stage completes (except finalize and output-generation), then adds a `system` message with normalized summary lines.
 
-**Purpose**: Each agent independently analyzes the problem from their unique perspective.
+## Core Types
 
-**Process**:
-1. Agent receives the query and context
-2. Agent applies their unique perspective and expertise
-3. Agent generates structured response with:
-   - Initial analysis
-   - Approach methodology
-   - Key considerations
-   - Confidence level and reasoning
-
-**Output**: `IndividualThought` object containing structured analysis
-
-**Time Limit**: 300 words maximum
-
-### Stage 2: Mutual Reflection
-
-**Purpose**: Agents respond to each other's thoughts with specific analysis and constructive criticism.
-
-**Process**:
-1. Each agent reviews all other agents' individual thoughts
-2. Agent provides structured response with:
-   - Specific agreements and disagreements
-   - Missing perspectives identification
-   - New insights from others' thoughts
-   - Integration opportunities
-   - Updated confidence level
-
-**Output**: `MutualReflection` object containing structured responses
-
-**Time Limit**: 400 words maximum
-
-### Stage 3: Conflict Resolution
-
-**Purpose**: Address identified conflicts with practical solutions and compromise strategies.
-
-**Process**:
-1. System identifies conflicts from mutual reflections
-2. Each agent addresses conflicts with:
-   - Conflict analysis
-   - Impact assessment
-   - Resolution strategy
-   - Compromise points
-   - Confidence in resolution
-
-**Output**: `ConflictResolution` object containing resolution strategies
-
-**Time Limit**: 350 words maximum
-
-### Stage 4: Synthesis Attempt
-
-**Purpose**: Synthesize different perspectives into a coherent framework and select a facilitator.
-
-**Process**:
-1. System attempts to synthesize all perspectives
-2. Each agent provides:
-   - Synthesis framework
-   - Integration points
-   - Remaining tensions
-   - Facilitator recommendation
-   - Synthesis confidence
-
-**Output**: `SynthesisAttempt` object containing unified approach
-
-**Time Limit**: 300 words maximum
-
-### Stage 5: Output Generation
-
-**Purpose**: Generate final synthesis and output by the selected facilitator agent.
-
-**Process**:
-1. Selected facilitator agent generates final output
-2. Output incorporates all perspectives and resolutions
-3. Final output includes:
-   - Comprehensive solution
-   - Implementation recommendations
-   - Risk considerations
-   - Success metrics
-
-**Output**: Final `AgentResponse` with complete solution
-
-**Time Limit**: 500 words maximum
-
-## Data Structures
-
-### Core Types
+Key domain types (subset):
 
 ```typescript
-interface Agent {
-  id: string;
-  name: string;
-  furigana: string;
-  style: "logical" | "critical" | "intuitive" | "meta" | "emotive" | "analytical";
-  priority: "precision" | "breadth" | "depth" | "balance";
-  memoryScope: "local" | "session" | "cross-session";
-  personality: string;
-  preferences: string[];
-  tone: string;
-  communicationStyle: string;
-  avatar?: string;
-  color?: string;
-  isSummarizer?: boolean;
-  references?: string[];
-  reasoning?: string;
-  assumptions?: string[];
-  approach?: string;
-}
+export type DialogueStage =
+  | 'individual-thought'
+  | 'mutual-reflection'
+  | 'mutual-reflection-summary'
+  | 'conflict-resolution'
+  | 'conflict-resolution-summary'
+  | 'synthesis-attempt'
+  | 'synthesis-attempt-summary'
+  | 'output-generation'
+  | 'finalize';
 
-interface Message {
+export interface Message {
   id: string;
   agentId: string;
   content: string;
@@ -316,7 +153,7 @@ interface Message {
   };
 }
 
-interface Session {
+export interface Session {
   id: string;
   title: string;
   agents: Agent[];
@@ -327,301 +164,143 @@ interface Session {
   currentStage?: DialogueStage;
   stageHistory: StageHistory[];
   stageSummaries?: StageSummary[];
-  complete?: boolean;
   outputFileName?: string;
   sequenceOutputFiles?: { [sequenceNumber: number]: string };
   sequenceNumber?: number;
   language: Language;
-}
-
-interface AgentResponse {
-  agentId: string;
-  content: string;
-  summary?: string;
-  reasoning?: string;
-  confidence?: number;
-  references?: string[];
-  stage?: DialogueStage;
-  stageData?: StageData;
-  metadata?: {
-    voteFor?: string;
-    voteReasoning?: string;
-    voteSection?: string;
-  };
+  messageCount?: number;
+  agentCount?: number;
 }
 ```
 
-- The `Session` and `Message` types have new fields for summaries, output files, sequence numbers, and language.
-- `AgentResponse` and related types now support richer metadata and stage data.
+## Orchestration & Router
 
-### Simplified Interaction Logging
+`YuiProtocolRouter` coordinates stage execution:
+- Initializes agents via `AgentManager`.
+- Ensures user message exists per sequence.
+- Executes stage-specific methods on agent instances.
+- Pushes agent messages with `stageData` back into the session.
+- Triggers `StageSummarizer` after stages (except finalize/output-generation) with a configured delay.
+- After `output-generation`, performs AI-based vote analysis and annotates messages with `voteFor` and `voteReasoning`.
+- Selects finalizer agent(s) from votes (fallback to `yui-000` if none), runs `finalize`, marks session completed, saves final output (Markdown) per sequence.
 
-```typescript
-interface SimplifiedInteractionLog {
-  id: string;
-  sessionId: string;
-  stage: DialogueStage;
-  agentId: string;
-  agentName: string;
-  timestamp: Date;
-  prompt: string;
-  output: string;
-  duration: number;
-  status: 'success' | 'error' | 'timeout';
-  error?: string;
-}
-```
+Sequences: When a session is completed and Stage 1 is requested again, the router increments `sequenceNumber` and continues, referencing previous sequence’s user input and final conclusions when generating prompts.
 
-## Communication Protocol
+## Server & Realtime IO
 
-### Message Flow
+Server: `src/server/index.ts` (Express + HTTP + Socket.IO)
+- REST endpoints:
+  - `GET /api/agents`
+  - `GET /api/sessions`
+  - `POST /api/sessions` (create session)
+  - `GET /api/sessions/:sessionId`
+  - `DELETE /api/sessions/:sessionId`
+  - `POST /api/sessions/:sessionId/reset`
+  - `POST /api/sessions/:sessionId/start-new-sequence`
+  - `GET /api/sessions/:sessionId/last-summary`
+  - Realtime equivalents under `/api/realtime/...` including `POST /api/realtime/sessions/:sessionId/stage` with SSE progress streaming
+- WebSocket:
+  - `join-session`, `leave-session`, `stage-start`, `stage-progress`, `stage-complete`, `stage-error`, `session-complete`
 
-1. **User Input** → Session Manager
-2. **Session Manager** → Dialogue Orchestrator
-3. **Dialogue Orchestrator** → Agent Pool (Stage 1)
-4. **Agent Responses** → Memory Manager
-5. **Stage Completion** → Stage Summarizer
-6. **Stage Summary** → Next Stage or Final Output
+Static: serves `dist/` assets and a SPA `index.html` fallback.
 
-### Error Handling
+## Prompts & Generation Parameters
 
-```typescript
-interface ErrorResponse {
-  error: string;
-  stage: DialogueStage;
-  agentId?: string;
-  timestamp: Date;
-  retryable: boolean;
-  fallbackStrategy?: string;
-}
-```
+Prompts live in `src/templates/prompts.ts` and include:
+- Personality prompt builder `getPersonalityPrompt` using all Agent personality fields.
+- Stage prompts `getStagePrompt` for all stages; `output-generation` includes mandatory “Agent Vote and Justification”.
+- Summarizer prompts for 2.5/3.5/4.5 and a dedicated `SUMMARIZER_STAGE_PROMPT` for final summaries when an agent is summarizer.
+- Vote parsing helpers `parseVotes` and `extractVoteDetails` robust to multiple formats and languages.
 
-### Timeout Management
+Generation parameter auto-adjustment lives in `BaseAgent`:
+- Methods: `calculateTemperature`, `calculateTopP`, `calculateRepetitionPenalty`, `calculatePresencePenalty`, `calculateFrequencyPenalty`, `calculateTopK`.
+- Inputs: agent style, priority, tone, personality, preferences, and behavior fields.
+- Two executors per agent are lazily created (normal and finalize/output-generation specific).
 
-- **Stage Timeout**: 30 seconds per stage
-- **Agent Timeout**: 10 seconds per agent response
-- **Retry Strategy**: 3 attempts with exponential backoff
-- **Fallback**: Continue with available responses
+AI Executor abstraction (`src/kernel/ai-executor.ts`):
+- `createAIExecutor` dynamically imports `ai-executor-impl` if present; else falls back to a mock executor that synthesizes outputs and injects a vote during `output-generation`.
+- Default provider in the base class is `'openai'`; StageSummarizer defaults to `'gemini'` model `gemini-2.5-flash-lite-preview-06-17` with temperature 0.5.
 
-## Memory Management
+Language: prompts enforce strict language (`'en'` or `'ja'`) at generation time.
 
-### Memory Scopes
+## Memory, Sessions, Outputs, and Logs
 
-#### Local Memory
-- **Size**: 5-10 messages
-- **Retention**: Current interaction only
-- **Use Case**: Simple, focused tasks
+- Session storage: `SessionStorage` persists sessions to `./sessions/{id}.json` with circular reference removal and date restoration.
+- Output storage: final outputs are saved per sequence; latest filename also set on `session.outputFileName` (see `OutputStorage`).
+- Interaction logs: `InteractionLogger` writes simplified logs to `./logs/{sessionId}/{stage}/{agentId}.json` and can read back by session/agent/stage. BaseAgent and StageSummarizer both log prompts/outputs/durations/provider/model (when available).
+- Agent memory scope is emulated via how much recent context is used per scope in BaseAgent (`local`/`session`/`cross-session`).
 
-#### Session Memory
-- **Size**: 50-100 messages
-- **Retention**: Entire session
-- **Use Case**: Complex, multi-step problems
+## Error Handling & Timeouts
 
-#### Cross-Session Memory
-- **Size**: 500+ messages
-- **Retention**: Multiple sessions
-- **Use Case**: Long-term projects and learning
+- Common AI execution is wrapped with try/catch; logs record success/error, and errors propagate to server which streams SSE error messages and emits WebSocket errors.
+- Sanitization removes hidden thinking tags like `<think>`.
+- Vote analysis stage has robust error logging and safe fallback to empty results.
 
-### Memory Eviction Policies
+## Performance & Scalability
 
-1. **LRU (Least Recently Used)**: Remove oldest messages first
-2. **Importance-based**: Retain high-confidence responses longer
-3. **Stage-based**: Prioritize current stage context
-4. **Agent-specific**: Respect agent memory scope preferences
+- Staggered agent response delays to simulate/avoid contention, configurable delay for summarization and vote analysis.
+- Summaries reduce downstream prompt size.
+- File-backed stores are simple to scale to network storage; further horizontal scaling requires externalizing storage.
 
-### Stage Summarization
+## Security & Privacy
 
-The system includes intelligent stage summarization to reduce token usage:
+- CORS is enabled for local dev.
+- Output sanitization in AIExecutor; API validates required fields in critical endpoints.
+- For production: add authentication, rate limiting, and stricter input validation.
 
-1. **Automatic Summarization**: Each stage is automatically summarized upon completion
-2. **Context Preservation**: Previous stage summaries are used as context for subsequent stages
-3. **Language Support**: Summaries can be generated in multiple languages (English, Japanese)
-4. **Configurable**: Summarization parameters can be customized per session
-
-## Error Handling
-
-### Error Types
-
-1. **AI Service Errors**: API failures, rate limits, model errors
-2. **Network Errors**: Connection issues, timeouts
-3. **Data Errors**: Invalid input, corrupted state
-4. **System Errors**: Memory issues, resource exhaustion
-
-### Error Recovery Strategies
-
-1. **Retry with Backoff**: Exponential backoff for transient errors
-2. **Fallback Responses**: Use cached or simplified responses
-3. **Stage Skipping**: Skip problematic stages if possible
-4. **Graceful Degradation**: Continue with available agents
-5. **Content Sanitization**: Sanitize AI responses to prevent rendering errors
-
-### Error Logging
-
-```typescript
-interface ErrorLog {
-  id: string;
-  timestamp: Date;
-  errorType: string;
-  errorMessage: string;
-  stage: DialogueStage;
-  agentId?: string;
-  sessionId: string;
-  context: any;
-  resolution?: string;
-}
-```
-
-## Performance Considerations
-
-### Optimization Strategies
-
-1. **Parallel Processing**: Execute agent responses in parallel where possible
-2. **Caching**: Cache common responses and intermediate results
-3. **Streaming**: Stream responses for better user experience
-4. **Resource Management**: Efficient memory and CPU usage
-5. **State Optimization**: Minimize unnecessary re-renders and state updates
-6. **Stage Summarization**: Reduce context length through intelligent summarization
-
-### Performance Metrics
-
-- **Response Time**: Average time per stage
-- **Throughput**: Messages processed per second
-- **Accuracy**: User satisfaction and solution quality
-- **Resource Usage**: Memory and CPU consumption
-- **Token Efficiency**: Tokens used per session
-
-### Scalability
-
-- **Horizontal Scaling**: Multiple server instances
-- **Load Balancing**: Distribute requests across instances
-- **Database Optimization**: Efficient query patterns and indexing
-- **Caching Layers**: Redis for session and interaction data
-
-## Security Considerations
-
-### Data Protection
-
-1. **Encryption**: Encrypt sensitive data in transit and at rest
-2. **Access Control**: Role-based access to sessions and logs
-3. **Audit Logging**: Comprehensive audit trails
-4. **Data Minimization**: Collect only necessary data
-
-### Privacy
-
-1. **User Consent**: Clear consent for data collection
-2. **Data Retention**: Automatic deletion of old data
-3. **Anonymization**: Remove personally identifiable information
-4. **Right to Deletion**: Allow users to delete their data
-
-### API Security
-
-1. **Authentication**: Secure API key management
-2. **Rate Limiting**: Prevent abuse and ensure fair usage
-3. **Input Validation**: Validate all inputs to prevent injection attacks
-4. **Output Sanitization**: Sanitize outputs to prevent XSS
-
-## Implementation Guidelines
-
-### Code Structure
+## Implementation Structure
 
 ```
 src/
-├── agents/           # Agent implementations
-│   ├── base-agent.ts # Abstract base class
-│   └── agent-*.ts    # Specific agent implementations
-├── kernel/           # Core system components
-│   ├── ai-executor.ts
-│   ├── ai-executor-impl.ts
-│   ├── interaction-logger.ts
-│   ├── memory.ts
-│   ├── session-storage.ts
-│   ├── realtime-router.ts
-│   ├── stage-summarizer.ts
-│   └── output-storage.ts
-├── templates/        # Prompt templates
-│   └── prompts.ts
-├── types/            # TypeScript definitions
-│   └── index.ts
-├── ui/               # User interface
-│   ├── App.tsx
-│   ├── ThreadView.tsx
-│   ├── SessionManager.tsx
-│   ├── MessagesView.tsx
-│   ├── ThreadHeader.tsx
-│   └── StageIndicator.tsx
-└── server/           # Backend server
-    └── index.ts
+├─ agents/
+│  ├─ base-agent.ts
+│  ├─ agent-eiro.ts
+│  ├─ agent-hekito.ts
+│  ├─ agent-kanshi.ts
+│  ├─ agent-yoga.ts
+│  └─ agent-yui.ts
+├─ kernel/
+│  ├─ ai-executor.ts
+│  ├─ interaction-logger.ts
+│  ├─ output-storage.ts
+│  ├─ router.ts
+│  ├─ session-storage.ts
+│  ├─ stage-summarizer.ts
+│  ├─ interfaces.ts
+│  └─ services/
+│     ├─ agent-manager.ts
+│     └─ session-manager.ts
+├─ server/
+│  └─ index.ts
+├─ templates/
+│  └─ prompts.ts
+├─ types/
+│  └─ index.ts
+└─ ui/
+   ├─ App.tsx
+   ├─ MessagesView.tsx
+   ├─ ThreadHeader.tsx
+   ├─ ThreadView.tsx
+   └─ StageIndicator.tsx
 ```
 
-### AI Provider Abstraction
+Build artifacts are in `dist/`, Selenium tests in `selenium-tests/`, and unit/integration tests in `tests/`.
 
-The system supports multiple AI providers through a unified interface:
+## Testing & Coverage
 
-```typescript
-interface AIExecutorOptions {
-  agentName: string;
-  model?: string;
-  provider?: string;
-  customConfig?: Record<string, any>;
-  temperature?: number;
-  topP?: number;
-  repetitionPenalty?: number;
-  presencePenalty?: number;
-  frequencyPenalty?: number;
-  topK?: number;
-}
+- Unit/integration tests cover agents, prompts, router, stage summarizer, session storage, interaction logging, UI components, and vote analysis.
+- E2E Selenium tests verify stage progression, indicators, session id, message counts, and UI flows.
+- Coverage: run `npm run test:coverage`.
 
-interface AIExecutor {
-  execute(prompt: string): Promise<AIExecutionResult>;
-}
+Recommended scenarios:
+- Parameter auto-adjustment tests (`generation-parameters.test.ts`).
+- Type fields presence and defaults (`types-extended.test.ts`).
+- Router stage flows and summaries (`router.test.ts`, `stage-summarizer.test.ts`).
 
-interface AIExecutionResult {
-  content: string;
-  tokensUsed?: number;
-  model?: string;
-  duration: number;
-  success: boolean;
-  error?: string;
-  errorDetails?: {
-    type: string;
-    message: string;
-    stack?: string;
-    httpStatus?: number;
-    responseText?: string;
-  };
-}
-```
+## Operations
 
-- **Automatic Generation Parameter Adjustment**: Parameters such as temperature, topP, repetitionPenalty, presencePenalty, frequencyPenalty, and topK are automatically calculated based on the agent's personality, style, priority, tone, preferences, etc. (see BaseAgent's calculateXxx methods).
-- The default provider is "gemini", and maxTokens defaults to 4000.
-- This enables generation optimized for each agent's individuality.
+- Start backend server: `npm run server` (serves REST, SSE and WebSocket) and exposes SPA from `dist/`.
+- Health check: `GET /api/health`.
+- Logs and sessions are plain files under `./logs` and `./sessions`.
 
-#### Example of Automatic Generation Parameter Adjustment
-- Intuitive and emotive types have higher temperature/topP, while logical and analytical types have lower values.
-- Precision priority results in lower temperature and topK, while breadth priority increases them.
-- If personality or tone includes keywords like "gentle" or "creative", adjustments are also made.
-
-### Testing Strategy
-
-1. **Unit Tests**: Test individual components in isolation
-   - Test correct use and initialization of new Agent fields (specificBehaviors, thinkingPatterns, etc.)
-   - Test that automatic generation parameter adjustment logic (temperature, topP, etc.) is correctly calculated based on personality and style
-2. **Integration Tests**: Test component interactions
-3. **End-to-End Tests**: Test complete user workflows with Selenium
-4. **Performance Tests**: Test system under load
-
-- **Test Coverage**: New fields and automatic adjustment logic must also be covered by tests
-
-### Deployment
-
-1. **Environment Configuration**: Separate configs for dev/staging/prod
-2. **Health Checks**: Monitor system health and performance
-3. **Logging**: Comprehensive logging for debugging and monitoring
-4. **Backup Strategy**: Regular backups of session and interaction data
-
-### Monitoring
-
-1. **Application Metrics**: Response times, error rates, throughput
-2. **Infrastructure Metrics**: CPU, memory, disk usage
-3. **Business Metrics**: User engagement, session completion rates
-4. **Alerting**: Proactive alerts for issues and anomalies
+Language policy: prompts are enforced in English or Japanese as specified; default generation and system messages prefer English unless the session language is set to `'ja'`.

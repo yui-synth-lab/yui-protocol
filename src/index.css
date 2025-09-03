@@ -48,4 +48,10 @@ code {
 body, .bg-gray-900, .bg-gray-800 {
   scrollbar-color: #33353b #18181b;
   scrollbar-width: thin;
-} 
+}
+
+li>p {
+  display: inline;
+  margin-top: 0px;
+  margin-bottom: 0px;
+}

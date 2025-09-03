@@ -109,7 +109,19 @@ describe('Server API', () => {
     app.get('/api/sessions', async (req, res) => {
       try {
         const sessions = await mockRealtimeRouter.getAllSessions();
-        res.json(sessions);
+        // Return only session summaries instead of full data
+        const sessionSummaries = sessions.map(session => ({
+          id: session.id,
+          title: session.title,
+          createdAt: session.createdAt,
+          updatedAt: session.updatedAt,
+          status: session.status,
+          language: session.language,
+          agentIds: session.agents?.map(agent => agent.id) || [],
+          messageCount: session.messages?.length || 0,
+          agentCount: session.agents?.length || 0
+        }));
+        res.json(sessionSummaries);
       } catch (error) {
         console.error('Error getting sessions:', error);
         res.status(500).json({ error: 'Failed to get sessions' });
@@ -289,9 +301,15 @@ describe('Server API', () => {
         .expect(200);
 
       expect(response.body).toEqual([{
-        ...mockSession,
+        id: mockSession.id,
+        title: mockSession.title,
         createdAt: mockSession.createdAt.toISOString(),
-        updatedAt: mockSession.updatedAt.toISOString()
+        updatedAt: mockSession.updatedAt.toISOString(),
+        status: mockSession.status,
+        language: mockSession.language,
+        agentIds: mockSession.agents.map(agent => agent.id),
+        messageCount: mockSession.messages.length,
+        agentCount: mockSession.agents.length
       }]);
       expect(mockRealtimeRouter.getAllSessions).toHaveBeenCalled();
     });

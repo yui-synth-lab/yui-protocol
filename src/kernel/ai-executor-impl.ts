@@ -5,7 +5,6 @@ import {
 } from '@google/genai';
 import { Ollama } from 'ollama';
 import { Agent } from 'undici'
-import { agent } from 'supertest';
 
 const noTimeoutFetch = (input: string | URL | globalThis.Request, init?: RequestInit) => {
   const someInit = init || {}
@@ -22,7 +21,7 @@ export class GeminiCliExecutor extends AIExecutor {
     this.path = this.customConfig.path || 'C:\\Users\\yuyay\\AppData\\Roaming\\npm\\gemini.cmd';
   }
 
-  async execute(prompt: string, personality:string): Promise<AIExecutionResult> {
+  async execute(prompt: string, personality: string): Promise<AIExecutionResult> {
     const startTime = Date.now();
     // system message非対応APIなので、personalityがあればpromptの先頭に付与
     const effectivePrompt = personality ? `${personality}\n\n${prompt}` : prompt;
@@ -102,10 +101,10 @@ export class GeminiExecutor extends AIExecutor {
     });
   }
 
-  async execute(prompt: string, personality:string): Promise<AIExecutionResult> {
+  async execute(prompt: string, personality: string): Promise<AIExecutionResult> {
     const startTime = Date.now();
     const contents = [
-      ...(personality ? [{ role: 'system', parts: [{ text: personality }] }] : []),
+      ...(personality ? [{ role: 'model', parts: [{ text: personality }] }] : []),
       {
         role: 'user',
         parts: [
@@ -115,7 +114,7 @@ export class GeminiExecutor extends AIExecutor {
     ];
     const config = {
       thinkingConfig: {
-        thinkingBudget: 0,
+        thinkingBudget: this.model === 'gemini-2.5-pro' ? -1 : 0,
       },
       responseMimeType: 'text/plain',
       temperature: this.temperature,
@@ -150,7 +149,7 @@ export class OpenAIExecutor extends AIExecutor {
     this.baseUrl = this.customConfig.baseUrl || 'https://api.openai.com/v1';
   }
 
-  async execute(prompt: string, personality:string): Promise<AIExecutionResult> {
+  async execute(prompt: string, personality: string): Promise<AIExecutionResult> {
     const startTime = Date.now();
 
     if (!this.apiKey) {
@@ -165,7 +164,7 @@ export class OpenAIExecutor extends AIExecutor {
     }
 
     try {
-      const response = await fetch(`${this.baseUrl}/chat/completions`, {
+      const response = await noTimeoutFetch(`${this.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
@@ -248,7 +247,7 @@ export class AnthropicExecutor extends AIExecutor {
     this.baseUrl = this.customConfig.baseUrl || 'https://api.anthropic.com/v1';
   }
 
-  async execute(prompt: string, personality:string): Promise<AIExecutionResult> {
+  async execute(prompt: string, personality: string): Promise<AIExecutionResult> {
     const startTime = Date.now();
 
     if (!this.apiKey) {
@@ -263,7 +262,7 @@ export class AnthropicExecutor extends AIExecutor {
     }
 
     try {
-      const response = await fetch(`${this.baseUrl}/messages`, {
+      const response = await noTimeoutFetch(`${this.baseUrl}/messages`, {
         method: 'POST',
         headers: {
           'x-api-key': this.apiKey,
@@ -340,7 +339,7 @@ export class MockExecutor extends AIExecutor {
   async execute(prompt: string, personality: string): Promise<AIExecutionResult> {
     const startTime = Date.now();
     // system message非対応APIなので、personalityがあればpromptの先頭に付与
-    const effectivePrompt = personality? `${personality}\n\n${prompt}` : prompt;
+    const effectivePrompt = personality ? `${personality}\n\n${prompt}` : prompt;
 
     // Simulate processing time
     await new Promise(resolve => setTimeout(resolve, 100 + Math.random() * 200));
@@ -447,8 +446,6 @@ export class OllamaExecutor extends AIExecutor {
     const startTime = Date.now();
     const maxRetries = 3;
     let lastError: Error | null = null;
-    // system message非対応APIなので、personalityがあればpromptの先頭に付与
-    const effectivePrompt = personality ? `${personality}\n\n${prompt}` : prompt;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
@@ -468,9 +465,11 @@ export class OllamaExecutor extends AIExecutor {
         // このパッケージは内部的にタイムアウト制御を持っている
         const response = await this.ollamaClient.generate({
           model: this.model,
-          prompt: effectivePrompt,
-          stream: false,
+          prompt: prompt,
+          system: personality,
+          stream: true,
           think: false,
+          keep_alive: '1h',
           options: {
             temperature: this.temperature,
             top_p: this.topP,
@@ -482,9 +481,12 @@ export class OllamaExecutor extends AIExecutor {
         });
 
         const duration = Date.now() - startTime;
-
+        let responseString = '';
+        for await (const part of response) {
+          responseString += part.response;
+        }
         return {
-          content: this.sanitizeContent(response.response || ''),
+          content: this.sanitizeContent(responseString || ''),
           model: this.model,
           duration,
           success: true
@@ -605,33 +607,35 @@ export function createAIExecutor(agentId: string, options?: Partial<AIExecutorOp
     ...options
   };
   const isSummarizer = agentId.endsWith('-finalizer');
-  const agentIdWithoutPostfix = agentId.replace('-finalizer','')
+  const agentIdWithoutPostfix = agentId.replace('-finalizer', '')
 
   switch (agentIdWithoutPostfix) {
     case 'kanshi-001':
       config.provider = 'openai';
       if (isSummarizer) {
-        config.model = 'gpt-4o-2024-08-06'
+        config.model = 'gpt-4.1-2025-04-14'
       }
       else {
-        config.model = 'gpt-4.1-mini';
-      }            break;
+        config.model = 'gpt-4.1-mini-2025-04-14';
+      }
+      break;
     case 'hekito-001':
-      config.provider = 'openai';
+      config.provider = 'gemini';
       if (isSummarizer) {
-        config.model = 'gpt-4o-2024-08-06'
+        config.model = 'gemini-2.5-pro'
       }
       else {
-        config.model = 'gpt-4o-2024-08-06';
-      }            break;
+        config.model = 'gemini-2.5-flash';
+      }
+      break;
     case 'eiro-001':
       config.provider = 'openai';
       if (isSummarizer) {
         config.model = 'gpt-4o-2024-08-06'
       }
       else {
-        config.model = 'gpt-4.1-mini';
-      }      
+        config.model = 'gpt-4o-2024-08-06';
+      }
       break;
     case 'yoga-001':
       config.provider = 'anthropic';
@@ -656,21 +660,31 @@ export function createAIExecutor(agentId: string, options?: Partial<AIExecutorOp
   console.log(JSON.stringify(config));
   switch (config.provider) {
     case 'gemini':
-      config.model = 'gemini-2.5-flash-lite-preview-06-17';
+      if (!config.model) {
+        config.model = 'gemini-2.5-flash-lite';
+      }
+      config.customConfig = {
+        ...config.customConfig
+      };
       return new GeminiExecutor(config);
     case 'openai':
       if (!config.model) {
         config.model = 'gpt-4.1-mini';
       }
+      config.customConfig = {
+        ...config.customConfig
+      }
       return new OpenAIExecutor(config);
     case 'anthropic':
-
+      config.customConfig = {
+        ...config.customConfig
+      }
       return new AnthropicExecutor(config);
     case 'ollama':
       if (!config.customConfig) {
         config.customConfig = {};
       }
-      config.model = 'hf.co/mmnga/cyberagent-DeepSeek-R1-Distill-Qwen-14B-Japanese-gguf:latest';
+      config.model = 'hf.co/mmnga/llm-jp-3.1-1.8b-instruct4-gguf:Q4_K_M';
       return new OllamaExecutor(config);
     case 'gemini-cli':
       return new GeminiCliExecutor(config);

@@ -212,7 +212,7 @@ export class YuiProtocolRouter implements IRealtimeRouter {
 
       console.log(`[Router] Starting stage summary generation for ${stage} in session ${sessionId}`);
       try {
-        const stageMessages = session.messages.filter(msg => msg.stage === stage && msg.role === 'agent');
+        const stageMessages = session.messages.filter(msg => msg.stage === stage && msg.role === 'agent' && msg.sequenceNumber === session.sequenceNumber);
         console.log(`[Router] Found ${stageMessages.length} agent messages for stage ${stage}`);
         if (stageMessages.length > 0) {
           console.log(`[Router] Calling stageSummarizer.summarizeStage for ${stage}`);
@@ -344,6 +344,8 @@ export class YuiProtocolRouter implements IRealtimeRouter {
         console.log(`[Router] Selected agent(s) for final output: ${selectedAgentIds}`);
       }
       if (selectedAgentIds.length > 0) {
+        const finalOutputs: AgentResponse[] = []
+
         // 選ばれたエージェント全員で finalize を実行
         for (const selectedAgentId of selectedAgentIds) {
           const selectedAgent = session.agents.find(agent => agent.id === selectedAgentId);
@@ -362,6 +364,7 @@ export class YuiProtocolRouter implements IRealtimeRouter {
               await sleep(this.delay);
               console.log(`[Router] Finalize delay: ${this.delay}ms`);
               const finalOutput = await agentInstance.stage5_1Finalize(votingResults, responses, session.messages, session.language || 'ja');
+              finalOutputs.push(finalOutput);
               // 最終出力をメッセージとして追加
               const finalMessage: Message = {
                 id: uuidv4(),
@@ -390,12 +393,9 @@ export class YuiProtocolRouter implements IRealtimeRouter {
         session.status = 'completed';
         session.currentStage = 'finalize';
         await this.sessionManager.saveSession(session);
+        await this.saveFinalOutputIfNeeded(finalOutputs, session, sessionId, effectiveLanguage);
       }
     }
-
-    // 最終出力の保存（必要に応じて）
-    const isAllStagesCompleted = this.isAllStagesCompleted(session);
-    await this.saveFinalOutputIfNeeded(isAllStagesCompleted, responses, session, sessionId, effectiveLanguage);
 
     const stageEnd = new Date();
     const duration = stageEnd.getTime() - stageStart.getTime();
@@ -781,20 +781,13 @@ export class YuiProtocolRouter implements IRealtimeRouter {
     }
   }
 
-  private isAllStagesCompleted(session: Session): boolean {
-    const completedStages = session.stageHistory.map(h => h.stage);
-    const allStages: DialogueStage[] = ['individual-thought', 'mutual-reflection', 'conflict-resolution', 'synthesis-attempt', 'output-generation'];
-    return allStages.every(stage => completedStages.includes(stage));
-  }
-
   private async saveFinalOutputIfNeeded(
-    isAllStagesCompleted: boolean,
     summaryList: AgentResponse[],
     session: Session,
     sessionId: string,
     language: Language
   ): Promise<void> {
-    if (isAllStagesCompleted && summaryList.length > 0) {
+    if (summaryList.length > 0) {
       const finalOutput = summaryList[summaryList.length - 1];
       if (finalOutput && finalOutput.content) {
         const currentSequenceNumber = session.sequenceNumber || 1;

@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Session, Message, DialogueStage, Language } from '../types/index.js';
+import { Session, Message, DialogueStage, Language, Agent } from '../types/index.js';
 import MessagesView from './MessagesView.js';
 import StageIndicator from './StageIndicator.js';
 import { io, Socket } from 'socket.io-client';
 
 interface ThreadViewProps {
   session: Session;
+  availableAgents: Agent[];
   onSessionUpdate: (session: Session) => void;
   testOverrides?: {
     isCreatingSession?: boolean;
@@ -13,7 +14,7 @@ interface ThreadViewProps {
   };
 }
 
-const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testOverrides }) => {
+const ThreadView: React.FC<ThreadViewProps> = ({ session, availableAgents, onSessionUpdate, testOverrides }) => {
   const [userPrompt, setUserPrompt] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [messages, setMessages] = useState<Message[]>(session.messages);
@@ -25,6 +26,8 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   // Track if we are waiting to auto-start a new sequence
   const [pendingAutoStartPrompt, setPendingAutoStartPrompt] = useState<string | null>(null);
+  // Track if we have already loaded session data to prevent infinite loops
+  const [hasLoadedSessionData, setHasLoadedSessionData] = useState(false);
 
   // Refs
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -98,6 +101,20 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
   // Update messages when session changes
   useEffect(() => {
     console.log(`[UI] Session change effect triggered - session.id: ${session.id}`);
+    
+    // Check if session has full data (agents and messages)
+    const hasFullData = session.agents && session.agents.length > 0 && session.messages;
+    
+    // Only load session data if we haven't loaded it yet and the session is missing data
+    if (!hasFullData && !hasLoadedSessionData) {
+      console.log(`[UI] Session ${session.id} missing full data, loading details...`);
+      setHasLoadedSessionData(true);
+      reloadSessionData();
+    } else if (hasFullData) {
+      // Reset the flag when we have full data
+      setHasLoadedSessionData(false);
+    }
+    
     console.log(`[UI] Session sequenceNumber: ${session.sequenceNumber}`);
     console.log(`[UI] Session messages count: ${session.messages.length}`);
     
@@ -109,7 +126,12 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
     setUserPrompt('');
 
     console.log(`[UI] Session change reset completed for new session`);
-  }, [session.id, session.messages, session.currentStage, session.language]);
+  }, [session.id, session.agents, session.currentStage, session.language]);
+
+  // Reset the loaded flag when session ID changes
+  useEffect(() => {
+    setHasLoadedSessionData(false);
+  }, [session.id]);
 
   // Check if all stages are completed
   useEffect(() => {
@@ -256,9 +278,13 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
       if (response.ok) {
         const sessionData = await response.json();
         notifySessionUpdate(sessionData);
+        // Reset the flag after successfully loading session data
+        setHasLoadedSessionData(false);
       }
     } catch (error) {
       console.error(`[UI] Error reloading session data:`, error);
+      // Reset the flag on error as well
+      setHasLoadedSessionData(false);
     }
   };
 
@@ -313,6 +339,7 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, onSessionUpdate, testO
       <div className="flex-1 min-h-0 overflow-hidden bg-gray-900">
         <MessagesView
           session={session}
+          availableAgents={availableAgents}
           messages={messages}
           currentStage={currentStage}
           shouldAutoScroll={shouldAutoScroll}

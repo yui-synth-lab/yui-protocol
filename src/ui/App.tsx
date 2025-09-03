@@ -148,12 +148,13 @@ const Menu: React.FC<{
                     <p className="text-xs text-gray-400 text-center py-4">No sessions yet.</p>
                   ) : (
                     sessions.map((session) => {
-                      const messageCount = session.messages && Array.isArray(session.messages) 
-                        ? session.messages.length 
-                        : 0;
-                      const agentCount = session.agents && Array.isArray(session.agents) 
-                        ? session.agents.length 
-                        : 0;
+                      // Use messageCount and agentCount from session summary, fallback to actual arrays if available
+                      const messageCount = session.messageCount !== undefined 
+                        ? session.messageCount 
+                        : (session.messages && Array.isArray(session.messages) ? session.messages.length : 0);
+                      const agentCount = session.agentCount !== undefined 
+                        ? session.agentCount 
+                        : (session.agents && Array.isArray(session.agents) ? session.agents.length : 0);
                       
                       return (
                         <button
@@ -284,13 +285,29 @@ export function AppRoutes() {
       const sessionsData = await response.json();
       
       // Sort sessions by updatedAt in descending order only on initial load
-      const sortedSessions = sessionsData.sort((a: Session, b: Session) => {
+      const sortedSessions = sessionsData.sort((a: any, b: any) => {
         const dateA = a.updatedAt instanceof Date ? a.updatedAt : new Date(a.updatedAt);
         const dateB = b.updatedAt instanceof Date ? b.updatedAt : new Date(b.updatedAt);
         return dateB.getTime() - dateA.getTime();
       });
       
-      setSessions(sortedSessions);
+      // Convert session summaries to Session objects with minimal data
+      const sessionSummaries = sortedSessions.map((sessionData: any) => ({
+        id: sessionData.id,
+        title: sessionData.title,
+        agents: [], // Will be loaded when session is selected
+        messages: [], // Will be loaded when session is selected
+        createdAt: new Date(sessionData.createdAt),
+        updatedAt: new Date(sessionData.updatedAt),
+        status: sessionData.status,
+        currentStage: undefined,
+        stageHistory: [],
+        language: sessionData.language || 'en',
+        messageCount: sessionData.messageCount || 0,
+        agentCount: sessionData.agentCount || 0
+      }));
+      
+      setSessions(sessionSummaries);
     } catch (error) {
       console.error('Failed to load sessions:', error);
     }
@@ -323,7 +340,6 @@ export function AppRoutes() {
           currentStage: undefined,
           stageHistory: [],
           status: 'active',
-          complete: false,
           language: newSession.language || language || 'en',
         },
         ...prev.map(s => ({ ...s, language: s.language || 'en' }))
@@ -335,7 +351,22 @@ export function AppRoutes() {
     }
   };
 
-  const selectSession = (session: Session) => {
+  const selectSession = async (session: Session) => {
+    // Load full session data when selected
+    try {
+      const response = await fetch(`/api/sessions/${session.id}`);
+      if (response.ok) {
+        const fullSessionData = await response.json();
+        
+        // Update the session in the list with full data
+        setSessions(prev => prev.map(s => 
+          s.id === session.id ? fullSessionData : s
+        ));
+      }
+    } catch (error) {
+      console.error('Failed to load session details:', error);
+    }
+    
     navigate(`/session/${session.id}`);
   };
 
@@ -461,7 +492,7 @@ export function AppRoutes() {
           <div className="flex-1 min-h-0 flex flex-col">
             <div className="flex-1 min-h-0 overflow-y-auto">
               {currentSession ? (
-                <ThreadView session={currentSession} onSessionUpdate={handleSessionUpdate} />
+                <ThreadView session={currentSession} availableAgents={availableAgents} onSessionUpdate={handleSessionUpdate} />
               ) : (
                 <div className="bg-gray-800 shadow-sm p-6 text-center h-full flex flex-col justify-center">
                   <div className="text-gray-600 mb-3">

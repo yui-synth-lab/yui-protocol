@@ -257,9 +257,20 @@ app.get('/api/sessions', (async (req: Request, res: Response) => {
   try {
     const sessions = await realtimeRouter.getAllSessions();
     
-    // Clean sessions to remove circular references before sending
-    const cleanedSessions = sessions.map(session => removeCircularReferences(session));
-    res.json(cleanedSessions);
+    // Return only session summaries instead of full data
+    const sessionSummaries = sessions.map(session => ({
+      id: session.id,
+      title: session.title,
+      createdAt: session.createdAt,
+      updatedAt: session.updatedAt,
+      status: session.status,
+      language: session.language,
+      agentIds: session.agents?.map(agent => agent.id) || [],
+      messageCount: session.messages?.length || 0,
+      agentCount: session.agents?.length || 0
+    }));
+    
+    res.json(sessionSummaries);
   } catch (error) {
     console.error('Error getting sessions:', error);
     res.status(500).json({ error: 'Failed to get sessions' });

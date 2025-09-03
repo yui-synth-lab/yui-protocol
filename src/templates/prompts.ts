@@ -497,6 +497,8 @@ but you must do so through the lens of your own unique perspective, expertise, a
 - Use your own section names and narrative flow if you wish
 - Be as detailed and expansive as necessary to fully capture the intellectual richness and depth of the session
 - Do not use <think> tags or any thinking tags in your response. Provide your response directly, clearly, and sincerely.
+- **Do not mention or include any voting results or recommendations for a summarizer. Focus only on the content and outcome of the discussion itself.**
+
 
 ---
 

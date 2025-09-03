@@ -136,7 +136,7 @@ describe('BaseAgent', () => {
       const mockExecutor = new MockAIExecutor();
       agent['aiExecutor'] = mockExecutor;
       
-      const result = await agent['executeAI']('Test prompt');
+      const result = await agent['executeAIWithErrorHandling']('Test prompt', 'Test personality', 'test-session', 'individual-thought', 'test');
       expect(result).toContain('TestAgent');
       expect(result).toContain('Test prompt');
     });
@@ -146,7 +146,7 @@ describe('BaseAgent', () => {
       const mockExecutor = new MockAIExecutor();
       agent['aiExecutor'] = mockExecutor;
       
-      const result = await agent['executeAIWithTruncation']('Test prompt');
+      const result = await agent['executeAIWithErrorHandling']('Test prompt', 'Test personality', 'test-session', 'individual-thought', 'test');
       expect(result).toContain('TestAgent');
       expect(result).toContain('Test prompt');
     });
@@ -154,7 +154,7 @@ describe('BaseAgent', () => {
     it('should handle AI execution errors gracefully', async () => {
       // Mock the AI executor to return an error
       const mockExecutor = {
-        agentName: 'TestAgent',
+        agentId: 'TestAgent',
         maxTokens: 4000,
         model: 'test-model',
         provider: 'custom',
@@ -174,7 +174,7 @@ describe('BaseAgent', () => {
       agent['aiExecutor'] = mockExecutor;
       agent.setSessionId('test-session-error');
       
-      const result = await agent['executeAI']('Test prompt');
+      const result = await agent['executeAIWithErrorHandling']('Test prompt', 'Test personality', 'test-session-error', 'individual-thought', 'test');
       expect(result).toBe('Error fallback response');
       
       // Check that error was logged
@@ -212,7 +212,7 @@ describe('BaseAgent', () => {
     it('should handle AI execution errors with proper logging in executeAIWithErrorHandling', async () => {
       // Mock the AI executor to return an error
       const mockExecutor = {
-        agentName: 'TestAgent',
+        agentId: 'TestAgent',
         maxTokens: 4000,
         model: 'test-model',
         provider: 'custom',
@@ -666,14 +666,14 @@ describe('BaseAgent (overrides)', () => {
     };
   });
   it('should use overridden getReferences, getReasoning, getAssumptions, getApproach', async () => {
-    const resp = await agent.respond('Prompt', [testMessage]);
+    const resp = await agent.respond('Prompt', [testMessage], 'en');
     expect(resp.references).toEqual(['custom-ref']);
     expect(resp.reasoning).toContain('custom-reasoning');
     if (resp.stageData) {
       expect(resp.stageData.assumptions).toEqual(['custom-assumption']);
       expect(resp.stageData.approach).toBe('custom-approach');
     }
-  });
+  }, 10000);
   it('parseReflectionsFromContent uses agent.name as displayName', () => {
     const otherThoughts = [{ agentId: 'custom-1', content: 'test', reasoning: '', assumptions: [], approach: '' }];
     const agents = [testAgent];

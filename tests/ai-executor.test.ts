@@ -12,13 +12,13 @@ class MockAIExecutor extends AIExecutor {
     });
   }
 
-  async execute(prompt: string): Promise<AIExecutionResult> {
+  async execute(prompt: string, personality: string): Promise<AIExecutionResult> {
     const startTime = Date.now();
     await new Promise(resolve => setTimeout(resolve, 50));
     const duration = Date.now() - startTime;
     
     return {
-      content: `[${this.agentName}] Mock response to: ${prompt.substring(0, 30)}...`,
+      content: `[${this.agentId}] Mock response to: ${prompt.substring(0, 30)}...`,
       model: this.model,
       duration,
       success: true
@@ -32,7 +32,7 @@ describe('AIExecutor', () => {
 
   beforeEach(() => {
     options = {
-      agentName: 'TestAgent',
+      agentId: 'TestAgent',
       model: 'test-model',
       provider: 'custom',
       customConfig: { maxTokens: 4000 }
@@ -42,7 +42,7 @@ describe('AIExecutor', () => {
 
   describe('constructor', () => {
     it('should initialize with provided options', () => {
-      expect(mockExecutor['agentName']).toBe('TestAgent');
+      expect(mockExecutor['agentId']).toBe('TestAgent');
       expect(mockExecutor['maxTokens']).toBe(4000);
       expect(mockExecutor['model']).toBe('test-model');
       expect(mockExecutor['provider']).toBe('custom');
@@ -50,7 +50,7 @@ describe('AIExecutor', () => {
 
     it('should use default values when options are not provided', () => {
       const minimalOptions: AIExecutorOptions = {
-        agentName: 'MinimalAgent'
+        agentId: 'MinimalAgent'
       };
       const executor = new MockAIExecutor(minimalOptions);
       
@@ -107,7 +107,8 @@ describe('AIExecutor', () => {
   describe('execute', () => {
     it('should execute successfully', async () => {
       const prompt = 'Test prompt';
-      const result = await mockExecutor.execute(prompt);
+      const personality = 'Test personality';
+      const result = await mockExecutor.execute(prompt, personality);
       
       expect(result.success).toBe(true);
       expect(result.content).toContain('TestAgent');
@@ -162,7 +163,7 @@ describe('createAIExecutor', () => {
     const executor = await createAIExecutor('TestAgent');
     
     expect(executor).toBeInstanceOf(AIExecutor);
-    expect(executor['agentName']).toBe('TestAgent');
+    expect(executor['agentId']).toBe('TestAgent');
   });
 
   it('should create executor with custom options', async () => {
@@ -183,7 +184,7 @@ describe('createAIExecutor', () => {
     expect(executor['maxTokens']).toBe(4000);
     // The actual model might vary based on the implementation, so we just check it's a string
     expect(typeof executor['model']).toBe('string');
-    expect(executor['provider']).toBe('gemini');
+    expect(executor['provider']).toBe('openai');
   });
 });
 

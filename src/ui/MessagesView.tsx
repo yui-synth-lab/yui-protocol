@@ -1,10 +1,11 @@
 import React, { useRef, useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Session, Message, DialogueStage } from '../types/index';
+import { Session, Message, DialogueStage, Agent } from '../types/index';
 
 interface MessagesViewProps {
   session: Session;
   messages: Message[];
+  availableAgents: Agent[];
   currentStage: DialogueStage | null;
   onScroll?: (shouldAutoScroll: boolean) => void;
   shouldAutoScroll: boolean;
@@ -13,6 +14,7 @@ interface MessagesViewProps {
 const MessagesView: React.FC<MessagesViewProps> = ({
   session,
   messages,
+  availableAgents,
   currentStage,
   onScroll,
   shouldAutoScroll
@@ -53,12 +55,12 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   };
 
   const getAgentAvatar = (agentId: string) => {
-    const agent = session.agents.find(a => a.id === agentId);
+    const agent = availableAgents.find(a => a.id === agentId);
     return agent?.avatar || '🤖';
   };
 
   const getAgentName = (agentId: string) => {
-    const agent = session.agents.find(a => a.id === agentId);
+    const agent = availableAgents.find(a => a.id === agentId);
     return agent?.name || agentId;
   };
 
@@ -100,7 +102,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   };
 
   const getAgentColor = (agentId: string) => {
-    const agent = session.agents.find(a => a.id === agentId);
+    const agent = availableAgents.find(a => a.id === agentId);
     return agent?.color || '#ccc';
   };
 
@@ -133,9 +135,9 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   // ステージサマリーを表示する関数
   const renderStageSummary = (stage: DialogueStage) => {
     if (!session.stageSummaries) return null;
-    
+
     const currentSequenceNumber = session.sequenceNumber || 1;
-    const summary = session.stageSummaries.find(s => 
+    const summary = session.stageSummaries.find(s =>
       s.stage === stage && s.sequenceNumber === currentSequenceNumber
     );
     if (!summary || summary.summary.length === 0) return null;
@@ -159,14 +161,14 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   // サマライズ結果をシステムメッセージとして表示する関数
   const renderSummarizeMessage = (stage: DialogueStage) => {
     if (!session.stageSummaries) return null;
-    
+
     const currentSequenceNumber = session.sequenceNumber || 1;
-    const summary = session.stageSummaries.find(s => 
+    const summary = session.stageSummaries.find(s =>
       s.stage === stage && s.sequenceNumber === currentSequenceNumber
     );
     if (!summary || summary.summary.length === 0) return null;
 
-    const summaryContent = summary.summary.map(item => 
+    const summaryContent = summary.summary.map(item =>
       `**${item.speaker}**: ${item.position}`
     ).join('\n\n');
 
@@ -207,7 +209,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   const replaceAgentIdsWithNames = (content: string): string => {
     if (!content) return content;
     let replaced = content;
-    session.agents.forEach(agent => {
+    availableAgents.forEach(agent => {
       const regex = new RegExp(agent.id, 'g');
       replaced = replaced.replace(regex, agent.name);
     });
@@ -222,49 +224,53 @@ const MessagesView: React.FC<MessagesViewProps> = ({
       if (!replacedContent || typeof replacedContent !== 'string') {
         return <span className="text-gray-400 italic">[Empty or invalid content]</span>;
       }
-
-      // 安全なMarkdownのみを使用
-      return (
-        <ReactMarkdown
-          remarkPlugins={[]}
-          rehypePlugins={[]}
-          components={{
-            // 基本的なコンポーネントのみを許可
-            p: ({ children }) => <p className="mb-3 text-gray-300">{children}</p>,
-            h1: ({ children }) => <h1 className="text-2xl font-bold text-gray-100 my-4 border-b border-gray-700 pb-2">{children}</h1>,
-            h2: ({ children }) => <h2 className="text-xl font-bold text-gray-100 my-3 border-b border-gray-700 pb-1">{children}</h2>,
-            h3: ({ children }) => <h3 className="text-lg font-bold text-gray-100 my-2">{children}</h3>,
-            h4: ({ children }) => <h4 className="text-base font-bold text-gray-100 my-2">{children}</h4>,
-            h5: ({ children }) => <h5 className="text-sm font-bold text-gray-100 my-1">{children}</h5>,
-            h6: ({ children }) => <h6 className="text-xs font-bold text-gray-100 my-1">{children}</h6>,
-            strong: ({ children }) => <strong className="font-bold text-gray-100">{children}</strong>,
-            em: ({ children }) => <em className="italic text-gray-200">{children}</em>,
-            code: ({ children }) => <code className="bg-gray-700 px-1 py-0.5 text-sm text-gray-100 rounded overflow-x-auto whitespace-pre-wrap break-words">{children}</code>,
-            pre: ({ children }) => <pre className="bg-gray-900 p-4 overflow-x-auto text-sm text-gray-100 rounded mb-3 whitespace-pre-wrap break-words">{children}</pre>,
-            blockquote: ({ children }) => <blockquote className="border-l-4 border-blue-500 pl-4 py-2 my-4 bg-gray-800">{children}</blockquote>,
-            ul: ({ children }) => <ul className="list-disc list-inside space-y-1 my-4 text-gray-300">{children}</ul>,
-            ol: ({ children }) => <ol className="list-decimal list-inside space-y-1 my-4 text-gray-300">{children}</ol>,
-            li: ({ children }) => <li className="text-gray-300">{children}</li>,
-            hr: () => <hr className="border-gray-700 my-4" />,
-            br: () => <br />,
-            // テーブル関連は無効化
-            table: () => <div className="bg-gray-800 p-4 rounded mb-3 text-gray-300">[Table content]</div>,
-            thead: () => null,
-            tbody: () => null,
-            tr: () => null,
-            th: () => null,
-            td: () => null,
-            // その他の危険な要素も無効化
-            a: () => <span className="text-blue-400">[Link]</span>,
-            img: () => <span className="text-gray-400">[Image]</span>,
-            // デフォルトの処理
-            div: ({ children }) => <div className="text-gray-300">{children}</div>,
-            span: ({ children }) => <span className="text-gray-300">{children}</span>
-          }}
-        >
-          {replacedContent}
-        </ReactMarkdown>
-      );
+      try {
+        return (<ReactMarkdown>{replacedContent}</ReactMarkdown>)
+      }
+      catch (e) {
+        // 安全なMarkdownのみを使用
+        return (
+          <ReactMarkdown
+            remarkPlugins={[]}
+            rehypePlugins={[]}
+            components={{
+              // 基本的なコンポーネントのみを許可
+              p: ({ children }) => <p className="mb-3 text-gray-300">{children}</p>,
+              h1: ({ children }) => <h1 className="text-2xl font-bold text-gray-100 my-4 border-b border-gray-700 pb-2">{children}</h1>,
+              h2: ({ children }) => <h2 className="text-xl font-bold text-gray-100 my-3 border-b border-gray-700 pb-1">{children}</h2>,
+              h3: ({ children }) => <h3 className="text-lg font-bold text-gray-100 my-2">{children}</h3>,
+              h4: ({ children }) => <h4 className="text-base font-bold text-gray-100 my-2">{children}</h4>,
+              h5: ({ children }) => <h5 className="text-sm font-bold text-gray-100 my-1">{children}</h5>,
+              h6: ({ children }) => <h6 className="text-xs font-bold text-gray-100 my-1">{children}</h6>,
+              strong: ({ children }) => <strong className="font-bold text-gray-100">{children}</strong>,
+              em: ({ children }) => <em className="italic text-gray-200">{children}</em>,
+              code: ({ children }) => <code className="bg-gray-700 px-1 py-0.5 text-sm text-gray-100 rounded overflow-x-auto whitespace-pre-wrap break-words">{children}</code>,
+              pre: ({ children }) => <pre className="bg-gray-900 p-4 overflow-x-auto text-sm text-gray-100 rounded mb-3 whitespace-pre-wrap break-words">{children}</pre>,
+              blockquote: ({ children }) => <blockquote className="border-l-4 border-blue-500 pl-4 py-2 my-4 bg-gray-800">{children}</blockquote>,
+              ul: ({ children }) => <ul className="list-disc list-inside space-y-1 my-4 text-gray-300">{children}</ul>,
+              ol: ({ children }) => <ol className="list-decimal list-inside space-y-1 my-4 text-gray-300">{children}</ol>,
+              li: ({ children }) => <li className="text-gray-300">{children}</li>,
+              hr: () => <hr className="border-gray-700 my-4" />,
+              br: () => <br />,
+              // テーブル関連は無効化
+              table: () => <div className="bg-gray-800 p-4 rounded mb-3 text-gray-300">[Table content]</div>,
+              thead: () => null,
+              tbody: () => null,
+              tr: () => null,
+              th: () => null,
+              td: () => null,
+              // その他の危険な要素も無効化
+              a: () => <span className="text-blue-400">[Link]</span>,
+              img: () => <span className="text-gray-400">[Image]</span>,
+              // デフォルトの処理
+              div: ({ children }) => <div className="text-gray-300">{children}</div>,
+              span: ({ children }) => <span className="text-gray-300">{children}</span>
+            }}
+          >
+            {replacedContent}
+          </ReactMarkdown>
+        );
+      }
     } catch (error) {
       console.error('[MessagesView] Error rendering markdown content:', error);
       // エラーが発生した場合はプレーンテキストとして表示
@@ -361,7 +367,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                         <div className={avatarClass} style={avatarBgStyle}>{avatar}</div>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className={`flex items-center mb-2 ${isUser ? 'flex-row-reverse justify-end space-x-reverse space-x-2' : 'space-x-2'}`}> 
+                        <div className={`flex items-center mb-2 ${isUser ? 'flex-row-reverse justify-end space-x-reverse space-x-2' : 'space-x-2'}`}>
                           <span className={`text-sm ${nameClass} ${isUser ? 'text-right' : ''}`} style={nameStyle}>{name}</span>
                           <span className={`text-xs text-gray-500 ${isUser ? 'text-right' : ''}`}>{formatTimestamp(message.timestamp)}</span>
                         </div>

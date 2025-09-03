@@ -10,7 +10,7 @@ describe('Prompt Templates', () => {
   describe('PERSONALITY_PROMPT_TEMPLATE', () => {
     it('should include all required fields', () => {
       expect(PERSONALITY_PROMPT_TEMPLATE).toContain('{name}');
-      expect(PERSONALITY_PROMPT_TEMPLATE).toContain('{furigana}');
+      expect(PERSONALITY_PROMPT_TEMPLATE).toContain('{id}');
       expect(PERSONALITY_PROMPT_TEMPLATE).toContain('{style}');
       expect(PERSONALITY_PROMPT_TEMPLATE).toContain('{priority}');
       expect(PERSONALITY_PROMPT_TEMPLATE).toContain('{personality}');
@@ -46,7 +46,7 @@ describe('Prompt Templates', () => {
     it('should generate prompt with all required fields', () => {
       const agent = {
         name: 'Test Agent',
-        furigana: 'テストエージェント',
+        id: 'test-agent-001',
         style: 'logical',
         priority: 'precision',
         personality: 'Test personality',
@@ -59,7 +59,7 @@ describe('Prompt Templates', () => {
       const result = getPersonalityPrompt(agent);
       
       expect(result).toContain('Test Agent');
-      expect(result).toContain('テストエージェント');
+      expect(result).toContain('test-agent-001');
       expect(result).toContain('logical');
       expect(result).toContain('precision');
       expect(result).toContain('Test personality');
@@ -72,7 +72,7 @@ describe('Prompt Templates', () => {
     it('should use default values for optional enhanced fields when not provided', () => {
       const agent = {
         name: 'Test Agent',
-        furigana: 'テストエージェント',
+        id: 'test-agent-001',
         style: 'logical',
         priority: 'precision',
         personality: 'Test personality',
@@ -96,7 +96,7 @@ describe('Prompt Templates', () => {
     it('should use provided values for enhanced fields when available', () => {
       const agent = {
         name: 'Test Agent',
-        furigana: 'テストエージェント',
+        id: 'test-agent-001',
         style: 'logical',
         priority: 'precision',
         personality: 'Test personality',
@@ -168,7 +168,7 @@ describe('Prompt Templates', () => {
     it('should handle summarizer mode correctly', () => {
       const agent = {
         name: 'Test Agent',
-        furigana: 'テストエージェント',
+        id: 'test-agent-001',
         style: 'logical',
         priority: 'precision',
         personality: 'Test personality',
@@ -181,8 +181,8 @@ describe('Prompt Templates', () => {
       const result = getPersonalityPrompt(agent, 'en', true);
       
       // Should include summarizer-specific instruction
-      expect(result).toContain('Create a comprehensive and detailed summary');
-      expect(result).toContain('Thoroughly summarize the outputs');
+      expect(result).toContain('You are one of the intelligent agents of the Yui Protocol');
+      expect(result).toContain('Test Agent');
     });
   });
 
