@@ -9,11 +9,12 @@ export interface IAgentManager {
 export interface ISessionManager {
   getSession(sessionId: string): Promise<Session | undefined>;
   getAllSessions(): Promise<Session[]>;
-  createSession(title: string, agentIds: string[], language: string): Promise<Session>;
+  createSession(title: string, agentIds: string[], language: string, version?: '1.0' | '2.0'): Promise<Session>;
   saveSession(session: Session): Promise<void>;
   deleteSession(sessionId: string): Promise<boolean>;
   resetSession(sessionId: string): Promise<Session>;
   startNewSequence(sessionId: string, userPrompt?: string): Promise<Session>;
+  getSessionStorage(): any;
   getPreviousSequenceInfo(session: Session): {
     previousUserInput: string;
     previousAgentConclusions: { [agentId: string]: string };
@@ -30,7 +31,7 @@ export interface IRealtimeRouter {
   ): Promise<{ stage: string; agentResponses: AgentResponse[]; duration: number }>;
   getSession(sessionId: string): Promise<Session | undefined>;
   getAllSessions(): Promise<Session[]>;
-  createSession(title: string, agentIds: string[], language: Language): Promise<Session>;
+  createSession(title: string, agentIds: string[], language: Language, version?: '1.0' | '2.0'): Promise<Session>;
   deleteSession(sessionId: string): Promise<boolean>;
   resetSession(sessionId: string): Promise<Session>;
   startNewSequence(sessionId: string): Promise<Session>;

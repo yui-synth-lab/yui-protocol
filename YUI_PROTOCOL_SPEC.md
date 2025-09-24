@@ -24,6 +24,33 @@ The YUI Protocol is a multi-agent collaboration framework that runs a structured
 
 Core principles: diversity, structure, explicit conflict handling, transparency, scalability, flexibility, efficiency, and context management.
 
+## v2: Dynamic Dialogue (v2.0) — 概要
+
+v2（v2.0）は「動的対話」方式へ進化した実装です。従来の固定ステージ実行に加え、ファシリテータ風の仲介ロジック、階層的メモリ管理、要約の遅延実行、票（vote）に基づく最終化エージェント選定などをサポートします。
+
+主な変更点（ハイレベル）:
+
+- ステージ進行が固定シーケンスから動的合意（consensus）ベースへ移行。
+- ファシリテータ的ロジックが導入され、必要に応じて介入・要約・観点シフトを実行。
+- メモリは階層化され、トークン効率のために圧縮・要約が適用される。
+- 投票解析（vote analysis）を用いて最終化エージェントを選出し、最終出力を生成。
+
+実装上の参照箇所（代表）:
+
+- 設定: `config/v2-settings.json` 及び `config/README.md`（V2に関する説明あり）
+- v2 設定型: `src/types/v2-config.ts`
+- ルータ/ファシリテータ関連: `src/kernel/router.ts`（v2フック／コメントあり）
+- メモリ管理: `src/kernel/memory-manager.ts`（v2メモリ設定読み込み）
+- プロンプト: `src/templates/prompts.ts`（FACILITATOR STAGE の注記など）
+- UI: `src/ui/App.tsx` に v2 選択肢が存在
+
+有効化・確認方法:
+
+- 開発環境では `config/v2-settings.json` を参照し、UIのバージョン選択で `v2.0` を選ぶことで v2 の挙動を確認できます。
+- 実装ファイル（上記）のコメントや `FACILITATOR STAGE` に関する文字列を grep すると v2 関連箇所が見つかります。
+
+必要であれば、この節を拡張して v2 の設計図（プロンプト例、状態遷移図、API差分）を追加します。
+
 ## Architecture
 
 High-level data flow:
@@ -261,15 +288,15 @@ src/
 │  └─ agent-yui.ts
 ├─ kernel/
 │  ├─ ai-executor.ts
-│  ├─ interaction-logger.ts
-│  ├─ output-storage.ts
-│  ├─ router.ts
-│  ├─ session-storage.ts
-│  ├─ stage-summarizer.ts
-│  ├─ interfaces.ts
-│  └─ services/
-│     ├─ agent-manager.ts
-│     └─ session-manager.ts
++  ├─ interaction-logger.ts
+  ├─ output-storage.ts
+  ├─ router.ts
+  ├─ session-storage.ts
+  ├─ stage-summarizer.ts
+  ├─ interfaces.ts
+  └─ services/
+     ├─ agent-manager.ts
+     └─ session-manager.ts
 ├─ server/
 │  └─ index.ts
 ├─ templates/

@@ -1,6 +1,7 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
+import '@testing-library/jest-dom';
 import MessagesView from '../src/ui/MessagesView';
 import { Session, Agent, Message, DialogueStage } from '../src/types/index';
 
@@ -43,7 +44,8 @@ describe('MessagesView', () => {
     updatedAt: new Date('2024-01-01T10:00:00Z'),
     status: 'active',
     stageHistory: [],
-    language: 'en'
+    language: 'en',
+    version: '1.0'
   };
 
   const mockMessages: Message[] = [
@@ -77,6 +79,7 @@ describe('MessagesView', () => {
       <MessagesView
         session={mockSession}
         messages={[]}
+        availableAgents={mockAgents}
         currentStage={null}
         shouldAutoScroll={true}
       />
@@ -90,6 +93,7 @@ describe('MessagesView', () => {
       <MessagesView
         session={mockSession}
         messages={mockMessages}
+        availableAgents={mockAgents}
         currentStage={null}
         shouldAutoScroll={true}
       />
@@ -105,6 +109,7 @@ describe('MessagesView', () => {
       <MessagesView
         session={mockSession}
         messages={mockMessages}
+        availableAgents={mockAgents}
         currentStage={null}
         shouldAutoScroll={true}
       />
@@ -119,6 +124,7 @@ describe('MessagesView', () => {
       <MessagesView
         session={mockSession}
         messages={mockMessages}
+        availableAgents={mockAgents}
         currentStage={null}
         shouldAutoScroll={true}
       />
@@ -133,6 +139,7 @@ describe('MessagesView', () => {
       <MessagesView
         session={mockSession}
         messages={mockMessages}
+        availableAgents={mockAgents}
         currentStage={null}
         shouldAutoScroll={true}
       />
@@ -148,6 +155,7 @@ describe('MessagesView', () => {
       <MessagesView
         session={mockSession}
         messages={mockMessages}
+        availableAgents={mockAgents}
         currentStage={null}
         shouldAutoScroll={true}
       />
@@ -165,6 +173,7 @@ describe('MessagesView', () => {
       <MessagesView
         session={mockSession}
         messages={mockMessages}
+        availableAgents={mockAgents}
         currentStage={null}
         onScroll={mockOnScroll}
         shouldAutoScroll={true}
@@ -180,6 +189,7 @@ describe('MessagesView', () => {
       <MessagesView
         session={mockSession}
         messages={mockMessages}
+        availableAgents={mockAgents}
         currentStage={null}
         shouldAutoScroll={true}
       />
@@ -214,6 +224,7 @@ describe('MessagesView', () => {
       <MessagesView
         session={mockSession}
         messages={messagesWithStages}
+        availableAgents={mockAgents}
         currentStage={null}
         shouldAutoScroll={true}
       />
@@ -247,6 +258,7 @@ describe('MessagesView', () => {
       <MessagesView
         session={mockSession}
         messages={messagesWithMetadata}
+        availableAgents={mockAgents}
         currentStage={null}
         shouldAutoScroll={true}
       />
@@ -272,6 +284,7 @@ describe('MessagesView', () => {
       <MessagesView
         session={mockSession}
         messages={messagesWithSequence}
+        availableAgents={mockAgents}
         currentStage={null}
         shouldAutoScroll={true}
       />
@@ -285,6 +298,7 @@ describe('MessagesView', () => {
       <MessagesView
         session={mockSession}
         messages={mockMessages}
+        availableAgents={mockAgents}
         currentStage="individual-thought"
         shouldAutoScroll={true}
       />
@@ -298,6 +312,7 @@ describe('MessagesView', () => {
       <MessagesView
         session={mockSession}
         messages={mockMessages}
+        availableAgents={mockAgents}
         currentStage={null}
         shouldAutoScroll={false}
       />
@@ -316,6 +331,7 @@ describe('MessagesView', () => {
       <MessagesView
         session={sessionWithoutAgents}
         messages={mockMessages}
+        availableAgents={mockAgents}
         currentStage={null}
         shouldAutoScroll={true}
       />
@@ -340,6 +356,7 @@ describe('MessagesView', () => {
       <MessagesView
         session={mockSession}
         messages={messagesWithUnknownAgent}
+        availableAgents={mockAgents}
         currentStage={null}
         shouldAutoScroll={true}
       />
@@ -370,6 +387,7 @@ describe('MessagesView', () => {
       <MessagesView
         session={mockSession}
         messages={messagesWithDifferentRoles}
+        availableAgents={mockAgents}
         currentStage={null}
         shouldAutoScroll={true}
       />
@@ -389,13 +407,15 @@ describe('MessagesView', () => {
       updatedAt: new Date(),
       status: 'active',
       stageHistory: [],
-      language: 'en'
+      language: 'en',
+      version: '1.0'
     };
 
     render(
       <MessagesView
         session={emptySession}
         messages={[]}
+        availableAgents={mockAgents}
         currentStage={null}
         shouldAutoScroll={true}
       />
@@ -409,6 +429,7 @@ describe('MessagesView', () => {
       <MessagesView
         session={mockSession}
         messages={mockMessages}
+        availableAgents={mockAgents}
         currentStage={null}
         shouldAutoScroll={true}
       />
@@ -422,6 +443,7 @@ describe('MessagesView', () => {
       <MessagesView
         session={mockSession}
         messages={mockMessages}
+        availableAgents={mockAgents}
         currentStage={null}
         shouldAutoScroll={true}
       />

@@ -86,8 +86,16 @@ describe('BaseAgent', () => {
   let agent: TestAgent;
   let testAgent: Agent;
   let testMessage: Message;
+  let mockInteractionLogger: any;
 
   beforeEach(() => {
+    // Mock InteractionLogger
+    mockInteractionLogger = {
+      logInteraction: vi.fn(),
+      saveInteractionLog: vi.fn().mockResolvedValue(undefined),
+      getSessionLogs: vi.fn().mockResolvedValue([])
+    };
+
     testAgent = {
       id: 'test-agent-1',
       name: 'Test Agent',
@@ -100,7 +108,7 @@ describe('BaseAgent', () => {
       tone: 'analytical, precise',
       communicationStyle: 'structured, evidence-based'
     };
-    agent = new TestAgent(testAgent);
+    agent = new TestAgent(testAgent, mockInteractionLogger);
     testMessage = {
       id: 'test-message-1',
       agentId: 'test-agent-1',
@@ -170,24 +178,38 @@ describe('BaseAgent', () => {
           }
         }),
       } as any;
-      
+
+      // Setup mock to return error log
+      const errorLog = {
+        sessionId: 'test-session-error',
+        agentId: 'test-agent-1',
+        timestamp: new Date(),
+        stage: 'individual-thought',
+        operation: 'test',
+        status: 'error',
+        error: 'AI execution failed: Test error',
+        duration: 100
+      };
+
+      mockInteractionLogger.getSessionLogs.mockResolvedValue([errorLog]);
+
       agent['aiExecutor'] = mockExecutor;
       agent.setSessionId('test-session-error');
-      
+
       const result = await agent['executeAIWithErrorHandling']('Test prompt', 'Test personality', 'test-session-error', 'individual-thought', 'test');
       expect(result).toBe('Error fallback response');
-      
+
       // Check that error was logged
       const logs = await agent['interactionLogger'].getSessionLogs('test-session-error');
-      const errorLog = logs.find(log => log.error);
-      expect(errorLog).toBeDefined();
-      expect(errorLog?.status).toBe('error');
-      expect(errorLog?.error).toContain('AI execution failed: Test error');
+      const foundErrorLog = logs.find(log => log.error);
+      expect(foundErrorLog).toBeDefined();
+      expect(foundErrorLog?.status).toBe('error');
+      expect(foundErrorLog?.error).toContain('AI execution failed: Test error');
     });
 
     it('should ensure AI executor is properly cached after initialization', async () => {
-      // Create a new agent
-      const agent2 = new TestAgent(testAgent);
+      // Create a new agent with mock InteractionLogger
+      const agent2 = new TestAgent(testAgent, mockInteractionLogger);
       
       // Initially aiExecutor is undefined
       expect(agent2['aiExecutor']).toBeUndefined();
@@ -228,26 +250,40 @@ describe('BaseAgent', () => {
           }
         }),
       } as any;
-      
+
+      // Setup mock to return error log
+      const errorLog = {
+        sessionId: 'test-session-error-handling',
+        agentId: 'test-agent-1',
+        timestamp: new Date(),
+        stage: 'individual-thought',
+        operation: 'test operation',
+        status: 'error',
+        error: 'AI execution failed: Test error with details',
+        duration: 100
+      };
+
+      mockInteractionLogger.getSessionLogs.mockResolvedValue([errorLog]);
+
       agent['aiExecutor'] = mockExecutor;
       agent.setSessionId('test-session-error-handling');
-      
+
       const result = await agent['executeAIWithErrorHandling'](
         'Test prompt',
         'test-session-error-handling',
         'individual-thought',
         'test operation'
       );
-      
+
       expect(result).toBe('Error fallback response');
-      
+
       // Check that error was logged with proper status
       const logs = await agent['interactionLogger'].getSessionLogs('test-session-error-handling');
-      const errorLog = logs.find(log => log.error);
-      expect(errorLog).toBeDefined();
-      expect(errorLog?.status).toBe('error');
-      expect(errorLog?.error).toContain('AI execution failed: Test error with details');
-      expect(errorLog?.stage).toBe('individual-thought');
+      const foundErrorLog = logs.find(log => log.error);
+      expect(foundErrorLog).toBeDefined();
+      expect(foundErrorLog?.status).toBe('error');
+      expect(foundErrorLog?.error).toContain('AI execution failed: Test error with details');
+      expect(foundErrorLog?.stage).toBe('individual-thought');
     });
   });
 
@@ -643,7 +679,15 @@ describe('BaseAgent (overrides)', () => {
   let agent: CustomAgent;
   let testAgent: Agent;
   let testMessage: Message;
+  let mockInteractionLogger: any;
   beforeEach(() => {
+    // Mock InteractionLogger
+    mockInteractionLogger = {
+      logInteraction: vi.fn(),
+      saveInteractionLog: vi.fn().mockResolvedValue(undefined),
+      getSessionLogs: vi.fn().mockResolvedValue([])
+    };
+
     testAgent = {
       id: 'custom-1',
       name: 'Custom Name',
@@ -656,7 +700,7 @@ describe('BaseAgent (overrides)', () => {
       tone: 'meta',
       communicationStyle: 'meta'
     };
-    agent = new CustomAgent(testAgent);
+    agent = new CustomAgent(testAgent, mockInteractionLogger);
     testMessage = {
       id: 'msg-1',
       agentId: 'custom-1',

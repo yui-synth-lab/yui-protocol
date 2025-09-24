@@ -1,4 +1,5 @@
 import { Language } from '../templates/prompts.js';
+import type { FacilitatorLog } from './consensus.js';
 
 export type { Language };
 
@@ -43,7 +44,7 @@ export interface Message {
   agentId: string;
   content: string;
   timestamp: Date;
-  role: 'user' | 'agent' | 'system';
+  role: 'user' | 'agent' | 'system' | 'facilitator' | 'consensus';
   stage?: DialogueStage;
   sequenceNumber?: number;
   metadata?: {
@@ -56,6 +57,26 @@ export interface Message {
     voteSection?: string;
     outputFileName?: string;
     sequenceOutputFiles?: { [sequenceNumber: number]: string };
+    facilitatorAction?: string;
+    facilitatorReasoning?: string;
+    isFacilitatorAction?: boolean;
+    isFinalOutput?: boolean;
+    consensusLevel?: number;
+    roundNumber?: number;
+    participationBalance?: Record<string, number>;
+    priority?: number;
+    wordCountTarget?: string;
+    endingGuidance?: string;
+    topic_shift?: boolean;
+    convergenceReason?: 'natural_consensus' | 'max_rounds' | 'facilitator_decision' | 'high_satisfaction';
+    votingType?: string;
+    votingResults?: any[];
+    selectedFinalizer?: string;
+    selectedFinalizerName?: string;
+    round?: number;
+    agentsReady?: number;
+    totalAgents?: number;
+    additionalInfo?: string;
   };
 }
 
@@ -74,8 +95,15 @@ export interface Session {
   sequenceOutputFiles?: { [sequenceNumber: number]: string };
   sequenceNumber?: number;
   language: Language;
+  version: '1.0' | '2.0';
   messageCount?: number;
   agentCount?: number;
+  consensusHistory?: SessionConsensusSnapshot[];
+  metadata?: {
+    totalRounds?: number;
+    finalConsensus?: number;
+    [key: string]: any;
+  };
 }
 
 export interface AgentResponse {
@@ -104,7 +132,7 @@ export interface CollaborationResult {
 }
 
 // Yui Protocol specific types
-export type DialogueStage = 
+export type DialogueStage =
   | 'individual-thought'
   | 'mutual-reflection'
   | 'mutual-reflection-summary'
@@ -113,7 +141,9 @@ export type DialogueStage =
   | 'synthesis-attempt'
   | 'synthesis-attempt-summary'
   | 'output-generation'
-  | 'finalize';
+  | 'finalize'
+  | 'facilitator'
+  | 'voting';
 
 export interface StageHistory {
   stage: DialogueStage;
@@ -332,4 +362,23 @@ export interface PotentialConflict {
   type: string;
   description: string;
   agents: string[];
+}
+
+export interface AgentConsensusData {
+  agentId: string;
+  agentName: string;
+  satisfaction: number; // 1-10
+  additionalPoints: boolean;
+  questions: string[];
+  readyToMove: boolean;
+  reasoning: string;
+  timestamp: Date;
+}
+
+export interface SessionConsensusSnapshot {
+  round: number;
+  timestamp: Date;
+  overallConsensus: number;
+  agentConsensus: AgentConsensusData[];
+  facilitatorActions?: string[];
 } 

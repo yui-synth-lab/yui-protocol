@@ -1,0 +1,22 @@
+{
+  "memory": {
+    "maxRecentMessages": 5,
+    "tokenThreshold": 8000,
+    "compressionRatio": 0.3
+  },
+  "consensus": {
+    "convergenceThreshold": 7.5,
+    "maxRounds": 20,
+    "minSatisfactionLevel": 6.5
+  },
+  "facilitator": {
+    "actionPriority": {
+      "deep_dive": 9,
+      "perspective_shift": 8,
+      "clarification": 7,
+      "summarize": 5,
+      "conclude": 6
+    },
+    "interventionCooldown": 2
+  }
+}

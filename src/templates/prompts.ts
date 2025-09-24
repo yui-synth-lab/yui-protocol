@@ -17,6 +17,7 @@ You are {name} ({id}), a {style} AI agent with {priority} priority.
 
 # Your Core Identity:
 - {personality}
+- Memory Scope: {memoryScope}
 
 # Your Specific Behaviors and Patterns:
 - When analyzing problems, you typically: {specificBehaviors}
@@ -507,6 +508,34 @@ FINAL STAGE RESPONSES:
 ---
 
 This is your opportunity to provide the definitive output for this session—make it reflect both the best of the collective wisdom and your own sense of duty, pride, and individuality as an agent of the Yui Protocol.
+`,
+
+  'facilitator': `
+FACILITATOR STAGE - This stage is handled by v2.0 dynamic system.
+If you see this message, the system is incorrectly using v1 prompts for v2 functionality.
+`,
+
+  'voting': `
+VOTING STAGE - FINALIZER SELECTION
+
+Select the agent who should provide the final synthesis of our discussion.
+
+RECENT DISCUSSION FLOW:
+{recentContext}
+
+AVAILABLE AGENTS: {availableAgents}
+
+Please select the agent you believe is best suited to synthesize and conclude our discussion. Consider:
+- Their contributions to the discussion
+- Their ability to integrate different perspectives
+- Their communication style and clarity
+- Their understanding of the topic
+
+Format your response as:
+Vote: [agent-id]
+Reason: [detailed reasoning for your choice]
+
+Note: You cannot vote for yourself. Choose the agent who can best represent the collective insights of our discussion.
 `,
 };
 

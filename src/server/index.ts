@@ -10,6 +10,7 @@ import { Session } from '../types/index.js';
 import { OutputStorage } from '../kernel/output-storage.js';
 import { InteractionLogger } from '../kernel/interaction-logger.js';
 import { createStageSummarizer } from '../kernel/stage-summarizer.js';
+import { V2ConfigLoader } from '../config/v2-config-loader.js';
 
 const app = express();
 const server = createServer(app);
@@ -30,6 +31,13 @@ const __dirname = path.dirname(__filename);
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../../dist')));
+
+// Initialize V2 configuration
+const v2ConfigLoader = V2ConfigLoader.getInstance();
+v2ConfigLoader.logCurrentConfig();
+if (!v2ConfigLoader.validateConfig()) {
+  console.error('[Server] V2設定の検証に失敗しました。デフォルト設定を使用します。');
+}
 
 // Initialize shared session storage
 const sharedSessionStorage = new SessionStorage();
@@ -279,11 +287,11 @@ app.get('/api/sessions', (async (req: Request, res: Response) => {
 
 app.post('/api/sessions', (async (req: Request, res: Response) => {
   try {
-    const { title, agentIds, language } = req.body;
+    const { title, agentIds, language, version } = req.body;
     if (!title || !agentIds || !Array.isArray(agentIds)) {
       return res.status(400).json({ error: 'Title and agentIds array are required' });
     }
-    const session = await realtimeRouter.createSession(title, agentIds, language || 'en');
+    const session = await realtimeRouter.createSession(title, agentIds, language || 'en', version || '1.0');
     res.status(201).json(session);
   } catch (error) {
     console.error('Error creating session:', error);
@@ -312,7 +320,7 @@ app.get('/api/sessions/:sessionId', (async (req: Request, res: Response) => {
 // Real-time collaboration endpoints
 app.post('/api/realtime/sessions', (async (req: Request, res: Response) => {
   try {
-    const { title, agentIds, language } = req.body;
+    const { title, agentIds, language, version } = req.body;
     if (!title || !agentIds || !Array.isArray(agentIds)) {
       return res.status(400).json({ error: 'Title and agentIds array are required' });
     }
@@ -325,7 +333,7 @@ app.post('/api/realtime/sessions', (async (req: Request, res: Response) => {
       res.status(200).json(existingSession);
     } else {
       // Create new session only if one doesn't exist
-      const session = await realtimeRouter.createSession(title, agentIds, language || 'en');
+      const session = await realtimeRouter.createSession(title, agentIds, language || 'en', version || '1.0');
       res.status(201).json(session);
     }
   } catch (error) {
@@ -639,6 +647,116 @@ app.delete('/api/outputs/:id', (async (req: Request, res: Response) => {
 }) as RequestHandler);
 */
 
+// v2.0 dynamic dialogue endpoints
+app.post('/api/v2/sessions/:sessionId/start', (async (req: Request, res: Response) => {
+  try {
+    const { sessionId } = req.params;
+    const { prompt, language = 'en' } = req.body;
+
+    if (!prompt) {
+      return res.status(400).json({ error: 'Prompt is required' });
+    }
+
+    console.log(`[API] Starting v2.0 dynamic session ${sessionId}`);
+
+    // Start the dynamic session with WebSocket progress callbacks
+    executeV2SessionWithWebSocket(sessionId, prompt, language)
+      .then(session => {
+        console.log(`[API] v2.0 session ${sessionId} completed`);
+        io.to(sessionId).emit('v2-complete', {
+          sessionId,
+          session: removeCircularReferences(session),
+          totalRounds: session.metadata?.totalRounds || 0,
+          finalConsensus: session.metadata?.finalConsensus || 0
+        });
+      })
+      .catch(error => {
+        console.error(`[API] Error in v2.0 session ${sessionId}:`, error);
+        io.to(sessionId).emit('v2-error', {
+          sessionId,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+      });
+
+    // Return immediately - client will receive updates via WebSocket
+    res.json({
+      success: true,
+      message: 'Dynamic dialogue session started',
+      version: '2.0'
+    });
+  } catch (error) {
+    console.error('[API] Error starting v2.0 session:', error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Unknown error',
+      version: '2.0'
+    });
+  }
+}) as RequestHandler);
+
+// Execute v2.0 session with WebSocket updates
+async function executeV2SessionWithWebSocket(sessionId: string, prompt: string, language: any) {
+  try {
+    // Notify start
+    io.to(sessionId).emit('v2-session-start', {
+      sessionId,
+      prompt,
+      timestamp: new Date().toISOString()
+    });
+
+    // Create WebSocket emitter for the dynamic router
+    const wsEmitter = (event: string, data: any) => {
+      io.to(sessionId).emit(event, data);
+    };
+
+    const session = await realtimeRouter.startDynamicSessionWithWebSocket(prompt, sessionId, language, wsEmitter);
+    return session;
+  } catch (error) {
+    console.error(`[V2SessionExecutor] Error:`, error);
+    throw error;
+  }
+}
+
+// v2.0 統計情報エンドポイント
+app.get('/api/v2/stats', (async (req: Request, res: Response) => {
+  try {
+    const stats = realtimeRouter.getDynamicDialogueStats();
+    res.json({
+      success: true,
+      stats,
+      version: '2.0'
+    });
+  } catch (error) {
+    console.error('[API] Error getting v2.0 stats:', error);
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+  }
+}) as RequestHandler);
+
+// バージョン情報エンドポイント
+app.get('/api/version', ((req: Request, res: Response) => {
+  res.json({
+    v1: {
+      available: true,
+      description: 'Fixed 5-stage dialogue system',
+      endpoints: [
+        '/api/sessions/:id/stage-1',
+        '/api/sessions/:id/stage-2',
+        '/api/sessions/:id/stage-3',
+        '/api/sessions/:id/stage-4',
+        '/api/sessions/:id/stage-5',
+        '/api/realtime/sessions/:id/stage'
+      ]
+    },
+    v2: {
+      available: true,
+      description: 'Dynamic dialogue with consensus-based progression',
+      endpoints: [
+        '/api/v2/sessions/:id/start',
+        '/api/v2/stats'
+      ]
+    }
+  });
+}) as RequestHandler);
+
 // Health check endpoint
 app.get('/api/health', ((req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -671,6 +789,10 @@ server.listen(port, () => {
   console.log(`  GET  /api/outputs - Get all outputs`);
   console.log(`  GET  /api/outputs/:id - Get specific output`);
   console.log(`  DELETE /api/outputs/:id - Delete specific output`);
+  console.log(`v2.0 Dynamic Dialogue:`);
+  console.log(`  POST /api/v2/sessions/:id/start - Start dynamic dialogue session`);
+  console.log(`  GET  /api/v2/stats - Get dynamic dialogue statistics`);
+  console.log(`  GET  /api/version - Get API version information`);
   console.log(`WebSocket server is running on the same port`);
 });
 

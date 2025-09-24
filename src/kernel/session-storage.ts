@@ -229,4 +229,20 @@ export class SessionStorage {
       return false;
     }
   }
+
+  public async saveFile(relativePath: string, content: string): Promise<void> {
+    try {
+      const fullPath = path.join('.', relativePath);
+      const dirPath = path.dirname(fullPath);
+
+      // Ensure directory exists
+      await fs.promises.mkdir(dirPath, { recursive: true });
+
+      // Write file
+      await fs.promises.writeFile(fullPath, content, 'utf8');
+    } catch (error) {
+      console.error(`Error saving file ${relativePath}:`, error);
+      throw new Error(`Failed to save file: ${error}`);
+    }
+  }
 } 

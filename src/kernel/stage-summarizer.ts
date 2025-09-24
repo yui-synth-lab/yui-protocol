@@ -331,7 +331,9 @@ export class StageSummarizer {
       'synthesis-attempt': 4,
       'synthesis-attempt-summary': 4.5,
       'output-generation': 5,
-      'finalize': 5.1
+      'finalize': 5.1,
+      'facilitator': 0,
+      'voting': 4.9
     };
     return stageOrder[stage];
   }
@@ -346,7 +348,9 @@ export class StageSummarizer {
       'synthesis-attempt': 'Stage 4: Synthesis Attempt',
       'synthesis-attempt-summary': 'Stage 4.5: Synthesis Attempt Summary',
       'output-generation': 'Stage 5: Output Generation',
-      'finalize': 'Stage 5.1: Finalize'
+      'finalize': 'Stage 5.1: Finalize',
+      'facilitator': 'Facilitator: Silent Actions',
+      'voting': 'Stage 4.9: Voting for Finalizer'
     };
     return stageNames[stage];
   }
