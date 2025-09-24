@@ -24,32 +24,49 @@ The YUI Protocol is a multi-agent collaboration framework that runs a structured
 
 Core principles: diversity, structure, explicit conflict handling, transparency, scalability, flexibility, efficiency, and context management.
 
-## v2: Dynamic Dialogue (v2.0) — 概要
+## v2: Dynamic Dialogue (v2.0) — Overview
 
-v2（v2.0）は「動的対話」方式へ進化した実装です。従来の固定ステージ実行に加え、ファシリテータ風の仲介ロジック、階層的メモリ管理、要約の遅延実行、票（vote）に基づく最終化エージェント選定などをサポートします。
+v2 (v2.0) evolves the YUI system into a dynamic-dialogue model. In addition to the original fixed-stage flow, v2 adds a facilitator-style mediation layer, hierarchical memory management, asynchronous/delayed summarization, and finalizer selection driven by vote analysis.
 
-主な変更点（ハイレベル）:
+Key changes (high level):
 
-- ステージ進行が固定シーケンスから動的合意（consensus）ベースへ移行。
-- ファシリテータ的ロジックが導入され、必要に応じて介入・要約・観点シフトを実行。
-- メモリは階層化され、トークン効率のために圧縮・要約が適用される。
-- 投票解析（vote analysis）を用いて最終化エージェントを選出し、最終出力を生成。
+- Stage progression moves from a fixed sequence to a consensus-driven dynamic flow.
+- A facilitator component is introduced to intervene, summarize, and shift perspectives where appropriate.
+- Memory becomes hierarchical and applies compression/summarization to improve token efficiency.
+- Vote analysis is used to select one or more finalizer agents and drive final output generation.
 
-実装上の参照箇所（代表）:
+Representative implementation locations:
 
-- 設定: `config/v2-settings.json` 及び `config/README.md`（V2に関する説明あり）
-- v2 設定型: `src/types/v2-config.ts`
-- ルータ/ファシリテータ関連: `src/kernel/router.ts`（v2フック／コメントあり）
-- メモリ管理: `src/kernel/memory-manager.ts`（v2メモリ設定読み込み）
-- プロンプト: `src/templates/prompts.ts`（FACILITATOR STAGE の注記など）
-- UI: `src/ui/App.tsx` に v2 選択肢が存在
+- Config: `config/v2-settings.json` and `config/README.md` (v2 notes and defaults)
+- v2 settings type: `src/types/v2-config.ts`
+- Router / facilitator hooks: `src/kernel/router.ts` (v2 hooks and comments)
+- Memory manager: `src/kernel/memory-manager.ts` (v2 memory settings loader)
+- Prompts: `src/templates/prompts.ts` (FACILITATOR STAGE notes) and `src/templates/v2-prompts.ts`
+- UI: `src/ui/App.tsx` (v2 option available in version selector)
 
-有効化・確認方法:
+Enablement & verification:
 
-- 開発環境では `config/v2-settings.json` を参照し、UIのバージョン選択で `v2.0` を選ぶことで v2 の挙動を確認できます。
-- 実装ファイル（上記）のコメントや `FACILITATOR STAGE` に関する文字列を grep すると v2 関連箇所が見つかります。
+- Check or edit `config/v2-settings.json` to tune v2 behavior. The UI version selector (`v2.0`) toggles v2 behavior in the application.
+- Search (grep) the codebase for `FACILITATOR STAGE`, `dynamic-router`, or `memory-manager` to find v2-specific code paths and comments.
 
-必要であれば、この節を拡張して v2 の設計図（プロンプト例、状態遷移図、API差分）を追加します。
+Quickstart (developer):
+
+Build and start the server (production-mode server serving `dist/`):
+
+```powershell
+npm run build
+npm run server
+```
+
+Start the frontend development server only:
+
+```powershell
+npm run dev
+```
+
+For detailed enablement steps, examples, and configuration options, see the `v2: Dynamic Dialogue` section in the repository `README.md`.
+
+This section can be expanded with design artifacts (prompt examples, state diagrams, API diffs) on request.
 
 ## Architecture
 
