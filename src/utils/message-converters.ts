@@ -21,8 +21,16 @@ export function createFacilitatorMessage(
 
     content += `**Agent Satisfaction Levels:**\n`;
     Object.entries(decision.dataAnalyzed.consensusLevels).forEach(([agentId, level]) => {
-      const bar = '█'.repeat(Math.floor(level)) + '░'.repeat(10 - Math.floor(level));
-      content += `• ${agentId}: ${bar} ${level.toFixed(1)}/10\n`;
+      const filled = Math.floor(level);
+      const partial = level - filled;
+      let bar = '🟩'.repeat(filled);
+      if (partial >= 0.5 && filled < 10) {
+        bar += '🟨';
+        bar += '⬜'.repeat(9 - filled);
+      } else {
+        bar += '⬜'.repeat(10 - filled);
+      }
+      content += `• ${agentId}: ${bar} **${level.toFixed(1)}/10**\n`;
     });
 
     content += `\n**Recommended Action:** ${decision.reasoning}\n`;
@@ -44,8 +52,16 @@ export function createFacilitatorMessage(
 
     content += `**エージェント別満足度:**\n`;
     Object.entries(decision.dataAnalyzed.consensusLevels).forEach(([agentId, level]) => {
-      const bar = '█'.repeat(Math.floor(level)) + '░'.repeat(10 - Math.floor(level));
-      content += `• ${agentId}: ${bar} ${level.toFixed(1)}/10\n`;
+      const filled = Math.floor(level);
+      const partial = level - filled;
+      let bar = '🟩'.repeat(filled);
+      if (partial >= 0.5 && filled < 10) {
+        bar += '🟨';
+        bar += '⬜'.repeat(9 - filled);
+      } else {
+        bar += '⬜'.repeat(10 - filled);
+      }
+      content += `• ${agentId}: ${bar} **${level.toFixed(1)}/10**\n`;
     });
 
     content += `\n**推奨アクション:** ${decision.reasoning}\n`;
@@ -84,18 +100,36 @@ export function createConsensusMessage(
   if (language === 'en') {
     content = `## 📊 Consensus Status (Round ${round})\n\n`;
 
-    // Overall consensus progress bar
-    const overallBar = '█'.repeat(Math.floor(overallConsensus)) + '░'.repeat(10 - Math.floor(overallConsensus));
-    content += `**Overall Consensus:** \`${overallBar}\` ${overallConsensus.toFixed(1)}/10\n\n`;
+    // Overall consensus progress bar (improved design)
+    const overallFilled = Math.floor(overallConsensus);
+    const overallPartial = overallConsensus - overallFilled;
+    let overallBar = '🟦'.repeat(overallFilled);
+    if (overallPartial >= 0.5 && overallFilled < 10) {
+      overallBar += '🟨';
+      overallBar += '⬜'.repeat(9 - overallFilled);
+    } else {
+      overallBar += '⬜'.repeat(10 - overallFilled);
+    }
+    content += `**Overall Consensus:** ${overallBar} **${overallConsensus.toFixed(1)}/10**\n\n`;
 
     // Agent-specific details
     content += `**Agent Satisfaction Levels:**\n\n`;
     agentConsensus.forEach(agent => {
       const agentInfo = agents.find(a => a.id === agent.agentId);
       const styleLabel = agentInfo ? `(${agentInfo.style})` : '';
-      const bar = '█'.repeat(Math.floor(agent.satisfaction)) + '░'.repeat(10 - Math.floor(agent.satisfaction));
 
-      content += `• **${agent.agentName}** ${styleLabel}: \`${bar}\` ${agent.satisfaction.toFixed(1)}/10\n\n`;
+      // Agent progress bar (improved design)
+      const agentFilled = Math.floor(agent.satisfaction);
+      const agentPartial = agent.satisfaction - agentFilled;
+      let agentBar = '🟩'.repeat(agentFilled);
+      if (agentPartial >= 0.5 && agentFilled < 10) {
+        agentBar += '🟨';
+        agentBar += '⬜'.repeat(9 - agentFilled);
+      } else {
+        agentBar += '⬜'.repeat(10 - agentFilled);
+      }
+
+      content += `• **${agent.agentName}** ${styleLabel}: ${agentBar} **${agent.satisfaction.toFixed(1)}/10**\n\n`;
       if (agent.reasoning) {
         content += `  └ ${agent.reasoning}\n\n`;
       }
@@ -122,18 +156,36 @@ export function createConsensusMessage(
   } else {
     content = `## 📊 コンセンサス状況 (Round ${round})\n\n`;
 
-    // 全体合意度のプログレスバー
-    const overallBar = '█'.repeat(Math.floor(overallConsensus)) + '░'.repeat(10 - Math.floor(overallConsensus));
-    content += `**全体合意度:** \`${overallBar}\` ${overallConsensus.toFixed(1)}/10\n\n`;
+    // 全体合意度のプログレスバー (改良版)
+    const overallFilled = Math.floor(overallConsensus);
+    const overallPartial = overallConsensus - overallFilled;
+    let overallBar = '🟦'.repeat(overallFilled);
+    if (overallPartial >= 0.5 && overallFilled < 10) {
+      overallBar += '🟨';
+      overallBar += '⬜'.repeat(9 - overallFilled);
+    } else {
+      overallBar += '⬜'.repeat(10 - overallFilled);
+    }
+    content += `**全体合意度:** ${overallBar} **${overallConsensus.toFixed(1)}/10**\n\n`;
 
     // エージェント別詳細
     content += `**エージェント別満足度:**\n\n`;
     agentConsensus.forEach(agent => {
       const agentInfo = agents.find(a => a.id === agent.agentId);
       const styleLabel = agentInfo ? `(${agentInfo.style})` : '';
-      const bar = '█'.repeat(Math.floor(agent.satisfaction)) + '░'.repeat(10 - Math.floor(agent.satisfaction));
 
-      content += `• **${agent.agentName}** ${styleLabel}: \`${bar}\` ${agent.satisfaction.toFixed(1)}/10\n\n`;
+      // エージェント別プログレスバー (改良版)
+      const agentFilled = Math.floor(agent.satisfaction);
+      const agentPartial = agent.satisfaction - agentFilled;
+      let agentBar = '🟩'.repeat(agentFilled);
+      if (agentPartial >= 0.5 && agentFilled < 10) {
+        agentBar += '🟨';
+        agentBar += '⬜'.repeat(9 - agentFilled);
+      } else {
+        agentBar += '⬜'.repeat(10 - agentFilled);
+      }
+
+      content += `• **${agent.agentName}** ${styleLabel}: ${agentBar} **${agent.satisfaction.toFixed(1)}/10**\n\n`;
       if (agent.reasoning) {
         content += `  └ ${agent.reasoning}\n\n`;
       }

@@ -117,7 +117,7 @@ describe('SessionManager', () => {
     fireEvent.click(screen.getByText('New'));
     fireEvent.change(screen.getByPlaceholderText('Enter session title...'), { target: { value: 'New Session' } });
     fireEvent.click(screen.getByText('Create Session'));
-    expect(onCreateSession).toHaveBeenCalledWith('New Session', expect.any(Array), expect.any(String));
+    expect(onCreateSession).toHaveBeenCalledWith('New Session', expect.any(Array), expect.any(String), expect.any(String));
   });
 
   it('calls onSelectSession when a session is clicked', () => {

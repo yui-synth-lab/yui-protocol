@@ -358,10 +358,10 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                   } else if (message.role === 'consensus') {
                     avatar = <span className="text-sm">📊</span>;
                     name = 'コンセンサス分析';
-                    nameColor = 'text-teal-300';
-                    bubbleBorder = 'border-teal-500';
-                    avatarBg = 'bg-teal-600';
-                    nameClass = 'font-medium text-teal-300';
+                    nameColor = 'text-cyan-300';
+                    bubbleBorder = 'border-cyan-500';
+                    avatarBg = 'bg-cyan-600';
+                    nameClass = 'font-medium text-cyan-300';
                   } else if (message.role === 'agent') {
                     avatar = getAgentAvatar(message.agentId);
                     name = getAgentName(message.agentId);
