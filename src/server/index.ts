@@ -273,6 +273,7 @@ app.get('/api/sessions', (async (req: Request, res: Response) => {
       updatedAt: session.updatedAt,
       status: session.status,
       language: session.language,
+      version: session.version || '1.0', // Add version information with fallback
       agentIds: session.agents?.map(agent => agent.id) || [],
       messageCount: session.messages?.length || 0,
       agentCount: session.agents?.length || 0
@@ -303,7 +304,7 @@ app.get('/api/sessions/:sessionId', (async (req: Request, res: Response) => {
   try {
     const { sessionId } = req.params;
     const session = await realtimeRouter.getSession(sessionId);
-    
+
     if (!session) {
       return res.status(404).json({ error: 'Session not found' });
     }

@@ -4,6 +4,7 @@ export interface MemoryConfig {
   maxRecentMessages: number;     // 短期記憶の最大メッセージ数
   tokenThreshold: number;        // 圧縮を開始するトークン閾値
   compressionRatio: number;      // 圧縮率 (0.0-1.0)
+  personalityAware: boolean;     // 個性反映圧縮
 }
 
 export interface ConsensusConfig {
@@ -34,7 +35,8 @@ export const DEFAULT_V2_SETTINGS: V2Settings = {
   memory: {
     maxRecentMessages: 5,
     tokenThreshold: 8000,
-    compressionRatio: 0.3
+    compressionRatio: 0.3,
+    personalityAware: true
   },
   consensus: {
     convergenceThreshold: 7.5,

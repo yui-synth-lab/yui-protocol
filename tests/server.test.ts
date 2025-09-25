@@ -117,6 +117,7 @@ describe('Server API', () => {
           updatedAt: session.updatedAt,
           status: session.status,
           language: session.language,
+          version: session.version || '1.0', // Add version information with fallback
           agentIds: session.agents?.map(agent => agent.id) || [],
           messageCount: session.messages?.length || 0,
           agentCount: session.agents?.length || 0

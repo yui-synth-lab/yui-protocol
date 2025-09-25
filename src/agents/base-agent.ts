@@ -1157,6 +1157,68 @@ export abstract class BaseAgent {
     }
   }
 
+  // AI execution with custom finalizer model (high-cost LLM)
+  protected async executeAIWithFinalizerModel(
+    prompt: string,
+    personality: string,
+    customAgentId: string,
+    sessionId: string,
+    stage: DialogueStage,
+    operationName: string
+  ): Promise<string> {
+    const startTime = Date.now();
+    let executor: AIExecutor | undefined;
+    try {
+      // Create a temporary AI executor with the custom agent ID (containing '-finalizer')
+      // This will trigger the high-cost LLM configuration in ai-executor-impl.ts
+      const generationParams = this.getGenerationParameters();
+      executor = await createAIExecutor(customAgentId, {
+        temperature: generationParams.temperature,
+        topP: generationParams.topP,
+        repetitionPenalty: generationParams.repetitionPenalty,
+        presencePenalty: generationParams.presencePenalty,
+        frequencyPenalty: generationParams.frequencyPenalty,
+        topK: generationParams.topK
+      });
+
+      const result = await executor.execute(prompt, personality);
+
+      const duration = Date.now() - startTime;
+      await this.logInteraction(
+        sessionId,
+        stage,
+        prompt,
+        personality,
+        result.content,
+        duration,
+        result.success ? 'success' : 'error',
+        result.success ? undefined : `AI execution failed: ${result.error}${result.errorDetails ? ` | Details: ${JSON.stringify(result.errorDetails)}` : ''}`,
+        executor['provider'],
+        executor['model']
+      );
+
+      console.log(`[BaseAgent] Used high-cost LLM for finalizer ${customAgentId}, provider: ${executor['provider']}, model: ${executor['model']}`);
+
+      return result.content;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      await this.logInteraction(
+        sessionId,
+        stage,
+        prompt,
+        personality,
+        `Error occurred during ${operationName}`,
+        duration,
+        'error',
+        errorMessage,
+        executor ? executor['provider'] : undefined,
+        executor ? executor['model'] : undefined
+      );
+      throw error;
+    }
+  }
+
 
   // 共通のコンテキスト分析メソッド
   protected analyzeContext(context: Message[]): string {
@@ -1350,7 +1412,13 @@ export abstract class BaseAgent {
 
   // 新メソッド: コンテキスト準備
   protected async prepareContext(messages: Message[]): Promise<ConversationContext> {
-    return await this.memoryManager.compressIfNeeded(messages, this.agent.id);
+    // Use basic context preparation instead of compressIfNeeded
+    return {
+      recentFull: messages.slice(-5),
+      summarizedMid: '',
+      essenceCore: [],
+      totalTokenEstimate: messages.length * 50
+    };
   }
 
   // 新メソッド: 圧縮されたコンテキストの分析
@@ -1388,7 +1456,7 @@ export abstract class BaseAgent {
     return {
       recentMessages: this.memory.length,
       hasCompression: this.memory.length > memoryConfig.maxRecentMessages,
-      estimatedTokens: this.memoryManager['estimateTokens'](this.memory)
+      estimatedTokens: this.memory.length * 50 // Simple estimation
     };
   }
 } 

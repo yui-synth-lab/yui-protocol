@@ -373,16 +373,57 @@ BALANCE GUIDANCE: If one agent is dominating (3+ recent messages), encourage oth
       const result = await this.aiExecutor!.execute(prompt, '');
       let cleanContent = result.content.trim();
 
-      // JSONを抽出するためのクリーニング
-      const jsonMatch = cleanContent.match(/\[.*\]/s);
-      if (jsonMatch) {
-        cleanContent = jsonMatch[0];
+      console.log(`[Facilitator] Raw response: ${result.content}`);
+
+      // より堅牢なJSONクリーニング
+      let jsonContent = '';
+
+      // 複数のパターンを試してJSONを抽出
+      const jsonPatterns = [
+        /\[[\s\S]*?\]/,                    // Array pattern (main target)
+        /```json\s*([\s\S]*?)\s*```/,      // Code block with json
+        /```\s*([\s\S]*?)\s*```/,          // Generic code block
+        /Your JSON array:\s*(\[[\s\S]*?\])/, // Specific prompt response
+        /JSON response:\s*(\[[\s\S]*?\])/,   // Legacy prompt response
+        /\{[\s\S]*?\}/                     // Object pattern (fallback)
+      ];
+
+      for (const pattern of jsonPatterns) {
+        const match = cleanContent.match(pattern);
+        if (match) {
+          jsonContent = match[1] || match[0];
+          break;
+        }
       }
 
-      console.log(`[Facilitator] Raw response: ${result.content}`);
-      console.log(`[Facilitator] Cleaned JSON: ${cleanContent}`);
+      // JSONが見つからない場合、整形を試みる
+      if (!jsonContent) {
+        // 文字列にJSONらしき部分があるかチェック
+        if (cleanContent.includes('[') && cleanContent.includes(']')) {
+          const startIndex = cleanContent.indexOf('[');
+          const endIndex = cleanContent.lastIndexOf(']');
+          if (startIndex !== -1 && endIndex !== -1 && endIndex > startIndex) {
+            jsonContent = cleanContent.substring(startIndex, endIndex + 1);
+          }
+        }
+      }
 
-      const suggestions = JSON.parse(cleanContent);
+      // 最終的にJSONが取得できない場合はフォールバック
+      if (!jsonContent || jsonContent.length < 3) {
+        console.warn('[Facilitator] No valid JSON found in response, using fallback');
+        throw new Error(`No valid JSON found in AI response: "${cleanContent.substring(0, 100)}..."`);
+      }
+
+      console.log(`[Facilitator] Extracted JSON: ${jsonContent}`);
+
+      // JSON解析を安全に実行
+      let suggestions;
+      try {
+        suggestions = JSON.parse(jsonContent);
+      } catch (parseError) {
+        console.warn('[Facilitator] JSON parse failed:', parseError);
+        throw new Error(`JSON parse error: ${parseError instanceof Error ? parseError.message : 'Unknown parse error'}`);
+      }
 
       if (Array.isArray(suggestions) && suggestions.length > 0) {
         const actions = suggestions.map((s: any) => ({
@@ -420,92 +461,148 @@ BALANCE GUIDANCE: If one agent is dominating (3+ recent messages), encourage oth
   }
 
   private generateFallbackSuggestions(consensus: ConsensusIndicator[]): FacilitatorAction[] {
+    const facilitatorConfig = getV2FacilitatorConfig();
+    const actionPriorities = facilitatorConfig.actionPriority;
     const actions: FacilitatorAction[] = [];
 
-    // 低い満足度のエージェントを特定
-    const unsatisfied = consensus.filter(c => c.satisfactionLevel < 6);
-    if (unsatisfied.length > 0) {
-      actions.push({
-        type: 'clarification',
-        target: unsatisfied[0].agentId,
-        reason: `Low satisfaction level (${unsatisfied[0].satisfactionLevel}/10) indicates need for clarification about the original topic`,
-        priority: 8
-      });
+    // 設定優先度に基づいてアクションを生成（最高優先度から順番に）
+    const actionTypes = Object.entries(actionPriorities)
+      .sort(([,a], [,b]) => b - a) // 優先度順にソート（高い順）
+      .map(([type]) => type as keyof typeof actionPriorities);
+
+    console.log(`[Facilitator] Action priorities: ${JSON.stringify(actionPriorities)}`);
+
+    for (const actionType of actionTypes) {
+      const priority = actionPriorities[actionType];
+
+      switch (actionType) {
+        case 'perspective_shift': {
+          // 質問を持っているエージェントや発言の少ないエージェント
+          const candidates = consensus.filter(c =>
+            c.questionsForOthers.length > 0 ||
+            (this.agentParticipationCount[c.agentId] || 0) < 2
+          ).sort((a, b) => {
+            const countA = this.agentParticipationCount[a.agentId] || 0;
+            const countB = this.agentParticipationCount[b.agentId] || 0;
+            return countA - countB;
+          });
+
+          if (candidates.length > 0) {
+            actions.push({
+              type: 'perspective_shift',
+              target: candidates[0].agentId,
+              reason: `Encouraging fresh perspective from ${candidates[0].agentId} (${this.agentParticipationCount[candidates[0].agentId] || 0} contributions)`,
+              priority
+            });
+          }
+          break;
+        }
+
+        case 'clarification': {
+          // 低い満足度のエージェント
+          const unsatisfied = consensus.filter(c => c.satisfactionLevel < 6.5)
+            .sort((a, b) => a.satisfactionLevel - b.satisfactionLevel);
+
+          if (unsatisfied.length > 0) {
+            actions.push({
+              type: 'clarification',
+              target: unsatisfied[0].agentId,
+              reason: `Low satisfaction level (${unsatisfied[0].satisfactionLevel}/10) suggests need for clarification`,
+              priority
+            });
+          }
+          break;
+        }
+
+        case 'summarize': {
+          // 満足度が高い場合の要約
+          const avgSatisfaction = consensus.reduce((sum, c) => sum + c.satisfactionLevel, 0) / consensus.length;
+          if (avgSatisfaction >= 6.5) {
+            const logicalAgents = ['eiro-001', 'hekito-001'];
+            const availableLogical = consensus.filter(c => logicalAgents.includes(c.agentId));
+            const summaryTarget = availableLogical.length > 0 ? availableLogical[0].agentId : consensus[0]?.agentId;
+
+            if (summaryTarget) {
+              actions.push({
+                type: 'summarize',
+                target: summaryTarget,
+                reason: `Average satisfaction ${avgSatisfaction.toFixed(1)}/10 suggests readiness for synthesis`,
+                priority
+              });
+            }
+          }
+          break;
+        }
+
+        case 'conclude': {
+          // 非常に高い満足度または長いラウンド
+          const avgSatisfaction = consensus.reduce((sum, c) => sum + c.satisfactionLevel, 0) / consensus.length;
+          const readyCount = consensus.filter(c => c.readyToMove).length;
+
+          if (avgSatisfaction >= 8.0 && readyCount >= consensus.length / 2) {
+            actions.push({
+              type: 'conclude',
+              target: '', // No specific target
+              reason: `High satisfaction (${avgSatisfaction.toFixed(1)}/10) and ${readyCount}/${consensus.length} ready to move`,
+              priority
+            });
+          }
+          break;
+        }
+
+        case 'deep_dive': {
+          // 追加ポイントがあるエージェント
+          const hasPoints = consensus.filter(c => c.hasAdditionalPoints);
+          if (hasPoints.length > 0) {
+            actions.push({
+              type: 'deep_dive',
+              target: hasPoints[0].agentId,
+              reason: `${hasPoints[0].agentId} indicated having additional points to explore`,
+              priority
+            });
+          } else {
+            // 発言が少ないエージェント
+            const leastActive = consensus.filter(c => {
+              const count = this.agentParticipationCount[c.agentId] || 0;
+              const avgCount = Object.values(this.agentParticipationCount).reduce((a, b) => a + b, 0) / this.AGENT_NAMES.length;
+              return count <= Math.max(0, avgCount * 0.7);
+            }).sort((a, b) => {
+              const countA = this.agentParticipationCount[a.agentId] || 0;
+              const countB = this.agentParticipationCount[b.agentId] || 0;
+              return countA - countB;
+            });
+
+            if (leastActive.length > 0) {
+              actions.push({
+                type: 'deep_dive',
+                target: leastActive[0].agentId,
+                reason: `Encouraging deeper exploration from ${leastActive[0].agentId} (${this.agentParticipationCount[leastActive[0].agentId] || 0} contributions)`,
+                priority
+              });
+            }
+          }
+          break;
+        }
+      }
+
+      // 1つのアクションが生成されたら一旦終了（最高優先度のアクション）
+      if (actions.length > 0) {
+        break;
+      }
     }
 
-    // 追加ポイントがあるエージェントを優先
-    const hasPoints = consensus.filter(c => c.hasAdditionalPoints);
-    if (hasPoints.length > 0) {
-      actions.push({
-        type: 'deep_dive',
-        target: hasPoints[0].agentId,
-        reason: 'Agent indicated having additional important points about the original topic to express',
-        priority: 7
-      });
-    }
-
-    // 発言が少ないエージェントをdeep_diveで優先的に選択
-    const leastActiveAgents = consensus.filter(c => {
-      const count = this.agentParticipationCount[c.agentId] || 0;
-      const avgCount = Object.values(this.agentParticipationCount).reduce((a, b) => a + b, 0) / this.AGENT_NAMES.length;
-      return count < Math.max(1, avgCount * 0.8); // 平均の80%以下なら「少ない」と判定
-    }).sort((a, b) => {
-      const countA = this.agentParticipationCount[a.agentId] || 0;
-      const countB = this.agentParticipationCount[b.agentId] || 0;
-      return countA - countB; // 発言数の少ない順
-    });
-
-    if (leastActiveAgents.length > 0) {
-      actions.push({
-        type: 'deep_dive',
-        target: leastActiveAgents[0].agentId,
-        reason: `Encouraging participation from less active agent (${this.agentParticipationCount[leastActiveAgents[0].agentId] || 0} contributions)`,
-        priority: 8
-      });
-    }
-
-    // 質問を持っているエージェントを特定
-    const silentAgents = consensus.filter(c => c.questionsForOthers.length > 0);
-    if (silentAgents.length > 0) {
+    // どのアクションも生成できなかった場合のフォールバック
+    if (actions.length === 0) {
+      const fallbackAgent = consensus[0] || { agentId: this.AGENT_NAMES[0] };
       actions.push({
         type: 'perspective_shift',
-        target: silentAgents[0].agentId,
-        reason: 'Agent has questions for others, encouraging different perspective',
-        priority: 6
-      });
-    }
-
-    // 全体的に満足度が高い場合は要約を提案 - 論理的エージェントを優先
-    const avgSatisfaction = consensus.reduce((sum, c) => sum + c.satisfactionLevel, 0) / consensus.length;
-    if (avgSatisfaction >= 7) {
-      // 論理的スタイルのエージェントを優先的に選択
-      const logicalAgents = ['eiro-001', 'hekito-001']; // 論理的、分析的エージェント
-      const availableLogical = consensus.filter(c => logicalAgents.includes(c.agentId));
-      const summaryTarget = availableLogical.length > 0 ? availableLogical[0].agentId : consensus[0].agentId;
-
-      actions.push({
-        type: 'summarize',
-        target: summaryTarget,
-        reason: 'High average satisfaction suggests readiness for synthesis of insights about the original topic',
+        target: fallbackAgent.agentId,
+        reason: 'Continuing dialogue with fresh perspective',
         priority: 5
       });
     }
 
-    // アクションがない場合のデフォルト - 最も発言が少ないエージェントを選択
-    if (actions.length === 0) {
-      // 参加度が低いエージェントを特定
-      const leastActiveAgent = consensus.reduce((min, agent) =>
-        (this.agentParticipationCount[agent.agentId] || 0) < (this.agentParticipationCount[min.agentId] || 0) ? agent : min
-      );
-
-      actions.push({
-        type: 'perspective_shift',
-        target: leastActiveAgent.agentId,
-        reason: 'Encouraging continued dialogue with different perspectives from less active participant',
-        priority: 4
-      });
-    }
-
+    console.log(`[Facilitator] Generated fallback actions: ${actions.map(a => `${a.type}(${a.priority})`).join(', ')}`);
     return actions;
   }
 

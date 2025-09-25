@@ -18,7 +18,7 @@ Respond naturally as {agentName}, incorporating both recent details and broader 
 Your response should reflect your unique perspective and thinking patterns.
 `;
 
-export const CONSENSUS_CHECK_PROMPT = `
+export const createConsensusCheckPrompt = (language: 'ja' | 'en') => `
 Based on the recent discussion, please evaluate your current state:
 
 ROUND: {roundNumber}
@@ -34,12 +34,42 @@ Please indicate:
 4. Are you ready to move toward conclusion? (yes/no)
 5. Brief reasoning for your satisfaction level
 
-Format your response exactly like this:
+**IMPORTANT: Use EXACTLY this format with English field names, but write the Reasoning content in ${language === 'ja' ? 'Japanese' : 'English'}:**
 Satisfaction: [1-10]
 Additional points: [yes/no]
 Questions: [list or "none"]
 Ready to conclude: [yes/no]
-Reasoning: [brief explanation]
+Reasoning: [brief explanation in ${language === 'ja' ? 'Japanese' : 'English'}]
+`;
+
+export const CONSENSUS_CHECK_PROMPT = createConsensusCheckPrompt('en');
+
+export const createDynamicConsensusPrompt = (language: 'ja' | 'en') => `
+You are discussing: "{originalQuery}"
+
+CURRENT ROUND: {currentRound}
+{roundGuidance}
+
+Based on the recent discussion, please evaluate your satisfaction and readiness regarding this original topic:
+
+RECENT DISCUSSION:
+{contextText}
+
+Please respond with:
+1. Your satisfaction level with how we've explored "{originalQuery}" (1-10)
+2. Has this discussion provided meaningful insights and value about "{originalQuery}"? (yes/no)
+3. Are you ready to move to conclusion, even if some aspects could be explored further? (yes/no)
+4. Do you have critical additional points that MUST be discussed before concluding? (yes/no - only say "yes" if truly essential)
+5. Brief reasoning for your readiness assessment
+
+{additionalGuidance}
+
+**IMPORTANT: Use EXACTLY this format with English field names, but write the Reasoning content in ${language === 'ja' ? 'Japanese' : 'English'}:**
+Satisfaction: [1-10]
+Meaningful insights: [yes/no]
+Ready to conclude: [yes/no]
+Critical points remaining: [yes/no]
+Reasoning: [brief explanation focusing on whether this is a good stopping point in ${language === 'ja' ? 'Japanese' : 'English'}]
 `;
 
 export const getRoundGuidanceText = (roundNumber: number): string => {
@@ -100,10 +130,16 @@ GUIDELINES:
 - Consider participation balance and recent speaking patterns
 - **IMPORTANT: Vary deep_dive targets to ensure all agents get opportunities for deeper exploration**
 
-REQUIRED: Return ONLY valid JSON array with exact agent IDs. Example:
+CRITICAL REQUIREMENTS:
+- Return ONLY a valid JSON array
+- Use exact agent IDs (eiro-001, yui-000, hekito-001, yoga-001, kanshi-001)
+- No explanatory text, no markdown code blocks
+- Must be parseable with JSON.parse()
+
+Example format:
 [{"type": "perspective_shift", "target": "kanshi-001", "reason": "encouraging critical perspective", "priority": 8}]
 
-JSON response:`;
+Your JSON array:`;
 
 export const MEMORY_SUMMARY_PROMPT = `
 Summarize this conversation segment from the perspective of agent {agentId}.
@@ -158,6 +194,11 @@ const V2_PROMPTS = {
     ja: CONSENSUS_CHECK_PROMPT
   },
 
+  dynamic_consensus: {
+    en: createDynamicConsensusPrompt('en'),
+    ja: createDynamicConsensusPrompt('ja')
+  },
+
   facilitator_analysis: {
     en: FACILITATOR_ANALYSIS_PROMPT,
     ja: FACILITATOR_ANALYSIS_PROMPT
@@ -173,6 +214,9 @@ const V2_PROMPTS = {
     ja: ESSENCE_EXTRACTION_PROMPT
   }
 } as const;
+
+// Export as v2PromptTemplates for compatibility
+export const v2PromptTemplates = V2_PROMPTS;
 
 // Helper function for dynamic prompt generation
 export function generateDynamicPrompt(

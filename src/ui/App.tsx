@@ -283,17 +283,25 @@ export function AppRoutes() {
     // Load available agents and sessions on component mount
     loadAvailableAgents();
     loadSessions();
-    
+
     // Check screen size and set default visibility
     const checkScreenSize = () => {
       setShowProcessInfo(window.innerWidth >= 768); // md breakpoint
     };
-    
+
     checkScreenSize();
     window.addEventListener('resize', checkScreenSize);
-    
+
     return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
+
+  // Auto-switch protocol version when currentSession changes (e.g., on page reload)
+  useEffect(() => {
+    if (currentSession && currentSession.version) {
+      console.log(`[App] Page reload - switching to session version: ${currentSession.version}`);
+      setProtocolVersion(currentSession.version as '1.0' | '2.0');
+    }
+  }, [currentSession?.id, currentSession?.version]);
 
   const loadAvailableAgents = async () => {
     try {
@@ -335,6 +343,20 @@ export function AppRoutes() {
       }));
       
       setSessions(sessionSummaries);
+
+      // Auto-restore session from URL after loading sessions
+      const sessionIdFromUrl = window.location.pathname.split('/').pop();
+      if (sessionIdFromUrl && sessionIdFromUrl !== '' && sessionIdFromUrl.match(/^\d+$/)) {
+        const sessionFromUrl = sessionSummaries.find((s: any) => s.id === sessionIdFromUrl);
+        if (sessionFromUrl) {
+          console.log(`[App] Restoring session from URL: ${sessionIdFromUrl}, version: ${sessionFromUrl.version}`);
+          setProtocolVersion(sessionFromUrl.version as '1.0' | '2.0');
+
+          // Load full session data immediately
+          console.log(`[App] Loading full session data for: ${sessionIdFromUrl}`);
+          selectSession(sessionFromUrl);
+        }
+      }
     } catch (error) {
       console.error('Failed to load sessions:', error);
     }
@@ -355,24 +377,32 @@ export function AppRoutes() {
       const newSession = await response.json();
       console.log('App: Received new session:', newSession);
       
+      // Create the new session object
+      const sessionToAdd = {
+        id: newSession.id,
+        title: newSession.title,
+        agents: newSession.agents,
+        createdAt: new Date(newSession.createdAt),
+        messages: [],
+        updatedAt: new Date(newSession.updatedAt),
+        currentStage: undefined,
+        stageHistory: [],
+        status: 'active' as const,
+        language: newSession.language || language || 'en',
+        version: newSession.version || version || '1.0',
+      };
+
       // Add new session to the beginning of the list (most recent first)
       setSessions(prev => [
-        {
-          id: newSession.id,
-          title: newSession.title,
-          agents: newSession.agents,
-          createdAt: new Date(newSession.createdAt),
-          messages: [],
-          updatedAt: new Date(newSession.updatedAt),
-          currentStage: undefined,
-          stageHistory: [],
-          status: 'active',
-          language: newSession.language || language || 'en',
-          version: newSession.version || version || '1.0',
-        },
+        sessionToAdd,
         ...prev.map(s => ({ ...s, language: s.language || 'en', version: s.version || '1.0' }))
       ]);
-      navigate(`/session/${newSession.id}`);
+
+      // Auto-select and switch to the new session
+      console.log(`[App] Auto-selecting new session with version: ${sessionToAdd.version}`);
+      setCurrentSession(sessionToAdd);
+      setProtocolVersion(sessionToAdd.version as '1.0' | '2.0');
+      navigate(`/session/${sessionToAdd.id}`);
       setShowMenu(false);
     } catch (error) {
       console.error('Failed to create session:', error);
@@ -393,7 +423,11 @@ export function AppRoutes() {
 
         // Auto-switch protocol version based on session version
         if (fullSessionData.version) {
+          console.log(`[App] Auto-switching protocol version from ${protocolVersion} to ${fullSessionData.version}`);
           setProtocolVersion(fullSessionData.version);
+        } else {
+          console.log('[App] No version found in session data, defaulting to 1.0');
+          setProtocolVersion('1.0');
         }
       }
     } catch (error) {
@@ -457,44 +491,19 @@ export function AppRoutes() {
               </h1>
 
               <div className="flex items-center gap-4">
-                {/* Version Selector */}
-                <div className="bg-gray-800 border border-gray-700 rounded-lg p-2">
-                  <div className="text-xs text-gray-300 mb-1">Protocol Version</div>
-                  <div className="flex gap-2">
-                    <label className="flex items-center cursor-pointer">
-                      <input
-                        type="radio"
-                        value="1.0"
-                        checked={protocolVersion === '1.0'}
-                        onChange={(e) => setProtocolVersion(e.target.value as '1.0')}
-                        className="sr-only"
-                      />
-                      <div className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-                        protocolVersion === '1.0'
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                      }`}>
-                        v1.0
-                      </div>
-                    </label>
-                    <label className="flex items-center cursor-pointer">
-                      <input
-                        type="radio"
-                        value="2.0"
-                        checked={protocolVersion === '2.0'}
-                        onChange={(e) => setProtocolVersion(e.target.value as '2.0')}
-                        className="sr-only"
-                      />
-                      <div className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-                        protocolVersion === '2.0'
-                          ? 'bg-purple-600 text-white'
-                          : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                      }`}>
-                        v2.0
-                      </div>
-                    </label>
+                {/* Current Session Version Display */}
+                {currentSession && (
+                  <div className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2">
+                    <div className="text-xs text-gray-300 mb-1">Current Session</div>
+                    <div className={`text-xs font-medium px-2 py-1 rounded ${
+                      currentSession.version === '2.0'
+                        ? 'bg-purple-600 text-white'
+                        : 'bg-blue-600 text-white'
+                    }`}>
+                      v{currentSession.version || '1.0'}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Menu toggle button */}
                 <button
@@ -617,11 +626,14 @@ export function AppRoutes() {
           <div className="flex-1 min-h-0 flex flex-col">
             <div className="flex-1 min-h-0 overflow-y-auto">
               {currentSession ? (
-                protocolVersion === '1.0' ? (
-                  <ThreadView session={currentSession} availableAgents={availableAgents} onSessionUpdate={handleSessionUpdate} />
-                ) : (
-                  <DynamicThreadView session={currentSession} availableAgents={availableAgents} onSessionUpdate={handleSessionUpdate} />
-                )
+                (() => {
+                  console.log(`[App] Rendering with protocolVersion: ${protocolVersion}, session.version: ${currentSession.version}`);
+                  return protocolVersion === '1.0' ? (
+                    <ThreadView session={currentSession} availableAgents={availableAgents} onSessionUpdate={handleSessionUpdate} />
+                  ) : (
+                    <DynamicThreadView session={currentSession} availableAgents={availableAgents} onSessionUpdate={handleSessionUpdate} />
+                  );
+                })()
               ) : (
                 <div className="bg-gray-800 shadow-sm p-6 text-center h-full flex flex-col justify-center">
                   <div className="text-gray-600 mb-3">

@@ -133,6 +133,11 @@ const DynamicThreadView: React.FC<DynamicThreadViewProps> = ({
   const startDynamicDialogue = async () => {
     if (!userPrompt.trim() || isProcessing || !socket) return;
 
+    // Block input completely if session is concluded
+    if (session.status === 'concluded') {
+      return;
+    }
+
     setIsProcessing(true);
     setCurrentRound(0);
     setConsensusLevel(0);
@@ -269,22 +274,53 @@ const DynamicThreadView: React.FC<DynamicThreadViewProps> = ({
               adjustTextareaHeight();
             }}
             onKeyDown={handleKeyPress}
-            placeholder="Enter your question or topic for dynamic dialogue..."
-            className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 text-gray-100 rounded resize-none min-h-[40px] max-h-[120px] focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-            disabled={isProcessing}
+            placeholder={
+              session.status === 'concluded'
+                ? "対話は完了しました。新しい入力はできません。"
+                : "Enter your question or topic for dynamic dialogue..."
+            }
+            className={`flex-1 px-3 py-2 border text-gray-100 rounded resize-none min-h-[40px] max-h-[120px] focus:ring-2 focus:ring-purple-500 focus:border-transparent ${
+              session.status === 'concluded'
+                ? 'bg-gray-800 border-gray-800 text-gray-500 cursor-not-allowed'
+                : 'bg-gray-700 border-gray-600'
+            }`}
+            disabled={isProcessing || session.status === 'concluded'}
           />
           <button
             onClick={startDynamicDialogue}
-            disabled={!userPrompt.trim() || isProcessing}
-            className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            disabled={!userPrompt.trim() || isProcessing || session.status === 'concluded'}
+            className={`px-4 py-2 text-white rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+              session.status === 'concluded'
+                ? 'bg-gray-600'
+                : session.status === 'completed'
+                ? 'bg-orange-600 hover:bg-orange-700'
+                : 'bg-purple-600 hover:bg-purple-700'
+            }`}
           >
-            {isProcessing ? 'Processing...' : 'Start'}
+            {session.status === 'concluded'
+              ? '完了'
+              : isProcessing
+              ? 'Processing...'
+              : session.status === 'completed'
+                ? 'Continue'
+                : 'Start'
+            }
           </button>
         </div>
         <div className="flex items-center justify-between mt-2 text-xs text-gray-500">
           <span>v2.0: Dynamic consensus-based dialogue</span>
-          <span>Cmd/Ctrl + Enter to submit</span>
+          {session.status !== 'concluded' && <span>Cmd/Ctrl + Enter to submit</span>}
         </div>
+        {session.status === 'concluded' && (
+          <div className="mt-1 text-xs text-green-400 font-medium">
+            ✅ 対話完了 - この議論は終了しました
+          </div>
+        )}
+        {session.status === 'completed' && (
+          <div className="mt-1 text-xs text-orange-400 font-medium">
+            ✅ 対話完了 - 継続する場合は新しい議論になります
+          </div>
+        )}
       </div>
     </div>
   );

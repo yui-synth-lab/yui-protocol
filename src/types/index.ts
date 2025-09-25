@@ -44,7 +44,7 @@ export interface Message {
   agentId: string;
   content: string;
   timestamp: Date;
-  role: 'user' | 'agent' | 'system' | 'facilitator' | 'consensus';
+  role: 'user' | 'agent' | 'system' | 'facilitator' | 'consensus' | 'assistant';
   stage?: DialogueStage;
   sequenceNumber?: number;
   metadata?: {
@@ -77,6 +77,22 @@ export interface Message {
     agentsReady?: number;
     totalAgents?: number;
     additionalInfo?: string;
+    // v2.0 collaboration properties
+    collaborativeFinalize?: boolean;
+    finalizerIndex?: number;
+    totalFinalizers?: number;
+    finalizerRole?: string;
+    coFinalizers?: string[];
+    messageType?: string;
+    collaborationType?: string;
+    expectedSteps?: number;
+    currentStep?: number;
+    totalSteps?: number;
+    contributorName?: string;
+    contributorRole?: string;
+    participantCount?: number;
+    participants?: string[];
+    totalContributions?: number;
   };
 }
 
@@ -87,7 +103,7 @@ export interface Session {
   messages: Message[];
   createdAt: Date;
   updatedAt: Date;
-  status: 'active' | 'completed' | 'paused';
+  status: 'active' | 'completed' | 'paused' | 'concluded';
   currentStage?: DialogueStage;
   stageHistory: StageHistory[];
   stageSummaries?: StageSummary[];

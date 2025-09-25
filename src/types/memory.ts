@@ -39,3 +39,39 @@ export interface ConversationContext {
   essenceCore: string[];
   totalTokenEstimate: number;
 }
+
+// v2.0用の改善されたメモリ構造
+export interface MemoryLayer {
+  agentId: string;
+  recent: Message[];           // 直近5メッセージ
+  compressed: CompressedMemory[]; // 圧縮済み記憶
+  totalTokensEstimate: number;
+}
+
+export interface CompressedMemory {
+  timeRange: {
+    start: Date;
+    end: Date;
+  };
+  summary: string;              // 圧縮された要約
+  keypoints: string[];          // 重要なポイント
+  ownContributions: string[];   // 自分の発言要点
+  originalTokenCount: number;   // 元のトークン数
+  compressedTokenCount: number; // 圧縮後のトークン数
+  compressionRatio: number;     // 圧縮率
+}
+
+export interface AgentMemoryContext {
+  agentId: string;
+  ownRecentMessages: Message[];     // 自分の直近発言
+  othersRecentMessages: Message[];  // 他者の直近発言
+  compressedHistory: CompressedMemory[]; // 圧縮された長期記憶
+  totalContextTokens: number;
+}
+
+export interface MemoryCompressionConfig {
+  maxRecentMessages: number;    // 直近メッセージ保持数
+  tokenThreshold: number;       // 圧縮開始閾値
+  compressionRatio: number;     // 目標圧縮率
+  personalityAware: boolean;    // 個性反映圧縮
+}
