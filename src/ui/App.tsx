@@ -400,10 +400,11 @@ export function AppRoutes() {
 
       // Auto-select and switch to the new session
       console.log(`[App] Auto-selecting new session with version: ${sessionToAdd.version}`);
-      setCurrentSession(sessionToAdd);
       setProtocolVersion(sessionToAdd.version as '1.0' | '2.0');
-      navigate(`/session/${sessionToAdd.id}`);
       setShowMenu(false);
+
+      // Use selectSession to properly load full session data and navigate
+      await selectSession(sessionToAdd);
     } catch (error) {
       console.error('Failed to create session:', error);
     }
