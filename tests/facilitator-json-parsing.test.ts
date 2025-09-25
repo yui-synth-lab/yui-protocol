@@ -150,7 +150,8 @@ describe('Facilitator JSON Parsing Robustness', () => {
     expect(result[0]).toHaveProperty('type');
     expect(result[0]).toHaveProperty('target');
     expect(console.warn).toHaveBeenCalledWith(
-      expect.stringContaining('[Facilitator] No valid JSON found in response, using fallback')
+      '[Facilitator] JSON parse failed:',
+      expect.any(Error)
     );
   });
 
@@ -172,7 +173,7 @@ describe('Facilitator JSON Parsing Robustness', () => {
     expect(Array.isArray(result)).toBe(true);
     expect(result.length).toBeGreaterThan(0);
     expect(console.warn).toHaveBeenCalledWith(
-      expect.stringContaining('[Facilitator] JSON parse failed:')
+      expect.stringContaining('[Facilitator] No valid JSON found in response, using fallback')
     );
   });
 
@@ -231,7 +232,8 @@ describe('Facilitator JSON Parsing Robustness', () => {
     expect(Array.isArray(result)).toBe(true);
     expect(result.length).toBeGreaterThan(0);
     expect(console.warn).toHaveBeenCalledWith(
-      expect.stringContaining('[Facilitator] Failed to parse facilitator suggestions, using fallback:')
+      '[Facilitator] Failed to parse facilitator suggestions, using fallback:',
+      expect.any(Error)
     );
   });
 
