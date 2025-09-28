@@ -9,6 +9,7 @@ interface MessagesViewProps {
   currentStage: DialogueStage | null;
   onScroll?: (shouldAutoScroll: boolean) => void;
   shouldAutoScroll: boolean;
+  protocolVersion?: '1.0' | '2.0';
 }
 
 const MessagesView: React.FC<MessagesViewProps> = ({
@@ -17,7 +18,8 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   availableAgents,
   currentStage,
   onScroll,
-  shouldAutoScroll
+  shouldAutoScroll,
+  protocolVersion = '1.0'
 }) => {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -55,11 +57,13 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   };
 
   const getAgentAvatar = (agentId: string) => {
+    if (!availableAgents) return '🤖';
     const agent = availableAgents.find(a => a.id === agentId);
     return agent?.avatar || '🤖';
   };
 
   const getAgentName = (agentId: string) => {
+    if (!availableAgents) return agentId;
     const agent = availableAgents.find(a => a.id === agentId);
     return agent?.name || agentId;
   };
@@ -79,7 +83,12 @@ const MessagesView: React.FC<MessagesViewProps> = ({
       'synthesis-attempt': '🔗 Synthesis Attempt',
       'synthesis-attempt-summary': '📋 Synthesis Attempt Summary',
       'output-generation': '📤 Output Generation',
-      'finalize': '✅ Finalize'
+      'finalize': '✅ Finalize',
+      'facilitator': '🧭 Facilitator',
+      'perspective-shift': '🔄 Perspective Shift',
+      'deep-dive': '🔍 Deep Dive',
+      'clarification': '❓ Clarification',
+      'consensus-check': '📊 Consensus Check'
     };
 
     return stageLabels[stage] || stage;
@@ -96,12 +105,18 @@ const MessagesView: React.FC<MessagesViewProps> = ({
       'synthesis-attempt': 'bg-purple-900 border-purple-800 text-purple-100',
       'synthesis-attempt-summary': 'bg-purple-900 border-purple-800 text-purple-100',
       'output-generation': 'bg-indigo-900 border-indigo-800 text-indigo-100',
-      'finalize': 'bg-green-900 border-green-800 text-green-100'
+      'finalize': 'bg-green-900 border-green-800 text-green-100',
+      'facilitator': 'bg-amber-900 border-amber-800 text-amber-100',
+      'perspective-shift': 'bg-purple-900 border-purple-800 text-purple-100',
+      'deep-dive': 'bg-blue-900 border-blue-800 text-blue-100',
+      'clarification': 'bg-yellow-900 border-yellow-800 text-yellow-100',
+      'consensus-check': 'bg-teal-900 border-teal-800 text-teal-100'
     };
     return stageColors[stage] || 'bg-gray-900';
   };
 
   const getAgentColor = (agentId: string) => {
+    if (!availableAgents) return '#ccc';
     const agent = availableAgents.find(a => a.id === agentId);
     return agent?.color || '#ccc';
   };
@@ -207,7 +222,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
 
   // Agent ID をすべて名前に一括置換する関数
   const replaceAgentIdsWithNames = (content: string): string => {
-    if (!content) return content;
+    if (!content || !availableAgents) return content;
     let replaced = content;
     availableAgents.forEach(agent => {
       const regex = new RegExp(agent.id, 'g');
@@ -333,6 +348,20 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                     bubbleBorder = 'border-purple-500';
                     avatarBg = 'bg-purple-600';
                     nameClass = 'font-medium text-purple-300';
+                  } else if (message.role === 'facilitator' || message.agentId === 'facilitator-001') {
+                    avatar = <span className="text-sm">🧭</span>;
+                    name = 'ファシリテーター';
+                    nameColor = 'text-amber-300';
+                    bubbleBorder = 'border-amber-500';
+                    avatarBg = 'bg-amber-600';
+                    nameClass = 'font-medium text-amber-300';
+                  } else if (message.role === 'consensus') {
+                    avatar = <span className="text-sm">📊</span>;
+                    name = 'コンセンサス分析';
+                    nameColor = 'text-cyan-300';
+                    bubbleBorder = 'border-cyan-500';
+                    avatarBg = 'bg-cyan-600';
+                    nameClass = 'font-medium text-cyan-300';
                   } else if (message.role === 'agent') {
                     avatar = getAgentAvatar(message.agentId);
                     name = getAgentName(message.agentId);

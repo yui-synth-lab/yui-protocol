@@ -69,7 +69,7 @@ export class SessionManager {
     return Array.from(allSessions.values());
   }
 
-  async createSession(title: string, agentIds: string[], language: string): Promise<Session> {
+  async createSession(title: string, agentIds: string[], language: string, version: '1.0' | '2.0' = '1.0'): Promise<Session> {
     // 次のセッションIDを取得
     const sessionId = this.nextSessionId.toString();
     this.nextSessionId++;
@@ -107,6 +107,7 @@ export class SessionManager {
       status: 'active',
       stageHistory: [],
       language: language as any,
+      version,
       sequenceNumber: 1  // 新規セッションは1から始まる
     };
     this.sessions.set(session.id, session);
@@ -182,6 +183,10 @@ export class SessionManager {
   /**
    * 前回シーケンスのユーザー入力とエージェント結論を抽出
    */
+  getSessionStorage(): SessionStorage {
+    return this.sessionStorage;
+  }
+
   getPreviousSequenceInfo(session: Session): {
     previousUserInput: string;
     previousAgentConclusions: { [agentId: string]: string };

@@ -344,6 +344,7 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, availableAgents, onSes
           currentStage={currentStage}
           shouldAutoScroll={shouldAutoScroll}
           onScroll={setShouldAutoScroll}
+          protocolVersion="1.0"
         />
       </div>
 

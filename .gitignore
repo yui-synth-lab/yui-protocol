@@ -113,3 +113,6 @@ package-lock.json
 # Selenium test logs
 selenium-tests/logs/
 src/kernel/ai-executor-impl.ts
+.claude/settings.local.json
+.github/copilot-instructions.md
+CLAUDE.md

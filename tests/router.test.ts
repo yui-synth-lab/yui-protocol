@@ -49,7 +49,8 @@ describe('YuiProtocolRouter (Refactored)', () => {
     updatedAt: new Date(),
     status: 'active',
     stageHistory: [],
-    language: 'en'
+    language: 'en',
+    version: '1.0'
   };
 
   beforeEach(() => {
@@ -188,9 +189,9 @@ describe('YuiProtocolRouter (Refactored)', () => {
     });
 
     it('should create session', async () => {
-      const newSession = await router.createSession('New Session', ['test-agent'], 'en');
+      const newSession = await router.createSession('New Session', ['test-agent'], 'en', '1.0');
       expect(newSession).toEqual(mockSession);
-      expect(mockSessionManager.createSession).toHaveBeenCalledWith('New Session', ['test-agent'], 'en');
+      expect(mockSessionManager.createSession).toHaveBeenCalledWith('New Session', ['test-agent'], 'en', '1.0');
     });
 
     it('should delete session', async () => {

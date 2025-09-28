@@ -1,0 +1,29 @@
+{
+  "memory": {
+    "maxRecentMessages": 5,
+    "tokenThreshold": 8000,
+    "compressionRatio": 0.3
+  },
+  "consensus": {
+    "convergenceThreshold": 7.5,
+    "maxRounds": 20,
+    "minSatisfactionLevel": 6.5
+  },
+  "facilitator": {
+    "actionPriority": {
+      "deep_dive": 4,
+      "perspective_shift": 9,
+      "clarification": 8,
+      "summarize": 7,
+      "conclude": 6
+    },
+    "interventionCooldown": 2
+  },
+  "finalization": {
+    "enableCollaborativeFinalization": true,
+    "maxCollaborativeFinalizers": 3,
+    "collaborationStepDelay": 1500,
+    "showProgressMessages": true,
+    "detailedCollaborationPrompts": true
+  }
+}

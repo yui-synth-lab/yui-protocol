@@ -8,7 +8,7 @@ export interface SimplifiedInteractionLog {
   stage: DialogueStage;
   agentId: string;
   agentName: string;
-  timestamp: Date;
+  timestamp: Date | string;
   prompt: string;
   output: string;
   duration: number;
@@ -17,6 +17,21 @@ export interface SimplifiedInteractionLog {
   personality?: string; // Added personality field
   provider?: string; // AIサービス名
   model?: string;     // モデル名
+  // Facilitator-specific fields
+  facilitatorAction?: string;
+  facilitatorReasoning?: string;
+  participationBalance?: Record<string, number>;
+  topicShift?: boolean;
+  consensusLevel?: number;
+  roundNumber?: number;
+  // Voting analysis fields
+  voteAnalysis?: {
+    totalVotes: number;
+    validVotes: number;
+    selectedAgent: string;
+    voteCounts: Record<string, number>;
+    voteDetails: { agentId: string; voteFor: string | undefined; voteReasoning?: string }[];
+  };
 }
 
 export type FileSystem = typeof fs;
@@ -45,7 +60,7 @@ export class InteractionLogger {
       // Create hierarchical directory structure: logs/sessionId/stage/agentId.json
       const sessionDir = path.join(this.logDir, log.sessionId);
       const stageDir = path.join(sessionDir, log.stage);
-      
+
       // Ensure directories exist
       await this.fs.mkdir(sessionDir, { recursive: true });
       await this.fs.mkdir(stageDir, { recursive: true });
@@ -57,6 +72,56 @@ export class InteractionLogger {
       console.log(`[InteractionLogger] Saved interaction log for ${log.agentId} in ${log.stage} of session ${log.sessionId}`);
     } catch (error) {
       console.error(`[InteractionLogger] Error saving interaction log:`, error);
+    }
+  }
+
+  // Save facilitator log with special handling
+  public async saveFacilitatorLog(log: {
+    sessionId: string;
+    roundNumber: number;
+    timestamp: Date;
+    action: string;
+    reasoning: string;
+    participationBalance: Record<string, number>;
+    topicShift: boolean;
+    consensusLevel?: number;
+    duration?: number;
+  }): Promise<void> {
+    try {
+      const facilitatorLog: SimplifiedInteractionLog = {
+        id: `facilitator-${log.sessionId}-${log.roundNumber}-${Date.now()}`,
+        sessionId: log.sessionId,
+        stage: 'facilitator' as DialogueStage,
+        agentId: 'facilitator-001',
+        agentName: 'Silent Facilitator',
+        timestamp: log.timestamp,
+        prompt: `Round ${log.roundNumber} analysis and action determination`,
+        output: `Action: ${log.action} | Reasoning: ${log.reasoning}`,
+        duration: log.duration || 0,
+        status: 'success',
+        facilitatorAction: log.action,
+        facilitatorReasoning: log.reasoning,
+        participationBalance: log.participationBalance,
+        topicShift: log.topicShift,
+        consensusLevel: log.consensusLevel,
+        roundNumber: log.roundNumber
+      };
+
+      // Create hierarchical directory structure: logs/sessionId/facilitator/facilitator-001.json
+      const sessionDir = path.join(this.logDir, log.sessionId);
+      const facilitatorDir = path.join(sessionDir, 'facilitator');
+
+      // Ensure directories exist
+      await this.fs.mkdir(sessionDir, { recursive: true });
+      await this.fs.mkdir(facilitatorDir, { recursive: true });
+
+      // Save to facilitator-specific file
+      const facilitatorLogPath = path.join(facilitatorDir, 'facilitator-001.json');
+      await this.appendToFile(facilitatorLogPath, facilitatorLog);
+
+      console.log(`[InteractionLogger] Saved facilitator log for round ${log.roundNumber} in session ${log.sessionId}`);
+    } catch (error) {
+      console.error(`[InteractionLogger] Error saving facilitator log:`, error);
     }
   }
 
@@ -181,13 +246,13 @@ export class InteractionLogger {
   public async getStageLogs(stage: DialogueStage): Promise<SimplifiedInteractionLog[]> {
     try {
       const logs: SimplifiedInteractionLog[] = [];
-      
+
       // Read all sessions
       const sessions = await this.fs.readdir(this.logDir);
       for (const sessionId of sessions) {
         const sessionDir = path.join(this.logDir, sessionId);
         const sessionStat = await this.fs.stat(sessionDir);
-        
+
         if (sessionStat.isDirectory()) {
           const stageDir = path.join(sessionDir, stage);
           try {
@@ -210,7 +275,7 @@ export class InteractionLogger {
           }
         }
       }
-      
+
       // Convert date strings back to Date objects and sort by timestamp
       return logs
         .map(log => ({
@@ -220,6 +285,58 @@ export class InteractionLogger {
         .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
     } catch (error) {
       console.error(`[InteractionLogger] Error reading stage logs for ${stage}:`, error);
+      return [];
+    }
+  }
+
+  // Get facilitator logs for a session
+  public async getFacilitatorLogs(sessionId: string): Promise<SimplifiedInteractionLog[]> {
+    try {
+      const facilitatorDir = path.join(this.logDir, sessionId, 'facilitator');
+      const facilitatorLogPath = path.join(facilitatorDir, 'facilitator-001.json');
+
+      try {
+        await this.fs.access(facilitatorLogPath);
+        const data = await this.fs.readFile(facilitatorLogPath, 'utf8');
+        const logs: SimplifiedInteractionLog[] = JSON.parse(data);
+
+        // Convert date strings back to Date objects and sort by timestamp
+        return logs
+          .map(log => ({
+            ...log,
+            timestamp: new Date(log.timestamp)
+          }))
+          .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+      } catch {
+        // Facilitator log file doesn't exist
+        return [];
+      }
+    } catch (error) {
+      console.error(`[InteractionLogger] Error reading facilitator logs for ${sessionId}:`, error);
+      return [];
+    }
+  }
+
+  // Get all facilitator logs across all sessions
+  public async getAllFacilitatorLogs(): Promise<SimplifiedInteractionLog[]> {
+    try {
+      const logs: SimplifiedInteractionLog[] = [];
+
+      // Read all sessions
+      const sessions = await this.fs.readdir(this.logDir);
+      for (const sessionId of sessions) {
+        const sessionLogs = await this.getFacilitatorLogs(sessionId);
+        logs.push(...sessionLogs);
+      }
+
+      // Sort by timestamp
+      return logs.sort((a, b) => {
+        const aTime = a.timestamp instanceof Date ? a.timestamp.getTime() : new Date(a.timestamp as string).getTime();
+        const bTime = b.timestamp instanceof Date ? b.timestamp.getTime() : new Date(b.timestamp as string).getTime();
+        return aTime - bTime;
+      });
+    } catch (error) {
+      console.error(`[InteractionLogger] Error reading all facilitator logs:`, error);
       return [];
     }
   }

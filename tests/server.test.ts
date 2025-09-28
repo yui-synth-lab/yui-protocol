@@ -45,7 +45,8 @@ describe('Server API', () => {
     updatedAt: new Date(),
     status: 'active',
     stageHistory: [],
-    language: 'en'
+    language: 'en',
+    version: '1.0'
   };
 
   beforeEach(() => {
@@ -117,6 +118,7 @@ describe('Server API', () => {
           updatedAt: session.updatedAt,
           status: session.status,
           language: session.language,
+          version: session.version || '1.0', // Add version information with fallback
           agentIds: session.agents?.map(agent => agent.id) || [],
           messageCount: session.messages?.length || 0,
           agentCount: session.agents?.length || 0
@@ -307,6 +309,7 @@ describe('Server API', () => {
         updatedAt: mockSession.updatedAt.toISOString(),
         status: mockSession.status,
         language: mockSession.language,
+        version: mockSession.version,
         agentIds: mockSession.agents.map(agent => agent.id),
         messageCount: mockSession.messages.length,
         agentCount: mockSession.agents.length

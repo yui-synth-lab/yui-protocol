@@ -24,6 +24,56 @@ The YUI Protocol is a multi-agent collaboration framework that runs a structured
 
 Core principles: diversity, structure, explicit conflict handling, transparency, scalability, flexibility, efficiency, and context management.
 
+## v2: Dynamic Dialogue (v2.0) — Overview
+
+v2 (v2.0) evolves the YUI system into a dynamic-dialogue model that provides "dialogue until satisfaction" rather than fixed stages. The system includes consensus-driven flow, facilitator mediation, hierarchical memory management, robust JSON parsing, and high-cost LLM finalizers.
+
+Key improvements implemented (current state):
+
+- **Consensus-driven dynamics**: Agents continue dialogue until genuine satisfaction is reached, measured through round-by-round consensus analysis.
+- **Intelligent facilitation**: AI facilitator provides diverse interventions (deep_dive, clarification, perspective_shift, summarize, conclude, redirect) with configuration-based action priorities.
+- **Hierarchical memory**: Agent-specific memory contexts separate own contributions from others' to prevent attribution errors.
+- **Robust JSON parsing**: Multiple pattern matching for AI response parsing with graceful fallback mechanisms.
+- **High-cost finalizers**: Selected finalizers use premium LLMs (Claude Sonnet 4, GPT-4) via '-finalizer' agent ID suffix.
+- **Collaborative finalization**: Multiple finalizers work in coordinated sequence with transparent progress tracking.
+- **Round 0 optimization**: Eliminated redundant facilitator execution for improved efficiency.
+
+Key implementation locations:
+
+- **Dynamic Router**: `src/kernel/dynamic-router.ts` - Core v2.0 dialogue orchestration
+- **Facilitator Agent**: `src/agents/facilitator-agent.ts` - Action generation and JSON parsing
+- **Memory Manager**: `src/kernel/memory-manager.ts` - Hierarchical memory and compression
+- **v2 Prompts**: `src/templates/v2-prompts.ts` - Optimized prompts for dynamic flow
+- **High-cost AI Execution**: `src/agents/base-agent.ts` - `executeAIWithFinalizerModel` method
+- **Collaboration Messages**: `src/utils/collaboration-messages.ts` - User experience transparency
+- **Configuration**: `src/types/v2-config.ts`, `src/config/v2-config-loader.ts` - Dynamic settings
+
+Enablement & verification:
+
+- Use the UI version selector (`v2.0`) to enable dynamic dialogue mode in the application.
+- Configure behavior via `config/v2-settings.json` - facilitator action priorities, consensus thresholds, memory settings.
+- Monitor session logs in `./logs/{sessionId}/` to observe consensus progression, facilitator actions, and high-cost LLM usage.
+- Search the codebase for `dynamic-router`, `facilitator-agent`, or `executeAIWithFinalizerModel` to explore v2-specific implementations.
+
+Quickstart (developer):
+
+Build and start the server (production-mode server serving `dist/`):
+
+```powershell
+npm run build
+npm run server
+```
+
+Start the frontend development server only:
+
+```powershell
+npm run dev
+```
+
+For detailed enablement steps, examples, and configuration options, see the `v2: Dynamic Dialogue` section in the repository `README.md`.
+
+This section can be expanded with design artifacts (prompt examples, state diagrams, API diffs) on request.
+
 ## Architecture
 
 High-level data flow:
@@ -175,16 +225,23 @@ export interface Session {
 
 ## Orchestration & Router
 
-`YuiProtocolRouter` coordinates stage execution:
-- Initializes agents via `AgentManager`.
-- Ensures user message exists per sequence.
-- Executes stage-specific methods on agent instances.
-- Pushes agent messages with `stageData` back into the session.
-- Triggers `StageSummarizer` after stages (except finalize/output-generation) with a configured delay.
-- After `output-generation`, performs AI-based vote analysis and annotates messages with `voteFor` and `voteReasoning`.
-- Selects finalizer agent(s) from votes (fallback to `yui-000` if none), runs `finalize`, marks session completed, saves final output (Markdown) per sequence.
+The system supports two operational modes:
 
-Sequences: When a session is completed and Stage 1 is requested again, the router increments `sequenceNumber` and continues, referencing previous sequence’s user input and final conclusions when generating prompts.
+### v1.0 Fixed Stages (`YuiProtocolRouter`)
+- Initializes agents via `AgentManager`.
+- Executes predefined stage sequence: individual-thought → mutual-reflection → conflict-resolution → synthesis-attempt → output-generation → finalize.
+- Triggers `StageSummarizer` after stages (except finalize/output-generation) with configured delay.
+- Performs AI-based vote analysis after output-generation and selects finalizer agent(s).
+- Sequences: Increments `sequenceNumber` for continued sessions, referencing previous conclusions.
+
+### v2.0 Dynamic Dialogue (`DynamicRouter`)
+- **Consensus-driven progression**: Agents dialogue until satisfaction thresholds are met, measured through round-by-round consensus analysis.
+- **Facilitator interventions**: AI facilitator provides diverse actions (deep_dive, clarification, perspective_shift, summarize, conclude, redirect) based on conversation state and configuration priorities.
+- **Hierarchical memory management**: Agent-specific contexts separate own contributions from others' to prevent attribution errors.
+- **Collaborative finalization**: Multiple finalizers selected via democratic voting, working in coordinated sequence with transparent progress tracking.
+- **High-cost LLM execution**: Finalizers automatically use premium models (Claude Sonnet 4, GPT-4) via agent ID suffix detection.
+- **Robust error handling**: JSON parsing with multiple patterns and graceful fallback, comprehensive logging for debugging.
+- **Round 0 optimization**: Eliminated redundant facilitator execution between Round 0 and Round 1.
 
 ## Server & Realtime IO
 
@@ -219,7 +276,9 @@ Generation parameter auto-adjustment lives in `BaseAgent`:
 
 AI Executor abstraction (`src/kernel/ai-executor.ts`):
 - `createAIExecutor` dynamically imports `ai-executor-impl` if present; else falls back to a mock executor that synthesizes outputs and injects a vote during `output-generation`.
-- Default provider in the base class is `'openai'`; StageSummarizer defaults to `'gemini'` model `gemini-2.5-flash-lite-preview-06-17` with temperature 0.5.
+- **High-cost LLM support**: Agent IDs ending with `-finalizer` automatically trigger premium models (Claude Sonnet 4, GPT-4) in `ai-executor-impl.ts`.
+- Default provider is `'openai'`; StageSummarizer defaults to `'gemini'` model `gemini-2.5-flash-lite-preview-06-17` with temperature 0.5.
+- **Finalizer execution**: `BaseAgent.executeAIWithFinalizerModel` method creates temporary executors with `-finalizer` suffix for collaborative finalization.
 
 Language: prompts enforce strict language (`'en'` or `'ja'`) at generation time.
 
@@ -253,31 +312,43 @@ Language: prompts enforce strict language (`'en'` or `'ja'`) at generation time.
 ```
 src/
 ├─ agents/
-│  ├─ base-agent.ts
+│  ├─ base-agent.ts                    # Core agent functionality + executeAIWithFinalizerModel
+│  ├─ facilitator-agent.ts             # v2.0: AI facilitator with robust JSON parsing
 │  ├─ agent-eiro.ts
 │  ├─ agent-hekito.ts
 │  ├─ agent-kanshi.ts
 │  ├─ agent-yoga.ts
 │  └─ agent-yui.ts
 ├─ kernel/
-│  ├─ ai-executor.ts
+│  ├─ ai-executor.ts                   # AI abstraction + high-cost LLM detection
+│  ├─ dynamic-router.ts                # v2.0: Consensus-driven dialogue orchestration
+│  ├─ memory-manager.ts                # v2.0: Hierarchical memory + compression
 │  ├─ interaction-logger.ts
 │  ├─ output-storage.ts
-│  ├─ router.ts
+│  ├─ router.ts                        # v1.0: Fixed stage progression
 │  ├─ session-storage.ts
 │  ├─ stage-summarizer.ts
 │  ├─ interfaces.ts
 │  └─ services/
-│     ├─ agent-manager.ts
-│     └─ session-manager.ts
+     ├─ agent-manager.ts
+     └─ session-manager.ts
+├─ config/
+│  ├─ v2-config-loader.ts              # v2.0: Dynamic configuration loading
+│  └─ v2-settings.json                 # v2.0: Consensus thresholds, action priorities
 ├─ server/
 │  └─ index.ts
 ├─ templates/
-│  └─ prompts.ts
+│  ├─ prompts.ts                       # v1.0: Fixed stage prompts
+│  └─ v2-prompts.ts                    # v2.0: Dynamic dialogue prompts
 ├─ types/
-│  └─ index.ts
+│  ├─ index.ts                         # Core types
+│  ├─ consensus.ts                     # v2.0: Consensus and facilitator types
+│  ├─ memory.ts                        # v2.0: Hierarchical memory types
+│  └─ v2-config.ts                     # v2.0: Configuration types
+├─ utils/
+│  └─ collaboration-messages.ts        # v2.0: User-facing progress messages
 └─ ui/
-   ├─ App.tsx
+   ├─ App.tsx                          # Version selector (v1.0 vs v2.0)
    ├─ MessagesView.tsx
    ├─ ThreadHeader.tsx
    ├─ ThreadView.tsx
@@ -288,14 +359,21 @@ Build artifacts are in `dist/`, Selenium tests in `selenium-tests/`, and unit/in
 
 ## Testing & Coverage
 
-- Unit/integration tests cover agents, prompts, router, stage summarizer, session storage, interaction logging, UI components, and vote analysis.
-- E2E Selenium tests verify stage progression, indicators, session id, message counts, and UI flows.
-- Coverage: run `npm run test:coverage`.
+- **Unit/integration tests**: Cover agents, prompts, both routers (v1.0 & v2.0), stage summarizer, session storage, interaction logging, UI components, and vote analysis.
+- **v2.0 specific tests**:
+  - `facilitator-json-parsing.test.ts`: Robust JSON parsing with various AI response formats
+  - `dynamic-router.test.ts`: Consensus-driven dialogue progression
+  - `memory-manager.test.ts`: Hierarchical memory and compression
+  - `collaboration.test.ts`: Multiple finalizer coordination
+- **E2E Selenium tests**: Verify stage progression, indicators, session flows, and UI version selection.
+- **Coverage**: run `npm run test:coverage`.
 
-Recommended scenarios:
-- Parameter auto-adjustment tests (`generation-parameters.test.ts`).
-- Type fields presence and defaults (`types-extended.test.ts`).
-- Router stage flows and summaries (`router.test.ts`, `stage-summarizer.test.ts`).
+Key test scenarios:
+- Parameter auto-adjustment: `generation-parameters.test.ts`
+- v2.0 consensus flow: `consensus-analysis.test.ts`
+- Facilitator action diversity: `facilitator-actions.test.ts`
+- High-cost LLM detection: `ai-executor-finalizer.test.ts`
+- JSON parsing robustness: `facilitator-json-parsing.test.ts`
 
 ## Operations
 

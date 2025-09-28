@@ -2,6 +2,9 @@ import { Agent, Message, AgentResponse, DialogueStage, IndividualThought, Mutual
 import { getPersonalityPrompt, getStagePrompt, Language, SUMMARIZER_STAGE_PROMPT, formatPrompt, parseVotes, extractVoteDetails } from '../templates/prompts.js';
 import { InteractionLogger, SimplifiedInteractionLog } from '../kernel/interaction-logger.js';
 import { AIExecutor, createAIExecutor } from '../kernel/ai-executor.js';
+import { ConversationMemoryManager } from '../kernel/memory-manager.js';
+import { ConversationContext, AgentPersonalHistory } from '../types/memory.js';
+import { getV2MemoryConfig } from '../config/v2-config-loader.js';
 
 // Helper: Nudge a value toward a target by a given weight
 function nudgeToTarget(calculated: number, target: number, weight: number = 0.2) {
@@ -18,6 +21,10 @@ export abstract class BaseAgent {
   protected aiExecutorFinalize?: AIExecutor;
   private aiExecutorPromiseFinalize?: Promise<AIExecutor>;
   protected isSummarizer: boolean;
+
+  // 新しいプロパティ: Phase 1メモリ階層化
+  protected memoryManager: ConversationMemoryManager;
+  protected personalHistory: AgentPersonalHistory;
 
   constructor(agent: Agent, interactionLogger?: InteractionLogger, language: Language = 'en') {
     this.agent = agent;
@@ -41,6 +48,10 @@ export abstract class BaseAgent {
       topK: generationParams.topK
     });
     this.isSummarizer = false;
+
+    // 新しいプロパティを初期化
+    this.memoryManager = new ConversationMemoryManager();
+    this.personalHistory = this.initializePersonalHistory();
   }
 
   // Initialize AI executor if not already done
@@ -1098,6 +1109,21 @@ export abstract class BaseAgent {
     try {
       executor = await this.ensureAIExecutor(stage);
       const result = await executor.execute(prompt, personality);
+
+      // Word count validation for deep-dive, perspective-shift, and clarification stages
+      if (['deep-dive', 'perspective-shift', 'clarification'].includes(stage) && result.content) {
+        const wordCount = result.content.split(/\s+/).length;
+        if (wordCount < 120 || wordCount > 250) {
+          console.log(`[BaseAgent] ${this.agent.name} response word count: ${wordCount} (target: 150-200)`);
+          // Add guidance for word count adjustment in future responses
+          if (wordCount < 120) {
+            console.log(`[BaseAgent] Response too short for ${this.agent.name}, encouraging more detail`);
+          } else if (wordCount > 250) {
+            console.log(`[BaseAgent] Response too long for ${this.agent.name}, encouraging conciseness`);
+          }
+        }
+      }
+
       const duration = Date.now() - startTime;
       await this.logInteraction(
         sessionId,
@@ -1111,6 +1137,68 @@ export abstract class BaseAgent {
         executor['provider'],
         executor['model']
       );
+      return result.content;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      await this.logInteraction(
+        sessionId,
+        stage,
+        prompt,
+        personality,
+        `Error occurred during ${operationName}`,
+        duration,
+        'error',
+        errorMessage,
+        executor ? executor['provider'] : undefined,
+        executor ? executor['model'] : undefined
+      );
+      throw error;
+    }
+  }
+
+  // AI execution with custom finalizer model (high-cost LLM)
+  protected async executeAIWithFinalizerModel(
+    prompt: string,
+    personality: string,
+    customAgentId: string,
+    sessionId: string,
+    stage: DialogueStage,
+    operationName: string
+  ): Promise<string> {
+    const startTime = Date.now();
+    let executor: AIExecutor | undefined;
+    try {
+      // Create a temporary AI executor with the custom agent ID (containing '-finalizer')
+      // This will trigger the high-cost LLM configuration in ai-executor-impl.ts
+      const generationParams = this.getGenerationParameters();
+      executor = await createAIExecutor(customAgentId, {
+        temperature: generationParams.temperature,
+        topP: generationParams.topP,
+        repetitionPenalty: generationParams.repetitionPenalty,
+        presencePenalty: generationParams.presencePenalty,
+        frequencyPenalty: generationParams.frequencyPenalty,
+        topK: generationParams.topK
+      });
+
+      const result = await executor.execute(prompt, personality);
+
+      const duration = Date.now() - startTime;
+      await this.logInteraction(
+        sessionId,
+        stage,
+        prompt,
+        personality,
+        result.content,
+        duration,
+        result.success ? 'success' : 'error',
+        result.success ? undefined : `AI execution failed: ${result.error}${result.errorDetails ? ` | Details: ${JSON.stringify(result.errorDetails)}` : ''}`,
+        executor['provider'],
+        executor['model']
+      );
+
+      console.log(`[BaseAgent] Used high-cost LLM for finalizer ${customAgentId}, provider: ${executor['provider']}, model: ${executor['model']}`);
+
       return result.content;
     } catch (error) {
       const duration = Date.now() - startTime;
@@ -1293,5 +1381,82 @@ export abstract class BaseAgent {
       }
     }
     return 'No specific engagement detected';
+  }
+
+  // 新メソッド: 個人史の初期化
+  private initializePersonalHistory(): AgentPersonalHistory {
+    return {
+      agentId: this.agent.id,
+      coreBeliefs: this.extractCoreBeliefs(),
+      frequentTopics: [],
+      relationshipMap: {},
+      memorableQuotes: []
+    };
+  }
+
+  // 新メソッド: コア信念の抽出
+  private extractCoreBeliefs(): string[] {
+    const beliefs: string[] = [];
+
+    if (this.agent.personality) {
+      // パーソナリティから重要な信念を抽出
+      beliefs.push(this.agent.personality.split('.')[0]); // 最初の文
+    }
+
+    if (this.agent.preferences) {
+      beliefs.push(...this.agent.preferences.slice(0, 3)); // 上位3つの好み
+    }
+
+    return beliefs;
+  }
+
+  // 新メソッド: コンテキスト準備
+  protected async prepareContext(messages: Message[]): Promise<ConversationContext> {
+    // Use basic context preparation instead of compressIfNeeded
+    return {
+      recentFull: messages.slice(-5),
+      summarizedMid: '',
+      essenceCore: [],
+      totalTokenEstimate: messages.length * 50
+    };
+  }
+
+  // 新メソッド: 圧縮されたコンテキストの分析
+  private analyzeCompressedContext(context: ConversationContext): string {
+    let analysis = '';
+
+    // 直近の詳細な文脈
+    if (context.recentFull.length > 0) {
+      const recentMessages = context.recentFull
+        .filter(m => m.role === 'agent')
+        .map(m => `${m.agentId}: ${m.content.substring(0, 100)}...`)
+        .join(' | ');
+      analysis += `Recent discussion: ${recentMessages}\n`;
+    }
+
+    // 中期記憶の要約
+    if (context.summarizedMid) {
+      analysis += `Previous context: ${context.summarizedMid}\n`;
+    }
+
+    // 長期記憶のエッセンス
+    if (context.essenceCore.length > 0) {
+      analysis += `Historical themes: ${context.essenceCore.join(', ')}\n`;
+    }
+
+    // トークン使用量の情報
+    analysis += `Estimated tokens: ${context.totalTokenEstimate}\n`;
+
+    return analysis || 'No previous context available.';
+  }
+
+  // メモリ使用状況の取得
+  public getMemoryUsage(): { recentMessages: number; hasCompression: boolean; estimatedTokens: number } {
+    const memoryConfig = getV2MemoryConfig();
+    return {
+      recentMessages: this.memory.length,
+      hasCompression: this.memory.length > memoryConfig.maxRecentMessages,
+      estimatedTokens: this.memory.length * 50 // Simple estimation
+    };
   }
 } 

@@ -5,7 +5,7 @@ interface SessionManagerProps {
   sessions: Session[];
   currentSession: Session | null;
   onSelectSession: (session: Session) => void;
-  onCreateSession: (title: string, agentIds: string[], language: 'ja' | 'en') => void;
+  onCreateSession: (title: string, agentIds: string[], language: 'ja' | 'en', version: '1.0' | '2.0') => void;
   availableAgents: Agent[];
 }
 
@@ -22,6 +22,7 @@ const SessionManager: React.FC<SessionManagerProps> = ({
     availableAgents.map(agent => agent.id) // Default to all agents selected
   );
   const [language, setLanguage] = useState<'ja' | 'en'>('ja');
+  const [version, setVersion] = useState<'1.0' | '2.0'>('2.0');
 
   // Reset to all agents selected when form is shown
   useEffect(() => {
@@ -33,7 +34,7 @@ const SessionManager: React.FC<SessionManagerProps> = ({
   const handleCreateSession = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSessionTitle.trim()) return;
-    onCreateSession(newSessionTitle, availableAgents.map(agent => agent.id), language);
+    onCreateSession(newSessionTitle, availableAgents.map(agent => agent.id), language, version);
     setNewSessionTitle('');
     setShowCreateForm(false);
   };
@@ -72,12 +73,60 @@ const SessionManager: React.FC<SessionManagerProps> = ({
             />
           </div>
 
-          <div style={{ marginBottom: 8 }}>
-            <label>言語: </label>
-            <select value={language} onChange={e => setLanguage(e.target.value as 'ja' | 'en')}>
+          <div>
+            <label className="block text-xs font-medium text-gray-300 mb-1">
+              Language
+            </label>
+            <select
+              value={language}
+              onChange={e => setLanguage(e.target.value as 'ja' | 'en')}
+              className="w-full px-3 py-2 text-sm border border-gray-700 bg-gray-800 text-gray-100 focus:ring-2 focus:ring-blue-800 focus:border-transparent rounded"
+            >
               <option value="ja">日本語</option>
               <option value="en">English</option>
             </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-300 mb-1">
+              Protocol Version
+            </label>
+            <div className="flex gap-2">
+              <label className="flex items-center cursor-pointer flex-1">
+                <input
+                  type="radio"
+                  value="1.0"
+                  checked={version === '1.0'}
+                  onChange={(e) => setVersion(e.target.value as '1.0')}
+                  className="sr-only"
+                />
+                <div className={`w-full px-3 py-2 text-xs font-medium text-center rounded transition-colors border ${
+                  version === '1.0'
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700'
+                }`}>
+                  v1.0
+                  <div className="text-xs opacity-75">Fixed Stages</div>
+                </div>
+              </label>
+              <label className="flex items-center cursor-pointer flex-1">
+                <input
+                  type="radio"
+                  value="2.0"
+                  checked={version === '2.0'}
+                  onChange={(e) => setVersion(e.target.value as '2.0')}
+                  className="sr-only"
+                />
+                <div className={`w-full px-3 py-2 text-xs font-medium text-center rounded transition-colors border ${
+                  version === '2.0'
+                    ? 'bg-purple-600 text-white border-purple-600'
+                    : 'bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700'
+                }`}>
+                  v2.0
+                  <div className="text-xs opacity-75">Dynamic</div>
+                </div>
+              </label>
+            </div>
           </div>
 
           <button
