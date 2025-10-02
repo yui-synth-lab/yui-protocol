@@ -24,6 +24,7 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, availableAgents, onSes
   const [isConnected, setIsConnected] = useState(false);
   const [showContinueButton, setShowContinueButton] = useState(false);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+  const [showAgentsOnly, setShowAgentsOnly] = useState(false);
   // Track if we are waiting to auto-start a new sequence
   const [pendingAutoStartPrompt, setPendingAutoStartPrompt] = useState<string | null>(null);
   // Track if we have already loaded session data to prevent infinite loops
@@ -318,11 +319,24 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, availableAgents, onSes
               {session.agents.map(agent => agent.name).join(', ')}
             </p>
           </div>
-          <div className="flex items-center space-x-2">
-            <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
-            <span className="text-sm text-gray-300">
-              {isConnected ? 'Connected' : 'Disconnected'}
-            </span>
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={() => setShowAgentsOnly(!showAgentsOnly)}
+              className={`px-3 py-1 text-xs rounded transition-colors ${
+                showAgentsOnly
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}
+              title={showAgentsOnly ? 'Show all messages' : 'Show AI agents only'}
+            >
+              {showAgentsOnly ? '🤖 Agents Only' : '👥 All Messages'}
+            </button>
+            <div className="flex items-center space-x-2">
+              <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+              <span className="text-sm text-gray-300">
+                {isConnected ? 'Connected' : 'Disconnected'}
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -345,6 +359,7 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, availableAgents, onSes
           shouldAutoScroll={shouldAutoScroll}
           onScroll={setShouldAutoScroll}
           protocolVersion="1.0"
+          showAgentsOnly={showAgentsOnly}
         />
       </div>
 

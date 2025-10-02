@@ -26,6 +26,7 @@ const DynamicThreadView: React.FC<DynamicThreadViewProps> = ({
   const [isConnected, setIsConnected] = useState(false);
   const [messages, setMessages] = useState<Message[]>(session.messages || []);
   const [consensusData, setConsensusData] = useState<AgentConsensusData[]>([]);
+  const [showAgentsOnly, setShowAgentsOnly] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -223,6 +224,27 @@ const DynamicThreadView: React.FC<DynamicThreadViewProps> = ({
   return (
     <div className="flex flex-col h-full">
 
+      {/* Header with filter button */}
+      <div className="flex-shrink-0 border-b border-gray-700 bg-gray-800 px-4 py-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="text-sm text-gray-300 font-medium">{session.title}</div>
+            <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-400' : 'bg-red-400'}`}></div>
+          </div>
+          <button
+            onClick={() => setShowAgentsOnly(!showAgentsOnly)}
+            className={`px-3 py-1 text-xs rounded transition-colors ${
+              showAgentsOnly
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+            }`}
+            title={showAgentsOnly ? 'Show all messages' : 'Show AI agents only'}
+          >
+            {showAgentsOnly ? '🤖 Agents Only' : '👥 All Messages'}
+          </button>
+        </div>
+      </div>
+
       {/* Compact Status Bar */}
       {(isProcessing || currentRound > 0) && (
         <div className="bg-purple-900 border-b border-purple-700 px-4 py-2">
@@ -238,6 +260,17 @@ const DynamicThreadView: React.FC<DynamicThreadViewProps> = ({
               )}
               <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-400' : 'bg-red-400'}`}></div>
             </div>
+            <button
+              onClick={() => setShowAgentsOnly(!showAgentsOnly)}
+              className={`px-3 py-1 text-xs rounded transition-colors ${
+                showAgentsOnly
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-purple-800 text-purple-200 hover:bg-purple-700'
+              }`}
+              title={showAgentsOnly ? 'Show all messages' : 'Show AI agents only'}
+            >
+              {showAgentsOnly ? '🤖 Agents Only' : '👥 All Messages'}
+            </button>
           </div>
 
           {/* Detailed Consensus Indicator */}
@@ -260,11 +293,26 @@ const DynamicThreadView: React.FC<DynamicThreadViewProps> = ({
           currentStage={null}
           shouldAutoScroll={true}
           protocolVersion="2.0"
+          showAgentsOnly={showAgentsOnly}
         />
       </div>
 
       {/* Compact Input Area */}
       <div className="flex-shrink-0 border-t border-gray-700 bg-gray-800 p-3">
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-xs text-gray-400">Dynamic Dialogue v2.0</div>
+          <button
+            onClick={() => setShowAgentsOnly(!showAgentsOnly)}
+            className={`px-3 py-1 text-xs rounded transition-colors ${
+              showAgentsOnly
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+            }`}
+            title={showAgentsOnly ? 'Show all messages' : 'Show AI agents only'}
+          >
+            {showAgentsOnly ? '🤖 Agents Only' : '👥 All Messages'}
+          </button>
+        </div>
         <div className="flex gap-3 items-end">
           <textarea
             ref={textareaRef}

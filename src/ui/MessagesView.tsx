@@ -10,6 +10,7 @@ interface MessagesViewProps {
   onScroll?: (shouldAutoScroll: boolean) => void;
   shouldAutoScroll: boolean;
   protocolVersion?: '1.0' | '2.0';
+  showAgentsOnly?: boolean;
 }
 
 const MessagesView: React.FC<MessagesViewProps> = ({
@@ -19,18 +20,24 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   currentStage,
   onScroll,
   shouldAutoScroll,
-  protocolVersion = '1.0'
+  protocolVersion = '1.0',
+  showAgentsOnly = false
 }) => {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
 
+  // Filter messages based on showAgentsOnly prop
+  const filteredMessages = showAgentsOnly
+    ? messages.filter(m => (m.role === 'agent' && m.agentId !== 'facilitator-001') || m.role === 'user')
+    : messages;
+
   // Auto-scroll to bottom when new messages are added
   useEffect(() => {
-    if (shouldAutoScroll && messages.length > 0) {
+    if (shouldAutoScroll && filteredMessages.length > 0) {
       scrollToBottom();
     }
-  }, [messages.length, shouldAutoScroll]);
+  }, [filteredMessages.length, shouldAutoScroll]);
 
   const scrollToBottom = () => {
     if (messagesContainerRef.current) {
@@ -145,7 +152,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
     return groups;
   };
 
-  const messageGroups = groupMessagesByStage(messages);
+  const messageGroups = groupMessagesByStage(filteredMessages);
 
   // ステージサマリーを表示する関数
   const renderStageSummary = (stage: DialogueStage) => {
@@ -323,9 +330,13 @@ const MessagesView: React.FC<MessagesViewProps> = ({
 
   return (
     <div className="h-full overflow-y-auto p-4 space-y-4 bg-gray-900" ref={messagesContainerRef} onScroll={handleScroll}>
-      {messages.length === 0 ? (
+      {filteredMessages.length === 0 ? (
         <div className="text-center py-8">
-          <p className="text-gray-400">No messages yet. Start a conversation!</p>
+          <p className="text-gray-400">
+            {showAgentsOnly && messages.length > 0
+              ? 'No agent messages in this session.'
+              : 'No messages yet. Start a conversation!'}
+          </p>
         </div>
       ) : (
         <>

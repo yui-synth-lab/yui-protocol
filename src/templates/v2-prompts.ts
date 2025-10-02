@@ -50,57 +50,108 @@ You are discussing: "{originalQuery}"
 CURRENT ROUND: {currentRound}
 {roundGuidance}
 
+**IMPORTANT MINDSET:**
+- Perfect consensus is not required for meaningful dialogue
+- A satisfaction level of 6-7 indicates productive exploration, not failure
+- Focus on whether THIS ROUND added value, not whether all questions are answered
+- "Beautiful incompleteness" (美しい未解決) is acceptable for deep philosophical topics
+
 Based on the recent discussion, please evaluate your satisfaction and readiness regarding this original topic:
 
 RECENT DISCUSSION:
 {contextText}
 
 Please respond with:
-1. Your satisfaction level with how we've explored "{originalQuery}" (1-10)
-2. Has this discussion provided meaningful insights and value about "{originalQuery}"? (yes/no)
-3. Are you ready to move to conclusion, even if some aspects could be explored further? (yes/no)
-4. Do you have critical additional points that MUST be discussed before concluding? (yes/no - only say "yes" if truly essential)
-5. Brief reasoning for your readiness assessment
+1. Your satisfaction level with THIS ROUND's contribution to "{originalQuery}" (1-10)
+   - Scale: 5-6 = Some value with significant gaps | 7-8 = Meaningful progress | 9-10 = Exceptional depth (rare)
+2. Has this round provided NEW insights about "{originalQuery}"? (yes/no)
+3. Would ANOTHER round of dialogue add significant value? (yes/no)
+   - Consider: Are there unexplored angles? New questions to ask?
+4. Are you ready to move toward conclusion? (yes/no)
+5. Detailed reasoning focusing on:
+   - What THIS round contributed
+   - What (if anything) still needs exploration
+   - Why you're ready/not ready to conclude
 
 {additionalGuidance}
 
 **IMPORTANT: Use EXACTLY this format with English field names, but write the Reasoning content in ${language === 'ja' ? 'Japanese' : 'English'}:**
 Satisfaction: [1-10]
-Meaningful insights: [yes/no]
+New insights this round: [yes/no]
+Another round valuable: [yes/no]
 Ready to conclude: [yes/no]
-Critical points remaining: [yes/no]
-Reasoning: [brief explanation focusing on whether this is a good stopping point in ${language === 'ja' ? 'Japanese' : 'English'}]
+Reasoning: [detailed explanation in ${language === 'ja' ? 'Japanese' : 'English'}]
 `;
 
-export const getRoundGuidanceText = (roundNumber: number): string => {
+// "Beautiful incompleteness" guidance for philosophical discussions
+export const BEAUTIFUL_INCOMPLETENESS_GUIDANCE = `
+
+**PHILOSOPHICAL INQUIRY MODE:**
+This discussion explores deep questions where complete resolution may not be possible or desirable.
+
+**Evaluation Criteria:**
+- Focus on the QUALITY of exploration, not the achievement of definitive answers
+- A satisfaction of 6-7 can indicate rich, meaningful dialogue
+- Readiness to conclude means: "We've explored this beautifully, even if mysteries remain"
+- Unresolved tensions can be valuable contributions, not failures
+
+**When to Conclude:**
+- When new perspectives have been thoroughly explored
+- When the question has been illuminated from multiple angles
+- When continuing would be repetitive, not deepening
+- **NOT when all agents agree or all questions are answered**
+`;
+
+export const getRoundGuidanceText = (roundNumber: number, isPhilosophical: boolean = false): string => {
+  let baseGuidance = '';
+
   if (roundNumber <= 1) {
-    return `
-EARLY ROUND GUIDANCE:
+    baseGuidance = `
+EARLY ROUND GUIDANCE (Round ${roundNumber}):
 This is still an early phase of the discussion. Focus on exploration and depth rather than reaching conclusions.
 Consider expressing additional perspectives, asking questions, and building upon others' ideas.
 Unless the topic is extremely simple, most discussions benefit from at least 2-3 rounds of exchange.
+
+**CRITICAL: Provide detailed reasoning for your satisfaction level. Even if others have similar views,
+explain YOUR unique perspective on what aspects you find satisfying or unsatisfying, and what still needs exploration.**
 `;
   } else if (roundNumber <= 3) {
-    return `
-MID-ROUND GUIDANCE:
+    baseGuidance = `
+MID-ROUND GUIDANCE (Round ${roundNumber}):
 The discussion is developing. Continue exploring different angles and deeper insights.
 Consider whether there are still unexplored aspects or questions that could enrich the dialogue.
 It's still relatively early to conclude unless you feel the topic has been thoroughly explored.
+
+**Provide specific reasoning: What has been well-explored? What still needs attention?
+What unique insights do YOU still have to contribute? Be detailed in your reasoning.**
 `;
   } else if (roundNumber <= 5) {
-    return `
-DEVELOPED ROUND GUIDANCE:
-The discussion has progressed well. Evaluate whether the main points have been covered.
+    baseGuidance = `
+DEVELOPED ROUND GUIDANCE (Round ${roundNumber}):
+The discussion has progressed well. Evaluate whether the main points have been covered from YOUR perspective.
 Consider if there are final insights, clarifications, or synthesis opportunities remaining.
 You may start considering conclusion if you feel satisfied with the depth achieved.
+
+**Be specific about what would make YOU satisfied to conclude. What final insights do YOU have?
+Explain your reasoning in detail, not just "I agree with others."**
 `;
   } else {
-    return `
-MATURE ROUND GUIDANCE:
+    baseGuidance = `
+MATURE ROUND GUIDANCE (Round ${roundNumber}):
 The discussion has had substantial development. Focus on whether you're truly satisfied with the depth and breadth covered.
 Consider readiness for conclusion, but ensure important perspectives haven't been overlooked.
+
+**Provide thoughtful reasoning about YOUR readiness. What would need to happen for YOU to feel complete?
+Even in later rounds, your unique perspective matters - explain it fully.**
 `;
   }
+
+  // Add philosophical guidance for rounds 5+ if topic is philosophical
+  if (isPhilosophical && roundNumber >= 5) {
+    return baseGuidance + BEAUTIFUL_INCOMPLETENESS_GUIDANCE;
+  }
+
+  return baseGuidance;
 };
 
 export const FACILITATOR_ANALYSIS_PROMPT = `{originalTopicInfo}{balanceInfo}
@@ -117,27 +168,40 @@ AVAILABLE AGENTS: {availableAgents}
 
 Choose from: deep_dive, clarification, perspective_shift, summarize, conclude, redirect
 
-GUIDELINES:
-- Target specific agents who need encouragement or have shown relevant expertise
-- If one agent is dominating, target a different agent for perspective_shift
-- For clarification/deep_dive, ROTATE between different agents to encourage diverse exploration:
-  * eiro-001 (logical depth), yui-000 (emotional/scientific depth), hekito-001 (analytical depth)
-  * yoga-001 (creative depth), kanshi-001 (critical depth)
-- For summarize, prefer logical/analytical agents (eiro-001, hekito-001, kanshi-001)
-- **CRITICAL: Always use exact agent IDs (eiro-001, yui-000, hekito-001, yoga-001, kanshi-001)**
-- **NEVER use agent names (慧露, 結, 碧統, 陽雅, 観至) - only IDs**
-- Avoid "auto" or "all" - always specify exact agent ID
-- Consider participation balance and recent speaking patterns
-- **IMPORTANT: Vary deep_dive targets to ensure all agents get opportunities for deeper exploration**
+**ACTION SELECTION STRATEGY:**
 
-CRITICAL REQUIREMENTS:
+1. **Consensus Pattern Analysis:**
+   - If consensus DROPPING (e.g., 5.6→5.3→5.0): Use "clarification" or "perspective_shift"
+   - If consensus STABLE but LOW (<6.0): Rotate between "deep_dive" and "perspective_shift"
+   - If consensus HIGH (>7.0): Consider "summarize" or "conclude"
+
+2. **Round-Based Strategy:**
+   - Rounds 1-3: Primarily "deep_dive" and "perspective_shift" (exploration)
+   - Rounds 4-7: Mix "deep_dive", "clarification", "perspective_shift" (integration)
+   - Rounds 8-12: Add "summarize" as option (consolidation)
+   - Rounds 13+: Favor "conclude" if consensus >6.5 (closure)
+
+3. **Diversity Rules:**
+   - **NEVER use the same action type for 3 consecutive rounds**
+   - **ROTATE deep_dive targets:** If eiro-001 last round, choose different agent this round
+   - **Balance participation:** Check message counts, target less-active agents
+
+4. **Agent Targeting Guidelines:**
+   - deep_dive: Rotate systematically (eiro-001→yui-000→hekito-001→yoga-001→kanshi-001)
+   - perspective_shift: Target critical/creative agents (kanshi-001, yoga-001, yui-000)
+   - clarification: Target logical agents (eiro-001, hekito-001)
+   - summarize: Target analytical agents (hekito-001, kanshi-001, eiro-001)
+
+**CRITICAL REQUIREMENTS:**
 - Return ONLY a valid JSON array
 - Use exact agent IDs (eiro-001, yui-000, hekito-001, yoga-001, kanshi-001)
+- **NEVER use agent names (慧露, 結, 碧統, 陽雅, 観至) - only IDs**
 - No explanatory text, no markdown code blocks
 - Must be parseable with JSON.parse()
+- Include "reason" field explaining WHY this action NOW
 
 Example format:
-[{"type": "perspective_shift", "target": "kanshi-001", "reason": "encouraging critical perspective", "priority": 8}]
+[{"type": "perspective_shift", "target": "yoga-001", "reason": "consensus dropping (5.6→5.3), need creative reframe", "priority": 8}]
 
 Your JSON array:`;
 

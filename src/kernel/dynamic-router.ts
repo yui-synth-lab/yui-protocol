@@ -472,7 +472,14 @@ export class DynamicDialogueRouter {
   ): Promise<ConsensusIndicator> {
     const recentMessages = messages.slice(-5);
     const contextText = recentMessages.map(m => `${m.agentId}: ${m.content}`).join('\n\n');
-    const roundGuidance = getRoundGuidanceText(currentRound);
+
+    // Detect if topic is philosophical based on query content
+    const philosophicalKeywords = ['時間', 'time', '存在', 'existence', '意識', 'consciousness', '本質', 'essence', '哲学', 'philosophy', '真理', 'truth', '永遠', 'eternity'];
+    const isPhilosophical = philosophicalKeywords.some(keyword =>
+      this.originalQuery.toLowerCase().includes(keyword.toLowerCase())
+    );
+
+    const roundGuidance = getRoundGuidanceText(currentRound, isPhilosophical);
     const additionalGuidance = currentRound <= 2 ?
       'NOTE: In early rounds, consider whether the discussion could benefit from more exploration and different perspectives before concluding.' :
       'Consider: A satisfaction level of 6+ with meaningful insights often indicates readiness for conclusion.';
@@ -503,42 +510,62 @@ export class DynamicDialogueRouter {
     let hasAdditionalPoints = false;
     let questionsForOthers: string[] = [];
     let readyToMove = false; // デフォルトをfalseに変更（慎重な判断）
-    let reasoning = 'No specific reasoning provided';
+    let reasoning = '';
 
     try {
       const lines = response.split('\n');
+      let capturingReasoning = false;
+      let reasoningLines: string[] = [];
 
-      for (const line of lines) {
-        const trimmed = line.trim();
+      for (let i = 0; i < lines.length; i++) {
+        const trimmed = lines[i].trim();
 
         if (trimmed.startsWith('Satisfaction:')) {
           const match = trimmed.match(/(\d+)/);
           if (match) satisfactionLevel = Math.min(10, Math.max(1, parseInt(match[1])));
-        }
-
-        if (trimmed.startsWith('Meaningful insights:')) {
+          capturingReasoning = false;
+        } else if (trimmed.startsWith('Meaningful insights:')) {
           // 新しいフォーマットでは meaningful insights を評価
           const hasMeaningfulInsights = trimmed.toLowerCase().includes('yes');
           // 意味ある洞察は満足度の指標であり、追加議論の必要性とは別
           // hasAdditionalPointsは別途Critical pointsで判定する
-        }
-
-        if (trimmed.startsWith('Ready to conclude:')) {
+          capturingReasoning = false;
+        } else if (trimmed.startsWith('Ready to conclude:')) {
           readyToMove = trimmed.toLowerCase().includes('yes');
-        }
-
-        if (trimmed.startsWith('Critical points remaining:')) {
+          capturingReasoning = false;
+        } else if (trimmed.startsWith('Critical points remaining:')) {
           // 重要な未討論ポイントがある場合、継続が必要
           const hasCriticalPoints = trimmed.toLowerCase().includes('yes');
           if (hasCriticalPoints) {
             readyToMove = false; // 重要ポイントがあれば継続
             hasAdditionalPoints = true;
           }
+          capturingReasoning = false;
+        } else if (trimmed.startsWith('Reasoning:')) {
+          // Reasoning の開始
+          const firstLine = trimmed.replace('Reasoning:', '').trim();
+          if (firstLine) {
+            reasoningLines.push(firstLine);
+          }
+          capturingReasoning = true;
+        } else if (capturingReasoning && trimmed) {
+          // Reasoning の続き（空行でない場合）
+          // 次のフィールドの開始をチェック
+          const isNextField = trimmed.match(/^(Satisfaction|Meaningful insights|Ready to conclude|Critical points remaining|New insights|Another round):/i);
+          if (isNextField) {
+            capturingReasoning = false;
+            // このラインは次のイテレーションで処理される
+            i--; // ループカウンタを戻す
+          } else {
+            reasoningLines.push(trimmed);
+          }
         }
+      }
 
-        if (trimmed.startsWith('Reasoning:')) {
-          reasoning = trimmed.replace('Reasoning:', '').trim();
-        }
+      // Reasoning を結合
+      reasoning = reasoningLines.join(' ').trim();
+      if (!reasoning) {
+        reasoning = '';
       }
 
       // 満足度ベースの自動判定ロジック強化
