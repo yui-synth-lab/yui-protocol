@@ -29,6 +29,11 @@ const kanshiConfig: Agent = {
     'Clear communication is essential for implementation'
   ],
   approach: 'Critical analysis with practical step-by-step problem solving',
+  modelConfig: {
+    provider: 'anthropic',
+    model: 'claude-3-5-haiku-20241022',
+    finalizerModel: 'claude-sonnet-4-20250514'
+  },
   // Enhanced personality fields for more concrete expression
   specificBehaviors: 'start by identifying the core question or problem, then systematically break it down into smaller, manageable pieces, always looking for hidden assumptions or logical gaps that others might miss',
   thinkingPatterns: 'approach problems like a detective solving a mystery, following evidence step-by-step, questioning every assumption, and building a clear chain of reasoning that others can follow and verify',

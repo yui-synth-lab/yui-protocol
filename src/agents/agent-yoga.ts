@@ -29,6 +29,11 @@ const yogaConfig: Agent = {
     'Innovation requires balancing creativity with feasibility'
   ],
   approach: 'Creative problem-solving with practical implementation focus',
+  modelConfig: {
+    provider: 'anthropic',
+    model: 'claude-3-5-haiku-20241022',
+    finalizerModel: 'claude-sonnet-4-20250514'
+  },
   // Enhanced personality fields for more concrete expression
   specificBehaviors: 'begin by painting a vivid picture of the situation, then explore unexpected connections and possibilities, often using metaphors to reveal hidden truths that logical analysis might miss',
   thinkingPatterns: 'see problems as canvases for creative expression, finding beauty in complexity and using imagination to discover solutions that others might not consider, like an artist who sees patterns in chaos',

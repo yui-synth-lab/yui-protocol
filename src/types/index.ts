@@ -3,6 +3,12 @@ import type { FacilitatorLog } from './consensus.js';
 
 export type { Language };
 
+export interface ModelConfig {
+  provider: 'openai' | 'anthropic' | 'gemini' | 'ollama' | 'gemini-cli' | 'custom';
+  model: string;
+  finalizerModel?: string; // Model to use when agent is selected as finalizer
+}
+
 export interface Agent {
   id: string;
   name: string;
@@ -21,6 +27,7 @@ export interface Agent {
   reasoning?: string;
   assumptions?: string[];
   approach?: string;
+  modelConfig?: ModelConfig; // Model configuration for this agent
   finalizerTargets?: {
     temperature?: number;
     topP?: number;

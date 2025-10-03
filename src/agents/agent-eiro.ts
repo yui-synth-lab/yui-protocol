@@ -29,6 +29,11 @@ const eiroConfig: Agent = {
     'Multiple perspectives should be considered'
   ],
   approach: 'Systematic logical analysis with ethical consideration',
+  modelConfig: {
+    provider: 'openai',
+    model: 'gpt-4o-mini',
+    finalizerModel: 'gpt-4o-2024-08-06'
+  },
   // Enhanced personality fields for more concrete expression
   specificBehaviors: 'begin by examining the fundamental assumptions underlying any question, then build logical frameworks step-by-step, always considering the broader philosophical implications and ethical dimensions',
   thinkingPatterns: 'construct arguments like a philosopher building a careful proof, examining each premise, considering counterarguments, and seeking the deepest underlying principles that connect different ideas',

@@ -31,7 +31,16 @@ export abstract class BaseAgent {
     this.interactionLogger = interactionLogger || new InteractionLogger();
     // Use 'en' as default for generation parameters in constructor
     const generationParams = this.getGenerationParameters();
+
+    // Get model configuration from agent, or use defaults
+    const modelConfig = agent.modelConfig || {
+      provider: 'openai',
+      model: 'gpt-4.1-mini-2025-04-14'
+    };
+
     this.aiExecutorPromise = createAIExecutor(agent.id, {
+      provider: modelConfig.provider,
+      model: modelConfig.model,
       temperature: generationParams.temperature,
       topP: generationParams.topP,
       repetitionPenalty: generationParams.repetitionPenalty,
@@ -39,7 +48,12 @@ export abstract class BaseAgent {
       frequencyPenalty: generationParams.frequencyPenalty,
       topK: generationParams.topK
     });
+
+    // Use finalizer model if specified, otherwise use the same model
+    const finalizerModel = modelConfig.finalizerModel || modelConfig.model;
     this.aiExecutorPromiseFinalize = createAIExecutor(agent.id + '-finalizer', {
+      provider: modelConfig.provider,
+      model: finalizerModel,
       temperature: generationParams.temperature,
       topP: generationParams.topP,
       repetitionPenalty: generationParams.repetitionPenalty,
@@ -1170,9 +1184,21 @@ export abstract class BaseAgent {
     let executor: AIExecutor | undefined;
     try {
       // Create a temporary AI executor with the custom agent ID (containing '-finalizer')
-      // This will trigger the high-cost LLM configuration in ai-executor-impl.ts
+      // This will trigger the high-cost LLM configuration
       const generationParams = this.getGenerationParameters();
+
+      // Get model configuration from agent
+      const modelConfig = this.agent.modelConfig || {
+        provider: 'openai',
+        model: 'gpt-4.1-mini-2025-04-14'
+      };
+
+      // Use finalizer model if specified
+      const finalizerModel = modelConfig.finalizerModel || modelConfig.model;
+
       executor = await createAIExecutor(customAgentId, {
+        provider: modelConfig.provider,
+        model: finalizerModel,
         temperature: generationParams.temperature,
         topP: generationParams.topP,
         repetitionPenalty: generationParams.repetitionPenalty,
