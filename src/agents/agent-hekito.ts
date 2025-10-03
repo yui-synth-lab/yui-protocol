@@ -30,9 +30,9 @@ const hekitoConfig: Agent = {
   ],
   approach: 'Analytical synthesis with balanced cross-domain thinking',
   modelConfig: {
-    provider: 'gemini',
-    model: 'gemini-2.5-flash',
-    finalizerModel: 'gemini-2.5-pro'
+    provider: (process.env.AGENT_HEKITO_001_PROVIDER as 'openai' | 'anthropic' | 'gemini' | 'ollama' | 'gemini-cli' | 'custom') || 'gemini',
+    model: (process.env.AGENT_HEKITO_001_MODEL || 'gemini-2.5-flash'),
+    finalizerModel: (process.env.AGENT_HEKITO_001_FINALIZER_MODEL || 'gemini-2.5-pro')
   },
   // Enhanced personality fields for more concrete expression
   specificBehaviors: 'start by collecting and organizing data points, then identify patterns and correlations, always looking for quantitative evidence to support or challenge assumptions, and presenting findings in clear, visual terms',

@@ -30,9 +30,9 @@ const yogaConfig: Agent = {
   ],
   approach: 'Creative problem-solving with practical implementation focus',
   modelConfig: {
-    provider: 'anthropic',
-    model: 'claude-3-5-haiku-20241022',
-    finalizerModel: 'claude-sonnet-4-20250514'
+    provider: (process.env.AGENT_YOGA_001_PROVIDER as 'openai' | 'anthropic' | 'gemini' | 'ollama' | 'gemini-cli' | 'custom') || 'anthropic',
+    model: (process.env.AGENT_YOGA_001_MODEL || 'claude-3-5-haiku-20241022'),
+    finalizerModel: (process.env.AGENT_YOGA_001_FINALIZER_MODEL || 'claude-sonnet-4-20250514')
   },
   // Enhanced personality fields for more concrete expression
   specificBehaviors: 'begin by painting a vivid picture of the situation, then explore unexpected connections and possibilities, often using metaphors to reveal hidden truths that logical analysis might miss',

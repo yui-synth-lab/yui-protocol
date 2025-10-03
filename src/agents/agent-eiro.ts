@@ -30,9 +30,9 @@ const eiroConfig: Agent = {
   ],
   approach: 'Systematic logical analysis with ethical consideration',
   modelConfig: {
-    provider: 'openai',
-    model: 'gpt-4o-mini',
-    finalizerModel: 'gpt-4o-2024-08-06'
+    provider: (process.env.AGENT_EIRO_001_PROVIDER as 'openai' | 'anthropic' | 'gemini' | 'ollama' | 'gemini-cli' | 'custom') || 'openai',
+    model: (process.env.AGENT_EIRO_001_MODEL || 'gpt-4o-mini'),
+    finalizerModel: (process.env.AGENT_EIRO_001_FINALIZER_MODEL || 'gpt-4o-2024-08-06')
   },
   // Enhanced personality fields for more concrete expression
   specificBehaviors: 'begin by examining the fundamental assumptions underlying any question, then build logical frameworks step-by-step, always considering the broader philosophical implications and ethical dimensions',
