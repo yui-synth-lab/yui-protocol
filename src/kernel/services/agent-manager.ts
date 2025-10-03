@@ -1,5 +1,5 @@
 import { Agent, AgentInstance } from '../../types/index.js';
-import { yuiAgent } from '../../agents/agent-yui.js';
+import { YuiAgent } from '../../agents/agent-yui.js';
 import { YogaAgent } from '../../agents/agent-yoga.js';
 import { KanshiAgent } from '../../agents/agent-kanshi.js';
 import { HekitoAgent } from '../../agents/agent-hekito.js';
@@ -28,7 +28,7 @@ export class AgentManager {
     this.agents.set('kanshi-001', new KanshiAgent(this.interactionLogger));
     this.agents.set('yoga-001', new YogaAgent(this.interactionLogger));
     this.agents.set('hekito-001', new HekitoAgent(this.interactionLogger));
-    this.agents.set('yui-000', new yuiAgent(this.interactionLogger));    
+    this.agents.set('yui-000', new YuiAgent(this.interactionLogger));    
     console.log(`[AgentManager] Initialized ${this.agents.size} agents`);
   }
 } 

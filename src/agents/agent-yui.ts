@@ -42,7 +42,7 @@ const yuiConfig: Agent = {
   agreementStyle: 'celebrate shared understanding while adding your unique perspective on the emotional or scientific aspects others might have missed'
 };
 
-export class yuiAgent extends BaseAgent {
+export class YuiAgent extends BaseAgent {
   constructor(interactionLogger?: InteractionLogger) {
     super(yuiConfig, interactionLogger);
   }
