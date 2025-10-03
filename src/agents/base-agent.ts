@@ -11,6 +11,27 @@ function nudgeToTarget(calculated: number, target: number, weight: number = 0.2)
   return calculated * (1 - weight) + target * weight;
 }
 
+// Helper: Get model config from environment variables
+function getModelConfigFromEnv(agentId: string, defaultConfig: any) {
+  // Convert agent ID to env var format: yui-000 -> YUI_000
+  const envPrefix = `AGENT_${agentId.toUpperCase().replace(/-/g, '_')}`;
+
+  const provider = process.env[`${envPrefix}_PROVIDER`];
+  const model = process.env[`${envPrefix}_MODEL`];
+  const finalizerModel = process.env[`${envPrefix}_FINALIZER_MODEL`];
+
+  // If any env var is set, use env config; otherwise use default
+  if (provider || model || finalizerModel) {
+    return {
+      provider: provider || defaultConfig.provider,
+      model: model || defaultConfig.model,
+      finalizerModel: finalizerModel || defaultConfig.finalizerModel || defaultConfig.model
+    };
+  }
+
+  return defaultConfig;
+}
+
 export abstract class BaseAgent {
   protected agent: Agent;
   protected memory: Message[] = [];
@@ -33,10 +54,13 @@ export abstract class BaseAgent {
     const generationParams = this.getGenerationParameters();
 
     // Get model configuration from agent, or use defaults
-    const modelConfig = agent.modelConfig || {
+    const defaultModelConfig = agent.modelConfig || {
       provider: 'openai',
       model: 'gpt-4.1-mini-2025-04-14'
     };
+
+    // Override with environment variables if present
+    const modelConfig = getModelConfigFromEnv(agent.id, defaultModelConfig);
 
     this.aiExecutorPromise = createAIExecutor(agent.id, {
       provider: modelConfig.provider,
@@ -1187,11 +1211,13 @@ export abstract class BaseAgent {
       // This will trigger the high-cost LLM configuration
       const generationParams = this.getGenerationParameters();
 
-      // Get model configuration from agent
-      const modelConfig = this.agent.modelConfig || {
+      // Get model configuration from agent with env override
+      const defaultModelConfig = this.agent.modelConfig || {
         provider: 'openai',
         model: 'gpt-4.1-mini-2025-04-14'
       };
+
+      const modelConfig = getModelConfigFromEnv(this.agent.id, defaultModelConfig);
 
       // Use finalizer model if specified
       const finalizerModel = modelConfig.finalizerModel || modelConfig.model;
