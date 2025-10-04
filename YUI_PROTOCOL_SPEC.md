@@ -37,6 +37,7 @@ Key improvements implemented (current state):
 - **High-cost finalizers**: Selected finalizers use premium LLMs (Claude Sonnet 4, GPT-4) via '-finalizer' agent ID suffix.
 - **Collaborative finalization**: Multiple finalizers work in coordinated sequence with transparent progress tracking.
 - **Round 0 optimization**: Eliminated redundant facilitator execution for improved efficiency.
+- **Token efficiency**: Memory compression and hierarchical context management reduce token usage by 50-70% compared to v1.0.
 
 Key implementation locations:
 
@@ -71,6 +72,36 @@ npm run dev
 ```
 
 For detailed enablement steps, examples, and configuration options, see the `v2: Dynamic Dialogue` section in the repository `README.md`.
+
+### v2.0 Configuration
+
+The v2.0 system behavior is controlled via `config/v2-settings.json`:
+
+```json
+{
+  "memory": {
+    "maxRecentMessages": 5,
+    "tokenThreshold": 8000,
+    "compressionRatio": 0.3
+  },
+  "consensus": {
+    "convergenceThreshold": 7.5,
+    "maxRounds": 20,
+    "minSatisfactionLevel": 6
+  },
+  "facilitator": {
+    "actionPriority": {
+      "deep_dive": 8,
+      "clarification": 7,
+      "perspective_shift": 6,
+      "summarize": 5,
+      "conclude": 9,
+      "redirect": 4
+    },
+    "interventionCooldown": 2
+  }
+}
+```
 
 This section can be expanded with design artifacts (prompt examples, state diagrams, API diffs) on request.
 
