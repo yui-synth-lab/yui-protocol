@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express, { Request, Response, RequestHandler } from 'express';
 import cors from 'cors';
 import path from 'path';
