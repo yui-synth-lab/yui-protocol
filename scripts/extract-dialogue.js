@@ -23,13 +23,27 @@ const EMOJI_MAP = {
   'System': '⚙️'
 };
 
+// Fallback mapping for agent id -> display name (kanji)
 const AGENT_NAME_MAP = {
-  'hekito-001': '慧露',
+  'eiro-001': '慧露',
   'kanshi-001': '観至',
   'yoga-001': '陽雅',
-  'hekitou-001': '碧統',
+  'hekito-001': '碧統',
   'yui-000': '結心'
 };
+
+// Fallback mapping for agent id -> furigana
+const AGENT_FURIGANA_MAP = {
+  'eiro-001': 'えいろ',
+  'kanshi-001': 'かんし',
+  'yoga-001': 'ようが',
+  'hekito-001': 'へきとう',
+  'yui-000': 'ゆい'
+};
+
+function escapeRegExp(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 /**
  * セッションファイルを読み込む
@@ -57,6 +71,8 @@ function getEmojiForAgent(agentName) {
 function formatMessage(message, agentMap) {
   const agent = agentMap.get(message.agentId);
   const agentName = agent ? agent.name : message.agentId;
+  const agentFurigana = agent ? (agent.furigana || '') : (AGENT_FURIGANA_MAP[message.agentId] || '');
+  const displayName = agentFurigana ? `${agentName}《${agentFurigana}》` : agentName;
   const emoji = getEmojiForAgent(agentName);
 
   // システムメッセージやファシリテーターメッセージの特別処理
@@ -73,10 +89,18 @@ function formatMessage(message, agentMap) {
   }
 
   // 通常のエージェントメッセージ
-  Object.keys(AGENT_NAME_MAP).forEach(key => {
-    message.content = message.content.replace(new RegExp(key, 'g'), AGENT_NAME_MAP[key]);
-  });
-  return `\n${emoji}${agentName}\n\n${message.content}\n`;
+  // Replace agent IDs inside the content with Name《furigana》 using session agent metadata when available
+  // Use known agent ids from agentMap first, then fall back to AGENT_NAME_MAP keys
+  const replacementKeys = new Set([...agentMap.keys(), ...Object.keys(AGENT_NAME_MAP)]);
+  for (const key of replacementKeys) {
+    const sessionAgent = agentMap.get(key);
+    const name = sessionAgent ? sessionAgent.name : (AGENT_NAME_MAP[key] || key);
+    const furigana = sessionAgent ? (sessionAgent.furigana || '') : (AGENT_FURIGANA_MAP[key] || '');
+    const replacement = furigana ? `${name}《${furigana}》` : name;
+    const re = new RegExp(`\\b${escapeRegExp(key)}\\b`, 'g');
+    message.content = message.content.replace(re, replacement);
+  }
+  return `\n${emoji}${displayName}\n\n${message.content}\n`;
 }
 
 /**
