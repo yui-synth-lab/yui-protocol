@@ -112,12 +112,21 @@ export class GeminiExecutor extends AIExecutor {
         ],
       },
     ];
+
+    // Gemini 3 models strongly recommend temperature=1.0 to avoid loops and performance degradation
+    const isGemini3 = this.model.startsWith('gemini-3');
+    const temperature = isGemini3 ? 1.0 : this.temperature;
+
+    // Enable thinking for Pro models
+    const isProModel = this.model.includes('-pro');
+    const thinkingBudget = isProModel ? -1 : 0;
+
     const config = {
       thinkingConfig: {
-        thinkingBudget: this.model === 'gemini-2.5-pro' ? -1 : 0,
+        thinkingBudget,
       },
       responseMimeType: 'text/plain',
-      temperature: this.temperature,
+      temperature,
       topP: this.topP,
       topK: this.topK,
     };
@@ -164,23 +173,47 @@ export class OpenAIExecutor extends AIExecutor {
     }
 
     try {
+      // GPT-5 models have different parameter support than GPT-4
+      const isGPT5Model = this.model.startsWith('gpt-5');
+      const isGPT5Mini = this.model.includes('gpt-5-mini');
+
+      const requestBody: any = {
+        model: this.model,
+        messages: [
+          ...(personality ? [{ role: 'system', content: personality }] : []),
+          { role: 'user', content: prompt }
+        ],
+      };
+
+      if (isGPT5Model) {
+        // GPT-5 specific parameters:
+        // - Uses max_completion_tokens instead of max_tokens
+        // - GPT-5 mini only supports temperature=1 (omit for default)
+        // - GPT-5.2+ supports temperature normally
+        // - Does not support top_p, frequency_penalty, presence_penalty
+        // - May include reasoning_tokens in completion_tokens
+        requestBody.max_completion_tokens = this.maxTokens || 4000;
+
+        // Only add temperature for GPT-5.2 and above (not mini/nano)
+        if (!isGPT5Mini) {
+          requestBody.temperature = this.temperature;
+        }
+      } else {
+        // GPT-4 and older models use traditional sampling parameters
+        requestBody.temperature = this.temperature;
+        requestBody.top_p = this.topP;
+        requestBody.frequency_penalty = this.frequencyPenalty;
+        requestBody.presence_penalty = this.presencePenalty;
+        requestBody.max_tokens = this.maxTokens || 4000;
+      }
+
       const response = await noTimeoutFetch(`${this.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          model: this.model,
-          messages: [
-            ...(personality ? [{ role: 'system', content: personality }] : []),
-            { role: 'user', content: prompt }
-          ],
-          temperature: this.temperature,
-          top_p: this.topP,
-          frequency_penalty: this.frequencyPenalty,
-          presence_penalty: this.presencePenalty,
-        })
+        body: JSON.stringify(requestBody)
       });
 
       const duration = Date.now() - startTime;
@@ -275,8 +308,8 @@ export class AnthropicExecutor extends AIExecutor {
           system: personality,
           messages: [{ role: 'user', content: prompt }],
           temperature: this.temperature,
-          top_k: this.topK,
-          top_p: this.topP
+          top_k: this.topK//,
+          // top_p: this.topP
         })
       });
 

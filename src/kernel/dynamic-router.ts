@@ -20,6 +20,8 @@ export class DynamicDialogueRouter {
   private originalQuery: string = ''; // 初期クエリを保持
   private recentSpeakers: string[] = []; // 最近発言したエージェントを追跡
   private agentParticipationCount: Map<string, number> = new Map(); // エージェントの発言回数
+  private initialThoughts: Message[] = []; // Individual Thoughtの結果を保持
+  private currentRound: number = 0; // 現在のラウンド番号
 
   constructor(sessionStorage: SessionStorage, wsEmitter?: (event: string, data: any) => void) {
     this.facilitator = new FacilitatorAgent();
@@ -50,6 +52,8 @@ export class DynamicDialogueRouter {
     // 状態をリセット
     this.recentSpeakers = [];
     this.agentParticipationCount.clear();
+    this.initialThoughts = []; // Initial Thoughtをリセット
+    this.currentRound = 0; // ラウンド番号をリセット
     agentList.forEach(agent => {
       this.agentParticipationCount.set(agent.getAgent().id, 0);
     });
@@ -79,6 +83,10 @@ export class DynamicDialogueRouter {
     const initialResponses = await this.getInitialResponses(initialQuery, agentList, messages, language, sessionId);
     messages.push(...initialResponses);
 
+    // Individual Thoughtの結果を保持
+    this.initialThoughts = initialResponses.filter(m => m.stage === 'individual-thought');
+    console.log(`[DynamicRouter] Preserved ${this.initialThoughts.length} initial thoughts for future reference`);
+
     session = await this.updateSession(session, messages); // リアルタイム更新
 
     // Note: Round 0ファシリテーター処理を削除
@@ -87,6 +95,7 @@ export class DynamicDialogueRouter {
 
     while (!converged && round < this.maxRounds) {
       round++;
+      this.currentRound = round; // 現在のラウンドを更新
       console.log(`[DynamicRouter] Starting round ${round}`);
 
       // Emit round start event
@@ -220,7 +229,13 @@ export class DynamicDialogueRouter {
         });
       }
 
-      const nextActions = await this.executeActions(dialogueState.suggestedActions, agentList, messages, language);
+      const nextActions = await this.executeActions(
+        dialogueState.suggestedActions,
+        agentList,
+        messages,
+        language,
+        dialogueState.recommendedActionCount
+      );
       messages.push(...nextActions);
 
       // Emit new messages
@@ -340,10 +355,36 @@ export class DynamicDialogueRouter {
   ): Promise<Message[]> {
     const responses: Message[] = [];
 
-    for (const agent of agents) {
+    // ファシリテーターに発言順序を決定させる
+    console.log(`[DynamicRouter] Asking facilitator to determine speaking order...`);
+    const agentInfos = agents.map(a => ({
+      id: a.getAgent().id,
+      name: a.getAgent().name,
+      style: a.getAgent().style,
+      expertise: a.getAgent().expertise || []
+    }));
+
+    const speakingOrder = await this.facilitator.determineInitialSpeakingOrder(query, agentInfos);
+    console.log(`[DynamicRouter] Speaking order determined: ${speakingOrder.join(' → ')}`);
+
+    // 決定された順序でエージェントに順次発言させる
+    for (let i = 0; i < speakingOrder.length; i++) {
+      const agentId = speakingOrder[i];
+      const agent = agents.find(a => a.getAgent().id === agentId);
+
+      if (!agent) {
+        console.warn(`[DynamicRouter] Agent ${agentId} not found in agent list`);
+        continue;
+      }
+
       try {
-        console.log(`[DynamicRouter] Getting initial response from ${agent.getAgent().name}`);
-        const response = await agent.stage1IndividualThought(query, context, language);
+        console.log(`[DynamicRouter] ${i + 1}/${speakingOrder.length}: Getting initial response from ${agent.getAgent().name}`);
+
+        // これまでの発言を含むコンテキストを構築（自分より前のエージェントの発言のみ）
+        const previousResponses = responses.slice(); // これまでのすべての応答
+        const enrichedContext = [...context, ...previousResponses];
+
+        const response = await agent.stage1IndividualThought(query, enrichedContext, language);
 
         const message: Message = {
           id: this.generateMessageId(),
@@ -352,12 +393,15 @@ export class DynamicDialogueRouter {
           timestamp: new Date(),
           role: 'agent',
           stage: 'individual-thought',
-          sequenceNumber: 1,
+          sequenceNumber: i + 1,
           metadata: {
             reasoning: response.reasoning,
-            confidence: 0.8, // デフォルト値
+            confidence: 0.8,
             references: agent.getAgent().references || [],
-            stageData: response
+            stageData: response,
+            speakingOrder: i + 1,
+            totalSpeakers: speakingOrder.length,
+            previousSpeakers: speakingOrder.slice(0, i)
           }
         };
 
@@ -370,10 +414,15 @@ export class DynamicDialogueRouter {
         this.emitWebSocketEvent('v2-message', {
           sessionId,
           message,
-          round: 0 // Initial responses are round 0
+          round: 0, // Initial responses are round 0
+          speakingOrder: {
+            current: i + 1,
+            total: speakingOrder.length,
+            agentName: agent.getAgent().name
+          }
         });
 
-        console.log(`[DynamicRouter] Sent initial response from ${agent.getAgent().name} via WebSocket`);
+        console.log(`[DynamicRouter] Sent initial response ${i + 1}/${speakingOrder.length} from ${agent.getAgent().name} via WebSocket`);
       } catch (error) {
         console.error(`[DynamicRouter] Error getting response from ${agent.getAgent().name}:`, error);
       }
@@ -592,22 +641,39 @@ export class DynamicDialogueRouter {
     actions: any[],
     agents: BaseAgent[],
     messages: Message[],
-    language: Language
+    language: Language,
+    recommendedActionCount?: number
   ): Promise<Message[]> {
     const newMessages: Message[] = [];
 
     // アクションを優先度順にソート
     const sortedActions = actions.sort((a, b) => (b.priority || 0) - (a.priority || 0));
 
-    for (const action of sortedActions.slice(0, 2)) { // 最大2つのアクションを実行
+    // 実行するアクション数を決定（推奨値またはデフォルト2）
+    const actionCount = recommendedActionCount || 2;
+    const actionsToExecute = sortedActions.slice(0, actionCount);
+
+    console.log(`[DynamicRouter] Executing ${actionsToExecute.length} actions (recommended: ${recommendedActionCount || 'default'})`);
+
+    // アクションを逐次実行し、各アクションの結果を次のアクションのコンテキストに含める
+    for (let i = 0; i < actionsToExecute.length; i++) {
+      const action = actionsToExecute[i];
       try {
-        const actionMessages = await this.executeAction(action, agents, messages, language);
+        console.log(`[DynamicRouter] Executing action ${i + 1}/${actionsToExecute.length}: ${action.type} (target: ${action.target || 'auto'})`);
+
+        // 現在までのメッセージ配列（元のmessages + このラウンドで既に生成されたメッセージ）
+        const currentContext = [...messages, ...newMessages];
+
+        const actionMessages = await this.executeAction(action, agents, currentContext, language);
         newMessages.push(...actionMessages);
+
+        console.log(`[DynamicRouter] Action ${i + 1} completed, generated ${actionMessages.length} message(s)`);
       } catch (error) {
         console.error(`[DynamicRouter] Error executing action ${action.type}:`, error);
       }
     }
 
+    console.log(`[DynamicRouter] Total messages generated in this round: ${newMessages.length}`);
     return newMessages;
   }
 
@@ -716,16 +782,17 @@ export class DynamicDialogueRouter {
     messages: Message[],
     language: Language
   ): Promise<Message> {
-    // Get recent context from other agents
-    const recentContext = messages.slice(-3).filter(m => m.role === 'agent' && m.agentId !== agent.getAgent().id);
-    const contextText = recentContext.length > 0
-      ? recentContext.map(m => `${m.agentId}: "${m.content.slice(0, 150)}..."`).join('\n\n')
-      : "No recent discussion context available.";
+    // 完全なコンテキストを構築（Round 1-2: Initial Thoughts + 最近の議論、Round 3+: 最近の議論のみ）
+    const recentMessages = messages.slice(-5);
+    const contextText = this.buildFullContext(recentMessages, agent.getAgent().id);
+    const contextNote = this.currentRound <= 2
+      ? "including all agents' initial thoughts and recent discussion"
+      : "from recent discussion";
 
     const prompt = `
 CURRENT DISCUSSION: "${this.originalQuery}"
 
-RECENT CONTEXT FROM OTHER AGENTS:
+CONTEXT (${contextNote}):
 ${contextText}
 
 FACILITATOR REQUEST: ${reason}
@@ -733,7 +800,7 @@ FACILITATOR REQUEST: ${reason}
 Based on the above context, please contribute your unique perspective to "${this.originalQuery}".
 
 IMPORTANT GUIDELINES:
-- Build directly on or respond to specific points made by other agents above
+- Build directly on or respond to specific points made by other agents in the discussion
 - Avoid generic openings like "皆さま" or "これまでの議論で"
 - Reference specific ideas or arguments from the context when relevant
 - Bring your unique ${agent.getAgent().style} perspective to advance the discussion
@@ -775,24 +842,22 @@ Start your response naturally without formal greetings.
     messages: Message[],
     language: Language
   ): Promise<Message> {
-    // Get recent context including this agent's previous statements
-    const recentContext = messages.slice(-5);
-    const contextText = recentContext.map(m =>
-      `${m.agentId}: "${m.content.slice(0, 120)}..."`
-    ).join('\n\n');
+    // 完全なコンテキストを構築（Round 1-2: Initial Thoughts + 最近の議論、Round 3+: 最近の議論のみ）
+    const recentMessages = messages.slice(-5);
+    const contextText = this.buildFullContext(recentMessages, agent.getAgent().id);
 
     const prompt = `
 CURRENT DISCUSSION: "${this.originalQuery}"
 
-RECENT CONVERSATION FLOW:
+CONTEXT:
 ${contextText}
 
 CLARIFICATION NEEDED: ${reason}
 
-Based on the conversation above, please provide clarification to help advance our understanding of "${this.originalQuery}".
+Based on the context above, please provide clarification to help advance our understanding of "${this.originalQuery}".
 
 GUIDELINES:
-- Address specific unclear points from the recent discussion
+- Address specific unclear points from the discussion
 - Avoid starting with "皆さま" - respond naturally to the conversation
 - Use concrete examples or analogies to clarify complex concepts
 - Connect your clarification back to the main question
@@ -831,14 +896,21 @@ Respond directly to help clarify the discussion.
     messages: Message[],
     language: Language
   ): Promise<Message> {
+    // 完全なコンテキストを構築（Round 1-2: Initial Thoughts + 最近の議論、Round 3+: 最近の議論のみ）
+    const recentMessages = messages.slice(-5);
+    const contextText = this.buildFullContext(recentMessages, agent.getAgent().id);
+
     const prompt = `
 We are discussing: "${this.originalQuery}"
+
+CONTEXT:
+${contextText}
 
 The facilitator suggests introducing a different perspective to enrich the discussion about this topic.
 
 Reason: ${reason}
 
-Please consider "${this.originalQuery}" from an alternative angle, challenge existing assumptions about this topic, or introduce a viewpoint that hasn't been fully explored yet.
+Based on the context above, please consider "${this.originalQuery}" from an alternative angle, challenge existing assumptions about this topic, or introduce a viewpoint that hasn't been fully explored yet.
 `;
 
     const personality = (agent as any).getPersonalityPrompt(language);
@@ -910,25 +982,23 @@ Keep the summary focused on "${this.originalQuery}" and be both concise and comp
     messages: Message[],
     language: Language
   ): Promise<Message> {
-    // Get recent context to understand what specifically has drifted
-    const recentContext = messages.slice(-4);
-    const contextText = recentContext.map(m =>
-      `${m.agentId}: "${m.content.slice(0, 130)}..."`
-    ).join('\n\n');
+    // 完全なコンテキストを構築（Round 1-2: Initial Thoughts + 最近の議論、Round 3+: 最近の議論のみ）
+    const recentMessages = messages.slice(-5);
+    const contextText = this.buildFullContext(recentMessages, agent.getAgent().id);
 
     const prompt = `
 ORIGINAL DISCUSSION: "${this.originalQuery}"
 
-RECENT CONVERSATION (may have drifted):
+CONTEXT:
 ${contextText}
 
 REDIRECTION NEEDED: ${reason}
 
-Looking at how the conversation has evolved, please help refocus on "${this.originalQuery}" by providing a specific new angle or insight.
+Looking at the context above, please help refocus on "${this.originalQuery}" by providing a specific new angle or insight.
 
 GUIDELINES:
 - Don't start with generic acknowledgments like "皆さま" or "これまでの議論で"
-- Reference specific points from the recent conversation above
+- Reference specific points from the conversation
 - Identify what specific aspect of the drift needs addressing
 - Bring a fresh perspective that connects back to the core question
 - Be direct and engaging (150-200 words)
@@ -1278,8 +1348,17 @@ ${this.getCollaborativeInstructions(finalizer.getAgent().id, isFirst, isLast, in
   ): Message | null {
     if (dialogueState.suggestedActions.length === 0) return null;
 
-    const primaryAction = dialogueState.suggestedActions[0];
-    const content = this.formatFacilitatorActionContent(primaryAction, dialogueState, round, language);
+    const recommendedCount = dialogueState.recommendedActionCount || 2;
+    const actionsToDisplay = dialogueState.suggestedActions.slice(0, recommendedCount);
+    const primaryAction = actionsToDisplay[0];
+
+    const content = this.formatFacilitatorActionContent(
+      actionsToDisplay,
+      dialogueState,
+      round,
+      language,
+      recommendedCount
+    );
 
     return {
       id: this.generateMessageId(),
@@ -1296,17 +1375,20 @@ ${this.getCollaborativeInstructions(finalizer.getAgent().id, isFirst, isLast, in
         roundNumber: round,
         participationBalance: this.getParticipationBalance(dialogueState),
         isFacilitatorAction: true,
-        priority: primaryAction.priority
+        priority: primaryAction.priority,
+        recommendedActionCount: recommendedCount,
+        totalSuggestedActions: dialogueState.suggestedActions.length
       }
     };
   }
 
   // ファシリテーターアクションの内容をフォーマット
   private formatFacilitatorActionContent(
-    action: FacilitatorAction,
+    actions: FacilitatorAction[],
     dialogueState: DialogueState,
     round: number,
-    language: Language
+    language: Language,
+    actionCount: number
   ): string {
     const actionDescriptions = {
       ja: {
@@ -1327,11 +1409,31 @@ ${this.getCollaborativeInstructions(finalizer.getAgent().id, isFirst, isLast, in
       }
     };
 
-    const actionName = actionDescriptions[language]?.[action.type] || action.type;
     const consensusLevel = Math.round(dialogueState.overallConsensus * 10) / 10;
 
     if (language === 'ja') {
-      return `🔧 **ラウンド ${round} - ファシリテーター判断**
+      // 複数アクションの場合
+      if (actions.length > 1) {
+        const actionLines = actions.map((action, index) => {
+          const actionName = actionDescriptions[language]?.[action.type] || action.type;
+          return `**アクション ${index + 1}**: ${actionName}
+**対象**: ${action.target || '全体'}
+**理由**: ${action.reason}`;
+        }).join('\n\n');
+
+        return `🔧 **ラウンド ${round} - ファシリテーター判断**
+
+**実行アクション数**: ${actionCount}/${dialogueState.suggestedActions.length}
+**コンセンサス**: ${consensusLevel}/10
+
+${actionLines}
+
+*この判定により対話の流れを調整します*`;
+      } else {
+        // 単一アクションの場合
+        const action = actions[0];
+        const actionName = actionDescriptions[language]?.[action.type] || action.type;
+        return `🔧 **ラウンド ${round} - ファシリテーター判断**
 
 **アクション**: ${actionName}
 **対象**: ${action.target || '全体'}
@@ -1339,8 +1441,30 @@ ${this.getCollaborativeInstructions(finalizer.getAgent().id, isFirst, isLast, in
 **理由**: ${action.reason}
 
 *この判定により対話の流れを調整します*`;
+      }
     } else {
-      return `🔧 **Round ${round} - Facilitator Decision**
+      // 複数アクションの場合（英語）
+      if (actions.length > 1) {
+        const actionLines = actions.map((action, index) => {
+          const actionName = actionDescriptions[language]?.[action.type] || action.type;
+          return `**Action ${index + 1}**: ${actionName}
+**Target**: ${action.target || 'Overall'}
+**Reason**: ${action.reason}`;
+        }).join('\n\n');
+
+        return `🔧 **Round ${round} - Facilitator Decision**
+
+**Actions to Execute**: ${actionCount}/${dialogueState.suggestedActions.length}
+**Consensus**: ${consensusLevel}/10
+
+${actionLines}
+
+*This decision guides the dialogue flow*`;
+      } else {
+        // 単一アクションの場合（英語）
+        const action = actions[0];
+        const actionName = actionDescriptions[language]?.[action.type] || action.type;
+        return `🔧 **Round ${round} - Facilitator Decision**
 
 **Action**: ${actionName}
 **Target**: ${action.target || 'Overall'}
@@ -1348,6 +1472,7 @@ ${this.getCollaborativeInstructions(finalizer.getAgent().id, isFirst, isLast, in
 **Reason**: ${action.reason}
 
 *This decision guides the dialogue flow*`;
+      }
     }
   }
 
@@ -1704,5 +1829,40 @@ Note: You cannot vote for yourself. Vote for the agent you think can best synthe
     } else {
       console.warn(`[DynamicRouter] No WebSocket emitter available for event: ${event}`);
     }
+  }
+
+  // Initial Thoughtsを含む完全なコンテキストを構築
+  // Round 1-2: Initial Thoughts + 最近の議論
+  // Round 3以降: 最近の議論のみ（トークン節約）
+  private buildFullContext(recentMessages: Message[], excludeAgentId?: string): string {
+    // Round 3以降はInitial Thoughtsを含めない（トークン節約のため）
+    const includeInitialThoughts = this.currentRound <= 2;
+
+    let initialThoughtsText = '';
+    if (includeInitialThoughts) {
+      // Initial Thoughtsを最初に含める
+      initialThoughtsText = this.initialThoughts
+        .filter(m => !excludeAgentId || m.agentId !== excludeAgentId)
+        .map(m => `${m.agentId} [Initial Thought]: ${m.content}`)
+        .join('\n\n');
+    }
+
+    // 最近のメッセージを追加（ただしInitial Thoughtは除外）
+    const recentText = recentMessages
+      .filter(m => m.stage !== 'individual-thought' && m.role === 'agent')
+      .filter(m => !excludeAgentId || m.agentId !== excludeAgentId)
+      .map(m => `${m.agentId}: ${m.content}`)
+      .join('\n\n');
+
+    // 両方を結合
+    if (initialThoughtsText && recentText) {
+      return `INITIAL THOUGHTS FROM ALL AGENTS (Round ${this.currentRound}):\n${initialThoughtsText}\n\n---\n\nRECENT DISCUSSION:\n${recentText}`;
+    } else if (initialThoughtsText) {
+      return `INITIAL THOUGHTS FROM ALL AGENTS (Round ${this.currentRound}):\n${initialThoughtsText}`;
+    } else if (recentText) {
+      return `RECENT DISCUSSION (Round ${this.currentRound}):\n${recentText}`;
+    }
+
+    return "No context available.";
   }
 }

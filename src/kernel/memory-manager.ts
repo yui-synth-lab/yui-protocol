@@ -25,6 +25,7 @@ export class MemoryManager {
 
   private async initializeAIExecutor() {
     this.aiExecutor = await createAIExecutor('memory-compressor', {
+      model: process.env.MEMORY_COMPRESSOR_MODEL,
       temperature: 0.3,
       topP: 0.8,
       topK: 20
@@ -253,6 +254,7 @@ IMPORTANT: エージェントの個性を反映し、自分の発言履歴を正
   private async getAIExecutor(): Promise<AIExecutor> {
     if (!this.aiExecutor) {
       this.aiExecutor = await createAIExecutor('memory-manager', {
+        model: process.env.MEMORY_MANAGER_MODEL,
         temperature: 0.3,
         topP: 0.9
       });

@@ -31,8 +31,8 @@ const kanshiConfig: Agent = {
   approach: 'Critical analysis with practical step-by-step problem solving',
   modelConfig: {
     provider: (process.env.AGENT_KANSHI_001_PROVIDER as 'openai' | 'anthropic' | 'gemini' | 'ollama' | 'gemini-cli' | 'custom') || 'anthropic',
-    model: (process.env.AGENT_KANSHI_001_MODEL || 'claude-3-5-haiku-20241022'),
-    finalizerModel: (process.env.AGENT_KANSHI_001_FINALIZER_MODEL || 'claude-sonnet-4-20250514')
+    model: (process.env.AGENT_KANSHI_001_MODEL || 'claude-haiku-4-5-20251001'),
+    finalizerModel: (process.env.AGENT_KANSHI_001_FINALIZER_MODEL || 'claude-sonnet-4-5-20250929')
   },
   // Enhanced personality fields for more concrete expression
   specificBehaviors: 'start by identifying the core question or problem, then systematically break it down into smaller, manageable pieces, always looking for hidden assumptions or logical gaps that others might miss',

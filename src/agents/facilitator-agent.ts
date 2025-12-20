@@ -35,6 +35,73 @@ export class FacilitatorAgent {
     console.log(`[Facilitator] Updated participation counts:`, this.agentParticipationCount);
   }
 
+  // Initial Thoughtの発言順序を決定
+  async determineInitialSpeakingOrder(
+    query: string,
+    agents: { id: string; name: string; style: string; expertise: string[] }[]
+  ): Promise<string[]> {
+    if (!this.aiExecutor) {
+      await this.initializeAIExecutor();
+    }
+
+    const agentList = agents.map(a =>
+      `- ${a.id} (${a.name}): ${a.style} style, expertise in ${a.expertise.join(', ')}`
+    ).join('\n');
+
+    const prompt = `You are the facilitator of a dialogue. Given the following query and agent profiles, determine the optimal speaking order for the initial round of discussion.
+
+QUERY: "${query}"
+
+AVAILABLE AGENTS:
+${agentList}
+
+GUIDELINES FOR ORDERING:
+1. Consider which agent's perspective would provide the best foundation for others to build upon
+2. Order agents so that later speakers can meaningfully build on earlier contributions
+3. Consider expertise relevance to the query
+4. Aim for diversity of perspectives across the sequence
+5. Think about which styles complement each other when sequenced
+
+Respond ONLY with a JSON array of agent IDs in the desired speaking order, like this:
+["agent-id-1", "agent-id-2", "agent-id-3", "agent-id-4", "agent-id-5"]
+
+No explanation needed - just the JSON array.`;
+
+    try {
+      const response = await this.aiExecutor!.execute(prompt, '');
+      const cleanResponse = response.content.trim()
+        .replace(/```json\s*/g, '')
+        .replace(/```\s*/g, '')
+        .trim();
+
+      const order = JSON.parse(cleanResponse);
+
+      // Validate that all agent IDs are present
+      const agentIds = agents.map(a => a.id);
+      if (Array.isArray(order) && order.length === agentIds.length &&
+          order.every(id => agentIds.includes(id))) {
+        console.log(`[Facilitator] Determined speaking order: ${order.join(' → ')}`);
+        return order;
+      } else {
+        console.warn(`[Facilitator] Invalid order returned, using random shuffle`);
+        return this.shuffleArray([...agentIds]);
+      }
+    } catch (error) {
+      console.error(`[Facilitator] Error determining speaking order:`, error);
+      // Fallback to random shuffle
+      return this.shuffleArray(agents.map(a => a.id));
+    }
+  }
+
+  private shuffleArray<T>(array: T[]): T[] {
+    const shuffled = [...array];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+  }
+
 
 
   private initializeAgentTracking() {
@@ -44,7 +111,13 @@ export class FacilitatorAgent {
   }
 
   private async initializeAIExecutor() {
-    this.aiExecutor = await createAIExecutor('facilitator', {
+    // Load model config from environment variables
+    const provider = (process.env.AGENT_FACILITATOR_001_PROVIDER as 'openai' | 'anthropic' | 'gemini' | 'ollama') || 'openai';
+    const model = process.env.AGENT_FACILITATOR_001_MODEL || 'gpt-4o';
+
+    this.aiExecutor = await createAIExecutor('facilitator-001', {
+      provider,
+      model,
       temperature: 0.4,
       topP: 0.8,
       topK: 40
@@ -99,13 +172,17 @@ export class FacilitatorAgent {
     // Log to SimplifiedInteractionLog
     await this.logToInteractionLogger(roundNumber, silentAdjustments, overallConsensus, processingDuration);
 
+    // Determine recommended action count based on round and consensus
+    const recommendedActionCount = this.determineActionCount(roundNumber, overallConsensus, consensusData);
+
     return {
       currentTopic,
       roundNumber,
       participantStates: consensusData,
       overallConsensus,
       suggestedActions,
-      shouldContinue
+      shouldContinue,
+      recommendedActionCount
     };
   }
 
@@ -127,6 +204,59 @@ export class FacilitatorAgent {
     const consensus = (satisfactionWeight * satisfactionScore) + (readinessWeight * readinessScore);
 
     return Math.round(consensus * 10) / 10; // Round to 1 decimal place
+  }
+
+  /**
+   * Determine how many actions should be executed in this round
+   * Based on round number, consensus level, and dialogue dynamics
+   *
+   * Strategy:
+   * - Early rounds (1-3): More actions (2-3) to explore diverse perspectives
+   * - Mid rounds (4-7): Balanced (1-2) based on consensus
+   * - Late rounds (8+): Fewer actions (1) to allow convergence
+   * - Low consensus: More actions to stimulate discussion
+   * - High consensus: Fewer actions to avoid over-discussion
+   */
+  private determineActionCount(
+    roundNumber: number,
+    overallConsensus: number,
+    consensusData: ConsensusIndicator[]
+  ): number {
+    const avgSatisfaction = consensusData.reduce((sum, c) => sum + c.satisfactionLevel, 0) / consensusData.length;
+    const hasAdditionalPointsCount = consensusData.filter(c => c.hasAdditionalPoints).length;
+
+    // Early rounds: More exploration
+    if (roundNumber <= 2) {
+      console.log(`[Facilitator] Round ${roundNumber}: Early exploration phase - recommending 2-3 actions`);
+      return hasAdditionalPointsCount >= 3 ? 3 : 2;
+    }
+
+    // Mid rounds: Balanced approach
+    if (roundNumber <= 7) {
+      // Low consensus: stimulate with more actions
+      if (avgSatisfaction < 5.5) {
+        console.log(`[Facilitator] Round ${roundNumber}: Low satisfaction (${avgSatisfaction.toFixed(1)}) - recommending 2-3 actions`);
+        return hasAdditionalPointsCount >= 2 ? 3 : 2;
+      }
+      // Medium consensus: moderate actions
+      if (avgSatisfaction < 7.5) {
+        console.log(`[Facilitator] Round ${roundNumber}: Medium satisfaction (${avgSatisfaction.toFixed(1)}) - recommending 2 actions`);
+        return 2;
+      }
+      // High consensus: fewer actions
+      console.log(`[Facilitator] Round ${roundNumber}: High satisfaction (${avgSatisfaction.toFixed(1)}) - recommending 1 action`);
+      return 1;
+    }
+
+    // Late rounds: Focus on convergence
+    if (avgSatisfaction >= 7.0 || overallConsensus >= 7.5) {
+      console.log(`[Facilitator] Round ${roundNumber}: Late round with good consensus - recommending 1 action`);
+      return 1;
+    }
+
+    // Still struggling late: give it one more push
+    console.log(`[Facilitator] Round ${roundNumber}: Late round but low consensus - recommending 2 actions`);
+    return 2;
   }
 
   private shouldContinueDialogue(
@@ -720,7 +850,7 @@ BALANCE GUIDANCE: If one agent is dominating (3+ recent messages), encourage oth
         // Add personality for consistency with other agents
         personality: this.getFacilitatorPersonality(),
         provider: 'internal',
-        model: 'facilitator-logic-v1'
+        model: process.env.AGENT_FACILITATOR_001_MODEL || 'facilitator-logic-v1'
       };
 
       await this.interactionLogger.saveInteractionLog(logEntry);

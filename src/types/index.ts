@@ -44,6 +44,7 @@ export interface Agent {
   decisionProcess?: string;
   disagreementStyle?: string;
   agreementStyle?: string;
+  expertise?: string[]; // Areas of expertise for this agent
 }
 
 export interface Message {
@@ -98,8 +99,15 @@ export interface Message {
     contributorName?: string;
     contributorRole?: string;
     participantCount?: number;
+    // Speaking order metadata for Initial Thought
+    speakingOrder?: number;
+    totalSpeakers?: number;
+    previousSpeakers?: string[];
     participants?: string[];
     totalContributions?: number;
+    // v2.0 facilitator action count metadata
+    recommendedActionCount?: number;
+    totalSuggestedActions?: number;
   };
 }
 

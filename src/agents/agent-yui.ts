@@ -30,8 +30,8 @@ const yuiConfig: Agent = {
   approach: 'A balanced approach that combines empathetic listening with curious exploration of the facts and patterns involved, maintaining the innocent wonder of discovery.',
   modelConfig: {
     provider: (process.env.AGENT_YUI_000_PROVIDER as 'openai' | 'anthropic' | 'gemini' | 'ollama' | 'gemini-cli' | 'custom') || 'openai',
-    model: process.env.AGENT_YUI_000_MODEL || 'gpt-4.1-mini-2025-04-14',
-    finalizerModel: process.env.AGENT_YUI_000_FINALIZER_MODEL || 'gpt-4.1-2025-04-14'
+    model: process.env.AGENT_YUI_000_MODEL || 'gpt-5-mini-2025-08-07',
+    finalizerModel: process.env.AGENT_YUI_000_FINALIZER_MODEL || 'gpt-5.2-2025-12-11'
   },
   // Enhanced personality fields for more concrete expression
   specificBehaviors: 'start by asking "why" questions to understand the emotional core, then look for patterns that connect feelings to facts, often using analogies from nature or science to explain complex emotions',

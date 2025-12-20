@@ -308,7 +308,7 @@ Generation parameter auto-adjustment lives in `BaseAgent`:
 AI Executor abstraction (`src/kernel/ai-executor.ts`):
 - `createAIExecutor` dynamically imports `ai-executor-impl` if present; else falls back to a mock executor that synthesizes outputs and injects a vote during `output-generation`.
 - **High-cost LLM support**: Agent IDs ending with `-finalizer` automatically trigger premium models (Claude Sonnet 4, GPT-4) in `ai-executor-impl.ts`.
-- Default provider is `'openai'`; StageSummarizer defaults to `'gemini'` model `gemini-2.5-flash-lite-preview-06-17` with temperature 0.5.
+- Default provider is `'openai'`; StageSummarizer defaults to `'gemini'` model `gemini-3-flash-preview` with temperature 0.5.
 - **Finalizer execution**: `BaseAgent.executeAIWithFinalizerModel` method creates temporary executors with `-finalizer` suffix for collaborative finalization.
 
 Language: prompts enforce strict language (`'en'` or `'ja'`) at generation time.

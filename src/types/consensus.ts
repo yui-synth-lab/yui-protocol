@@ -16,6 +16,7 @@ export interface DialogueState {
   overallConsensus: number;
   suggestedActions: FacilitatorAction[];
   shouldContinue: boolean;
+  recommendedActionCount?: number; // 1ラウンドで実行すべきアクション数（1-3）
 }
 
 export interface FacilitatorAction {

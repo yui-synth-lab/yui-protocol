@@ -50,7 +50,7 @@ export class StageSummarizer {
   constructor(options: StageSummarizerOptions = {}) {
     this.options = {
       maxTokens: 2000,
-      model: 'gemini-2.5-flash-lite-preview-06-17',
+      model: 'gemini-3-flash-preview',
       provider: 'gemini',
       language: 'en', // デフォルトは英語
       ...options
