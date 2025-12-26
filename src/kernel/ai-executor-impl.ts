@@ -560,7 +560,6 @@ export class LlamaCppLocalExecutor extends AIExecutor {
   private llama: Llama | null = null;
   private llamaModel: LlamaModel | null = null;
   private llamaContext: LlamaContext | null = null;
-  private llamaSession: LlamaChatSession | null = null;
   private contextSize: number;
   private gpuLayers: number;
 
@@ -579,7 +578,7 @@ export class LlamaCppLocalExecutor extends AIExecutor {
   }
 
   private async initializeModel(): Promise<void> {
-    if (this.llama && this.llamaModel && this.llamaContext && this.llamaSession) {
+    if (this.llama && this.llamaModel && this.llamaContext) {
       return; // Already initialized
     }
 
@@ -605,11 +604,6 @@ export class LlamaCppLocalExecutor extends AIExecutor {
         contextSize: this.contextSize,
       });
 
-      // チャットセッションを作成
-      this.llamaSession = new LlamaChatSession({
-        contextSequence: this.llamaContext.getSequence(),
-      });
-
       console.log(`[LlamaCppLocalExecutor] Model initialized successfully`);
     } catch (error) {
       console.error(`[LlamaCppLocalExecutor] Failed to initialize model:`, error);
@@ -624,17 +618,21 @@ export class LlamaCppLocalExecutor extends AIExecutor {
       // モデルを初期化（初回のみ）
       await this.initializeModel();
 
-      if (!this.llamaSession) {
-        throw new Error('Chat session not initialized');
+      if (!this.llamaContext) {
+        throw new Error('Context not initialized');
       }
-
-      // system messageとuser messageを組み合わせる
-      const effectivePrompt = personality ? `${personality}\n\n${prompt}` : prompt;
 
       console.log(`[LlamaCppLocalExecutor] Generating response...`);
 
+      // personalityが変わるたびに新しいセッションを作成
+      // これによりsystemPromptを適切に設定できる
+      const session = new LlamaChatSession({
+        contextSequence: this.llamaContext.getSequence(),
+        systemPrompt: personality || undefined, // personalityをsystemPromptとして設定
+      });
+
       // プロンプトを実行
-      const response = await this.llamaSession.prompt(effectivePrompt, {
+      const response = await session.prompt(prompt, {
         temperature: this.temperature,
         topP: this.topP,
         topK: this.topK,
@@ -707,7 +705,6 @@ export class LlamaCppLocalExecutor extends AIExecutor {
         await this.llamaModel.dispose();
         this.llamaModel = null;
       }
-      this.llamaSession = null;
       this.llama = null;
       console.log(`[LlamaCppLocalExecutor] Resources disposed successfully`);
     } catch (error) {
