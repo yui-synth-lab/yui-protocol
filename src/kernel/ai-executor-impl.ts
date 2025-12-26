@@ -4,7 +4,8 @@ import {
   GoogleGenAI,
 } from '@google/genai';
 import { Ollama } from 'ollama';
-import { Agent } from 'undici'
+import { Agent } from 'undici';
+import { getLlama, Llama, LlamaModel, LlamaContext, LlamaChatSession } from 'node-llama-cpp';
 
 const noTimeoutFetch = (input: string | URL | globalThis.Request, init?: RequestInit) => {
   const someInit = init || {}
@@ -437,6 +438,284 @@ export class MockExecutor extends AIExecutor {
   }
 }
 
+// llama.cpp Server Implementation (OpenAI-compatible API)
+// Uses llama-server with OpenAI-compatible endpoint
+export class LlamaCppExecutor extends AIExecutor {
+  private baseUrl: string;
+  private modelName: string;
+
+  constructor(options: AIExecutorOptions) {
+    super(options);
+    // llama.cpp server URL (デフォルト: http://localhost:8080)
+    this.baseUrl = this.customConfig.baseUrl || process.env.LLAMACPP_BASE_URL || 'http://localhost:8080';
+    // モデル名 (llama-serverでは任意の文字列でOK)
+    this.modelName = this.model || process.env.LLAMACPP_MODEL_NAME || 'local-model';
+  }
+
+  async execute(prompt: string, personality: string): Promise<AIExecutionResult> {
+    const startTime = Date.now();
+
+    try {
+      const response = await noTimeoutFetch(`${this.baseUrl}/v1/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: this.modelName,
+          messages: [
+            ...(personality ? [{ role: 'system', content: personality }] : []),
+            { role: 'user', content: prompt }
+          ],
+          temperature: this.temperature,
+          top_p: this.topP,
+          top_k: this.topK,
+          repeat_penalty: this.repetitionPenalty,
+          presence_penalty: this.presencePenalty,
+          frequency_penalty: this.frequencyPenalty,
+          max_tokens: this.maxTokens || 4000,
+          stream: false
+        })
+      });
+
+      const duration = Date.now() - startTime;
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorMessage = `HTTP ${response.status}: ${errorText}`;
+
+        // 接続エラーの特別処理
+        if (response.status === 0 || errorText.includes('ECONNREFUSED')) {
+          errorMessage = `Connection failed to llama.cpp server at ${this.baseUrl}. Please ensure llama-server is running with: llama-server -m <model_path> --port 8080`;
+        }
+
+        return {
+          content: this.generateFallbackResponse(prompt),
+          model: this.modelName,
+          duration,
+          success: false,
+          error: errorMessage,
+          errorDetails: {
+            type: 'HTTP_ERROR',
+            message: errorMessage,
+            httpStatus: response.status,
+            responseText: errorText
+          }
+        };
+      }
+
+      const data = await response.json() as any;
+      const content = data.choices[0]?.message?.content || '';
+
+      return {
+        content: this.sanitizeContent(content),
+        tokensUsed: data.usage?.total_tokens,
+        model: this.modelName,
+        duration,
+        success: true
+      };
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      let errorMessage = 'Unknown error';
+      let errorStack: string | undefined = undefined;
+
+      if (error instanceof Error) {
+        errorMessage = error.message;
+        errorStack = error.stack;
+
+        // 接続エラーの特別処理
+        if (errorMessage.includes('ECONNREFUSED') ||
+            errorMessage.includes('fetch failed') ||
+            errorMessage.includes('ENOTFOUND')) {
+          errorMessage = `Connection failed to llama.cpp server at ${this.baseUrl}. Please ensure llama-server is running with: llama-server -m <model_path> --port 8080`;
+        }
+
+        // タイムアウトエラー
+        if (errorMessage.includes('timeout') ||
+            errorMessage.includes('ETIMEDOUT')) {
+          errorMessage = `Request timeout. The llama.cpp server may be taking too long to respond or is still loading the model.`;
+        }
+      }
+
+      return {
+        content: this.generateFallbackResponse(prompt),
+        model: this.modelName,
+        duration,
+        success: false,
+        error: errorMessage,
+        errorDetails: {
+          type: 'EXECUTION_ERROR',
+          message: errorMessage,
+          stack: errorStack
+        }
+      };
+    }
+  }
+}
+
+// llama.cpp Local Implementation using node-llama-cpp
+// Loads and runs GGUF models directly in Node.js without external server
+export class LlamaCppLocalExecutor extends AIExecutor {
+  private modelPath: string;
+  private llama: Llama | null = null;
+  private llamaModel: LlamaModel | null = null;
+  private llamaContext: LlamaContext | null = null;
+  private llamaSession: LlamaChatSession | null = null;
+  private contextSize: number;
+  private gpuLayers: number;
+
+  constructor(options: AIExecutorOptions) {
+    super(options);
+    // モデルファイルのパス (.ggufファイル)
+    this.modelPath = this.customConfig.modelPath || process.env.LLAMACPP_MODEL_PATH || '';
+    // コンテキストサイズ (デフォルト: 4096)
+    this.contextSize = this.customConfig.contextSize || 4096;
+    // GPU レイヤー数 (デフォルト: 0 = CPU only)
+    this.gpuLayers = this.customConfig.gpuLayers !== undefined ? this.customConfig.gpuLayers : 0;
+
+    if (!this.modelPath) {
+      console.warn(`[LlamaCppLocalExecutor] No model path provided. Set LLAMACPP_MODEL_PATH in .env or provide modelPath in customConfig.`);
+    }
+  }
+
+  private async initializeModel(): Promise<void> {
+    if (this.llama && this.llamaModel && this.llamaContext && this.llamaSession) {
+      return; // Already initialized
+    }
+
+    if (!this.modelPath) {
+      throw new Error('Model path not configured. Set LLAMACPP_MODEL_PATH in .env or provide modelPath in customConfig.');
+    }
+
+    try {
+      console.log(`[LlamaCppLocalExecutor] Initializing llama.cpp with model: ${this.modelPath}`);
+      console.log(`[LlamaCppLocalExecutor] Context size: ${this.contextSize}, GPU layers: ${this.gpuLayers}`);
+
+      // Llama インスタンスを取得
+      this.llama = await getLlama();
+
+      // モデルをロード
+      this.llamaModel = await this.llama.loadModel({
+        modelPath: this.modelPath,
+        gpuLayers: this.gpuLayers,
+      });
+
+      // コンテキストを作成
+      this.llamaContext = await this.llamaModel.createContext({
+        contextSize: this.contextSize,
+      });
+
+      // チャットセッションを作成
+      this.llamaSession = new LlamaChatSession({
+        contextSequence: this.llamaContext.getSequence(),
+      });
+
+      console.log(`[LlamaCppLocalExecutor] Model initialized successfully`);
+    } catch (error) {
+      console.error(`[LlamaCppLocalExecutor] Failed to initialize model:`, error);
+      throw error;
+    }
+  }
+
+  async execute(prompt: string, personality: string): Promise<AIExecutionResult> {
+    const startTime = Date.now();
+
+    try {
+      // モデルを初期化（初回のみ）
+      await this.initializeModel();
+
+      if (!this.llamaSession) {
+        throw new Error('Chat session not initialized');
+      }
+
+      // system messageとuser messageを組み合わせる
+      const effectivePrompt = personality ? `${personality}\n\n${prompt}` : prompt;
+
+      console.log(`[LlamaCppLocalExecutor] Generating response...`);
+
+      // プロンプトを実行
+      const response = await this.llamaSession.prompt(effectivePrompt, {
+        temperature: this.temperature,
+        topP: this.topP,
+        topK: this.topK,
+        repeatPenalty: {
+          penalty: this.repetitionPenalty,
+        },
+        maxTokens: this.maxTokens || 4000,
+      });
+
+      const duration = Date.now() - startTime;
+
+      console.log(`[LlamaCppLocalExecutor] Response generated in ${duration}ms`);
+
+      return {
+        content: this.sanitizeContent(response),
+        model: this.modelPath,
+        duration,
+        success: true
+      };
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      let errorMessage = 'Unknown error';
+      let errorStack: string | undefined = undefined;
+
+      if (error instanceof Error) {
+        errorMessage = error.message;
+        errorStack = error.stack;
+
+        // モデルファイルが見つからないエラー
+        if (errorMessage.includes('ENOENT') || errorMessage.includes('no such file')) {
+          errorMessage = `Model file not found at ${this.modelPath}. Please check the path in LLAMACPP_MODEL_PATH.`;
+        }
+
+        // メモリ不足エラー
+        if (errorMessage.includes('out of memory') || errorMessage.includes('ENOMEM')) {
+          errorMessage = `Out of memory. The model may be too large for available RAM. Try reducing context size or GPU layers.`;
+        }
+
+        // GGUF フォーマットエラー
+        if (errorMessage.includes('gguf') || errorMessage.includes('invalid format')) {
+          errorMessage = `Invalid GGUF file format. Please ensure ${this.modelPath} is a valid GGUF model file.`;
+        }
+      }
+
+      console.error(`[LlamaCppLocalExecutor] Error:`, errorMessage);
+
+      return {
+        content: this.generateFallbackResponse(prompt),
+        model: this.modelPath,
+        duration,
+        success: false,
+        error: errorMessage,
+        errorDetails: {
+          type: 'EXECUTION_ERROR',
+          message: errorMessage,
+          stack: errorStack
+        }
+      };
+    }
+  }
+
+  // クリーンアップメソッド（必要に応じて呼び出す）
+  async dispose(): Promise<void> {
+    try {
+      if (this.llamaContext) {
+        await this.llamaContext.dispose();
+        this.llamaContext = null;
+      }
+      if (this.llamaModel) {
+        await this.llamaModel.dispose();
+        this.llamaModel = null;
+      }
+      this.llamaSession = null;
+      this.llama = null;
+      console.log(`[LlamaCppLocalExecutor] Resources disposed successfully`);
+    } catch (error) {
+      console.error(`[LlamaCppLocalExecutor] Error during disposal:`, error);
+    }
+  }
+}
+
 // Ollama API Implementation using npm package
 export class OllamaExecutor extends AIExecutor {
   private baseUrl: string;
@@ -685,6 +964,28 @@ export function createAIExecutor(agentId: string, options?: Partial<AIExecutorOp
         config.customConfig.baseUrl = process.env.OLLAMA_BASE_URL;
       }
       return new OllamaExecutor(config);
+    case 'llamacpp':
+      if (!config.customConfig) {
+        config.customConfig = {};
+      }
+      if (process.env.LLAMACPP_BASE_URL) {
+        config.customConfig.baseUrl = process.env.LLAMACPP_BASE_URL;
+      }
+      return new LlamaCppExecutor(config);
+    case 'llamacpp-local':
+      if (!config.customConfig) {
+        config.customConfig = {};
+      }
+      if (process.env.LLAMACPP_MODEL_PATH) {
+        config.customConfig.modelPath = process.env.LLAMACPP_MODEL_PATH;
+      }
+      if (process.env.LLAMACPP_CONTEXT_SIZE) {
+        config.customConfig.contextSize = parseInt(process.env.LLAMACPP_CONTEXT_SIZE, 10);
+      }
+      if (process.env.LLAMACPP_GPU_LAYERS) {
+        config.customConfig.gpuLayers = parseInt(process.env.LLAMACPP_GPU_LAYERS, 10);
+      }
+      return new LlamaCppLocalExecutor(config);
     case 'gemini-cli':
       return new GeminiCliExecutor(config);
     case 'custom':

@@ -142,9 +142,19 @@ export function createConsensusMessage(
     const readyToMoveCount = agentConsensus.filter(a => a.readyToMove).length;
     const totalAgents = agentConsensus.length;
 
+    // Identify early exit agents
+    const earlyExitAgents = agentConsensus.filter(a =>
+      a.reasoning?.includes('Early exit') || a.reasoning?.includes('estimated based on')
+    );
+
     content += `\n**Discussion Progress:**\n`;
     content += `- Ready to proceed: ${readyToMoveCount}/${totalAgents} agents\n`;
     content += `- Additional discussion requested: ${agentConsensus.filter(a => a.additionalPoints).length} agents\n`;
+
+    if (earlyExitAgents.length > 0) {
+      const actualResponseCount = totalAgents - earlyExitAgents.length;
+      content += `\n*📊 Note: ${earlyExitAgents.length} agent(s) used estimated values based on ${actualResponseCount} actual responses (early exit)*\n`;
+    }
 
     if (overallConsensus >= 8.0) {
       content += `\n✅ **High Consensus Achieved** - Ready for convergence`;
@@ -198,9 +208,19 @@ export function createConsensusMessage(
     const readyToMoveCount = agentConsensus.filter(a => a.readyToMove).length;
     const totalAgents = agentConsensus.length;
 
+    // Early exit したエージェントを識別
+    const earlyExitAgents = agentConsensus.filter(a =>
+      a.reasoning?.includes('Early exit') || a.reasoning?.includes('estimated based on')
+    );
+
     content += `\n**議論の進行状況:**\n`;
     content += `- 次へ進む準備完了: ${readyToMoveCount}/${totalAgents} エージェント\n`;
     content += `- 追加議論希望: ${agentConsensus.filter(a => a.additionalPoints).length} エージェント\n`;
+
+    if (earlyExitAgents.length > 0) {
+      const actualResponseCount = totalAgents - earlyExitAgents.length;
+      content += `\n*📊 注: ${earlyExitAgents.length}名のエージェントは早期終了により、${actualResponseCount}名の平均値に基づく推定値を使用*\n`;
+    }
 
     if (overallConsensus >= 8.0) {
       content += `\n✅ **高い合意達成** - 収束可能な状況です`;

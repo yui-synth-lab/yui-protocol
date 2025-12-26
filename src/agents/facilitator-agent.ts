@@ -189,6 +189,16 @@ No explanation needed - just the JSON array.`;
   public calculateOverallConsensus(indicators: ConsensusIndicator[]): number {
     if (indicators.length === 0) return 0;
 
+    // Separate actual responses from early exit estimations
+    const actualResponses = indicators.filter(ind =>
+      !ind.reasoning?.includes('Early exit') &&
+      !ind.reasoning?.includes('Error occurred')
+    );
+    const estimatedResponses = indicators.filter(ind =>
+      ind.reasoning?.includes('Early exit') ||
+      ind.reasoning?.includes('Error occurred')
+    );
+
     const avgSatisfaction = indicators.reduce((sum, ind) => sum + ind.satisfactionLevel, 0) / indicators.length;
     const readyCount = indicators.filter(ind => ind.readyToMove).length;
     const readyRatio = readyCount / indicators.length;
@@ -202,6 +212,14 @@ No explanation needed - just the JSON array.`;
     const readinessScore = readyRatio * 10; // Convert ratio to 0-10 scale
 
     const consensus = (satisfactionWeight * satisfactionScore) + (readinessWeight * readinessScore);
+
+    // Log the breakdown for transparency
+    if (estimatedResponses.length > 0) {
+      const actualAvg = actualResponses.length > 0
+        ? actualResponses.reduce((sum, ind) => sum + ind.satisfactionLevel, 0) / actualResponses.length
+        : 0;
+      console.log(`[Facilitator] Consensus calculation: ${actualResponses.length} actual responses (avg: ${actualAvg.toFixed(1)}), ${estimatedResponses.length} estimated (avg satisfaction used: ${avgSatisfaction.toFixed(1)})`);
+    }
 
     return Math.round(consensus * 10) / 10; // Round to 1 decimal place
   }

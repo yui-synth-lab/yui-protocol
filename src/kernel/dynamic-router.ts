@@ -477,16 +477,28 @@ export class DynamicDialogueRouter {
         if (continuingVotes >= majorityThreshold) {
           console.log(`[DynamicRouter] Early exit: ${continuingVotes}/${checkedAgents} agents want to continue (majority reached)`);
 
-          // 残りのエージェントにはデフォルト値を追加（統計目的）
+          // 既に回答したエージェントの平均満足度を計算
+          const actualResponses = consensusData.filter(c => !c.reasoning?.includes('Error occurred'));
+          const avgSatisfaction = actualResponses.length > 0
+            ? actualResponses.reduce((sum, c) => sum + c.satisfactionLevel, 0) / actualResponses.length
+            : 6; // フォールバック値
+
+          const avgHasAdditionalPoints = actualResponses.length > 0
+            ? actualResponses.filter(c => c.hasAdditionalPoints).length / actualResponses.length
+            : 0.5;
+
+          console.log(`[DynamicRouter] Early exit estimation: avgSatisfaction=${avgSatisfaction.toFixed(1)}, avgHasAdditionalPoints=${(avgHasAdditionalPoints * 100).toFixed(0)}%`);
+
+          // 残りのエージェントには推定値を追加（既存の平均値に基づく）
           for (let i = checkedAgents; i < totalAgents; i++) {
             const remainingAgent = shuffledAgents[i];
             consensusData.push({
               agentId: remainingAgent.getAgent().id,
-              satisfactionLevel: 6, // 中間値
-              hasAdditionalPoints: true, // 継続を仮定
+              satisfactionLevel: Math.round(avgSatisfaction * 10) / 10, // 既存の平均値を使用
+              hasAdditionalPoints: avgHasAdditionalPoints > 0.5, // 過半数が追加ポイントありなら true
               questionsForOthers: [],
-              readyToMove: false, // 継続を仮定
-              reasoning: 'Early exit - assumed continuing based on majority vote'
+              readyToMove: false, // 継続を仮定（過半数が継続票のため）
+              reasoning: `Early exit - estimated based on ${actualResponses.length} actual responses (avg satisfaction: ${avgSatisfaction.toFixed(1)})`
             });
           }
           break;
