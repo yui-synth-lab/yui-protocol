@@ -557,11 +557,16 @@ export class LlamaCppExecutor extends AIExecutor {
 // Loads and runs GGUF models directly in Node.js without external server
 export class LlamaCppLocalExecutor extends AIExecutor {
   private modelPath: string;
-  private llama: Llama | null = null;
-  private llamaModel: LlamaModel | null = null;
-  private llamaContext: LlamaContext | null = null;
   private contextSize: number;
   private gpuLayers: number;
+
+  // 静的フィールドでモデルインスタンスを共有（シングルトンパターン）
+  private static sharedLlama: Llama | null = null;
+  private static sharedLlamaModel: LlamaModel | null = null;
+  private static sharedLlamaContext: LlamaContext | null = null;
+  private static sharedModelPath: string | null = null;
+  private static sharedContextSize: number | null = null;
+  private static sharedGpuLayers: number | null = null;
 
   constructor(options: AIExecutorOptions) {
     super(options);
@@ -578,12 +583,27 @@ export class LlamaCppLocalExecutor extends AIExecutor {
   }
 
   private async initializeModel(): Promise<void> {
-    if (this.llama && this.llamaModel && this.llamaContext) {
-      return; // Already initialized
+    // すでに同じ設定でロード済みかチェック
+    if (LlamaCppLocalExecutor.sharedLlama &&
+        LlamaCppLocalExecutor.sharedLlamaModel &&
+        LlamaCppLocalExecutor.sharedLlamaContext &&
+        LlamaCppLocalExecutor.sharedModelPath === this.modelPath &&
+        LlamaCppLocalExecutor.sharedContextSize === this.contextSize &&
+        LlamaCppLocalExecutor.sharedGpuLayers === this.gpuLayers) {
+      console.log(`[LlamaCppLocalExecutor] Reusing already loaded model`);
+      return; // Already initialized with same config
     }
 
     if (!this.modelPath) {
       throw new Error('Model path not configured. Set LLAMACPP_MODEL_PATH in .env or provide modelPath in customConfig.');
+    }
+
+    // 設定が変わった場合は古いモデルを破棄
+    if (LlamaCppLocalExecutor.sharedLlamaContext ||
+        LlamaCppLocalExecutor.sharedLlamaModel ||
+        LlamaCppLocalExecutor.sharedLlama) {
+      console.log(`[LlamaCppLocalExecutor] Configuration changed, disposing old model...`);
+      await this.disposeSharedModel();
     }
 
     try {
@@ -591,23 +611,48 @@ export class LlamaCppLocalExecutor extends AIExecutor {
       console.log(`[LlamaCppLocalExecutor] Context size: ${this.contextSize}, GPU layers: ${this.gpuLayers}`);
 
       // Llama インスタンスを取得
-      this.llama = await getLlama();
+      LlamaCppLocalExecutor.sharedLlama = await getLlama();
 
       // モデルをロード
-      this.llamaModel = await this.llama.loadModel({
+      LlamaCppLocalExecutor.sharedLlamaModel = await LlamaCppLocalExecutor.sharedLlama.loadModel({
         modelPath: this.modelPath,
         gpuLayers: this.gpuLayers,
       });
 
       // コンテキストを作成
-      this.llamaContext = await this.llamaModel.createContext({
+      LlamaCppLocalExecutor.sharedLlamaContext = await LlamaCppLocalExecutor.sharedLlamaModel.createContext({
         contextSize: this.contextSize,
       });
 
-      console.log(`[LlamaCppLocalExecutor] Model initialized successfully`);
+      // 設定を保存
+      LlamaCppLocalExecutor.sharedModelPath = this.modelPath;
+      LlamaCppLocalExecutor.sharedContextSize = this.contextSize;
+      LlamaCppLocalExecutor.sharedGpuLayers = this.gpuLayers;
+
+      console.log(`[LlamaCppLocalExecutor] Model initialized successfully (shared across all instances)`);
     } catch (error) {
       console.error(`[LlamaCppLocalExecutor] Failed to initialize model:`, error);
       throw error;
+    }
+  }
+
+  private async disposeSharedModel(): Promise<void> {
+    try {
+      if (LlamaCppLocalExecutor.sharedLlamaContext) {
+        await LlamaCppLocalExecutor.sharedLlamaContext.dispose();
+        LlamaCppLocalExecutor.sharedLlamaContext = null;
+      }
+      if (LlamaCppLocalExecutor.sharedLlamaModel) {
+        await LlamaCppLocalExecutor.sharedLlamaModel.dispose();
+        LlamaCppLocalExecutor.sharedLlamaModel = null;
+      }
+      LlamaCppLocalExecutor.sharedLlama = null;
+      LlamaCppLocalExecutor.sharedModelPath = null;
+      LlamaCppLocalExecutor.sharedContextSize = null;
+      LlamaCppLocalExecutor.sharedGpuLayers = null;
+      console.log(`[LlamaCppLocalExecutor] Shared model disposed successfully`);
+    } catch (error) {
+      console.error(`[LlamaCppLocalExecutor] Error during shared model disposal:`, error);
     }
   }
 
@@ -615,10 +660,10 @@ export class LlamaCppLocalExecutor extends AIExecutor {
     const startTime = Date.now();
 
     try {
-      // モデルを初期化（初回のみ）
+      // モデルを初期化（初回のみ、または設定変更時）
       await this.initializeModel();
 
-      if (!this.llamaContext) {
+      if (!LlamaCppLocalExecutor.sharedLlamaContext) {
         throw new Error('Context not initialized');
       }
 
@@ -627,7 +672,7 @@ export class LlamaCppLocalExecutor extends AIExecutor {
       // personalityが変わるたびに新しいセッションを作成
       // これによりsystemPromptを適切に設定できる
       const session = new LlamaChatSession({
-        contextSequence: this.llamaContext.getSequence(),
+        contextSequence: LlamaCppLocalExecutor.sharedLlamaContext.getSequence(),
         systemPrompt: personality || undefined, // personalityをsystemPromptとして設定
       });
 
@@ -695,21 +740,9 @@ export class LlamaCppLocalExecutor extends AIExecutor {
   }
 
   // クリーンアップメソッド（必要に応じて呼び出す）
+  // 注意: このメソッドは共有モデルを破棄するため、すべてのインスタンスに影響します
   async dispose(): Promise<void> {
-    try {
-      if (this.llamaContext) {
-        await this.llamaContext.dispose();
-        this.llamaContext = null;
-      }
-      if (this.llamaModel) {
-        await this.llamaModel.dispose();
-        this.llamaModel = null;
-      }
-      this.llama = null;
-      console.log(`[LlamaCppLocalExecutor] Resources disposed successfully`);
-    } catch (error) {
-      console.error(`[LlamaCppLocalExecutor] Error during disposal:`, error);
-    }
+    await this.disposeSharedModel();
   }
 }
 
