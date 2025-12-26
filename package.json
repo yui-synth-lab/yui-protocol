@@ -22,6 +22,8 @@
     "test:session-id": "node selenium-tests/test-session-id.cjs",
     "test:stage-indicator-sequence": "node selenium-tests/test-stage-indicator-sequence.cjs",
     "test:message-count": "node selenium-tests/test-message-count-update.cjs",
+    "test:llamacpp-server": "node test-llamacpp-server.js",
+    "test:llamacpp-local": "node test-llamacpp-local.js",
     "server": "node dist/server/index.js"
   },
   "dependencies": {
