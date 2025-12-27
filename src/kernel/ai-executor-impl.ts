@@ -741,6 +741,17 @@ export class LlamaCppLocalExecutor extends AIExecutor {
       // セッションを破棄
       await session.dispose();
 
+      // シーケンスをクリーンアップしてVRAMを解放
+      if (this.contextSequence) {
+        try {
+          // シーケンスの履歴をクリアしてメモリを解放
+          await this.contextSequence.clearHistory();
+          console.log(`[LlamaCppLocalExecutor] Sequence history cleared to free VRAM`);
+        } catch (e) {
+          console.warn(`[LlamaCppLocalExecutor] Could not clear sequence history (ignoring):`, e);
+        }
+      }
+
       return {
         content: this.sanitizeContent(response),
         model: this.modelPath,
@@ -754,6 +765,16 @@ export class LlamaCppLocalExecutor extends AIExecutor {
           await session.dispose();
         } catch (disposeError) {
           console.error(`[LlamaCppLocalExecutor] Error disposing session:`, disposeError);
+        }
+      }
+
+      // エラー時もシーケンスをクリーンアップ
+      if (this.contextSequence) {
+        try {
+          await this.contextSequence.clearHistory();
+          console.log(`[LlamaCppLocalExecutor] Sequence history cleared (error recovery)`);
+        } catch (e) {
+          console.warn(`[LlamaCppLocalExecutor] Could not clear sequence history in error handler (ignoring):`, e);
         }
       }
       const duration = Date.now() - startTime;
