@@ -684,15 +684,37 @@ export class LlamaCppLocalExecutor extends AIExecutor {
 
         // 古いコンテキストとモデルを破棄
         if (this.llamaContext) {
-          await this.llamaContext.dispose();
+          try {
+            await this.llamaContext.dispose();
+          } catch (e) {
+            console.warn(`[LlamaCppLocalExecutor] Error disposing context (ignoring):`, e);
+          }
           this.llamaContext = null;
           this.contextSequence = null;
         }
         await this.disposeSharedModel();
 
-        // GPU層数を更新して再初期化
+        // GPU層数を更新してモデルを再ロード
         this.gpuLayers = newGpuLayers;
-        await this.initializeModel();
+
+        // モデル再ロード (共有モデルのみ、コンテキストは作成しない)
+        if (!LlamaCppLocalExecutor.sharedLlamaModel) {
+          LlamaCppLocalExecutor.sharedLlama = await getLlama();
+          LlamaCppLocalExecutor.sharedLlamaModel = await LlamaCppLocalExecutor.sharedLlama.loadModel({
+            modelPath: this.modelPath,
+            gpuLayers: this.gpuLayers,
+          });
+          LlamaCppLocalExecutor.sharedModelPath = this.modelPath;
+          LlamaCppLocalExecutor.sharedGpuLayers = this.gpuLayers;
+          console.log(`[LlamaCppLocalExecutor] Model reloaded with GPU layers: ${this.gpuLayers}`);
+        }
+
+        // コンテキストを再作成 (リトライなし、1回のみ)
+        console.log(`[LlamaCppLocalExecutor] Creating new context after GPU layer reduction...`);
+        this.llamaContext = await LlamaCppLocalExecutor.sharedLlamaModel!.createContext({
+          contextSize: this.contextSize,
+        });
+        this.contextSequence = this.llamaContext.getSequence();
 
         console.log(`[LlamaCppLocalExecutor] ✅ Successfully recovered with reduced GPU layers (${newGpuLayers})`);
       } else {
