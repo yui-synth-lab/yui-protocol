@@ -631,19 +631,83 @@ export class LlamaCppLocalExecutor extends AIExecutor {
 
     // このインスタンス用のコンテキストとシーケンスを作成（まだ作成されていない場合）
     if (!this.llamaContext) {
-      try {
-        console.log(`[LlamaCppLocalExecutor] Creating context for this instance (context size: ${this.contextSize})`);
-        this.llamaContext = await LlamaCppLocalExecutor.sharedLlamaModel!.createContext({
-          contextSize: this.contextSize,
-        });
-        // シーケンスを1つ作成して保持する
-        this.contextSequence = this.llamaContext.getSequence();
-        console.log(`[LlamaCppLocalExecutor] Context and sequence created successfully`);
-      } catch (error) {
+      await this.createContextWithRetry();
+    }
+  }
+
+  /**
+   * Create context with retry and fallback logic for VRAM issues
+   */
+  private async createContextWithRetry(retryCount: number = 0): Promise<void> {
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY_MS = 2000; // 2 seconds
+
+    try {
+      console.log(`[LlamaCppLocalExecutor] Creating context for this instance (context size: ${this.contextSize})`);
+      this.llamaContext = await LlamaCppLocalExecutor.sharedLlamaModel!.createContext({
+        contextSize: this.contextSize,
+      });
+
+      // シーケンス取得もリトライ対象
+      console.log(`[LlamaCppLocalExecutor] Acquiring sequence...`);
+      this.contextSequence = this.llamaContext.getSequence();
+      console.log(`[LlamaCppLocalExecutor] ✅ Context and sequence created successfully`);
+
+    } catch (error: any) {
+      const isVramError = error?.name === 'InsufficientMemoryError' ||
+                         error?.message?.includes('too large for the available VRAM');
+
+      if (isVramError) {
+        console.warn(`[LlamaCppLocalExecutor] ⚠️ VRAM insufficient error detected`);
+
+        // リトライ可能な場合は待機してリトライ
+        if (retryCount < MAX_RETRIES) {
+          console.log(`[LlamaCppLocalExecutor] Waiting ${RETRY_DELAY_MS}ms before retry (attempt ${retryCount + 1}/${MAX_RETRIES})...`);
+          await this.sleep(RETRY_DELAY_MS);
+
+          console.log(`[LlamaCppLocalExecutor] Retrying context creation...`);
+          return await this.createContextWithRetry(retryCount + 1);
+        }
+
+        // リトライ上限に達したら、GPU層数を減らして再試行
+        console.warn(`[LlamaCppLocalExecutor] Max retries reached. Reducing GPU layers...`);
+
+        const newGpuLayers = Math.max(0, Math.floor(this.gpuLayers / 2));
+
+        if (newGpuLayers === this.gpuLayers && this.gpuLayers === 0) {
+          // すでにCPUオンリーの場合は諦める
+          console.error(`[LlamaCppLocalExecutor] ❌ Cannot reduce GPU layers further (already at 0). VRAM is critically insufficient.`);
+          throw new Error('VRAM critically insufficient even with CPU-only mode');
+        }
+
+        console.log(`[LlamaCppLocalExecutor] Reducing GPU layers: ${this.gpuLayers} → ${newGpuLayers}`);
+
+        // 古いコンテキストとモデルを破棄
+        if (this.llamaContext) {
+          await this.llamaContext.dispose();
+          this.llamaContext = null;
+          this.contextSequence = null;
+        }
+        await this.disposeSharedModel();
+
+        // GPU層数を更新して再初期化
+        this.gpuLayers = newGpuLayers;
+        await this.initializeModel();
+
+        console.log(`[LlamaCppLocalExecutor] ✅ Successfully recovered with reduced GPU layers (${newGpuLayers})`);
+      } else {
+        // VRAM以外のエラーは即座に投げる
         console.error(`[LlamaCppLocalExecutor] Failed to create context:`, error);
         throw error;
       }
     }
+  }
+
+  /**
+   * Sleep utility for retry delays
+   */
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   private async disposeSharedModel(): Promise<void> {
