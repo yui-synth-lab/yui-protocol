@@ -736,8 +736,15 @@ export class LlamaCppLocalExecutor extends AIExecutor {
 
       console.log(`[LlamaCppLocalExecutor] Response generated in ${duration}ms`);
 
-      // セッションを破棄（セッションがシーケンスも破棄する）
+      // セッションを破棄
       await session.dispose();
+
+      // コンテキストを破棄して再作成（VRAMリーク防止）
+      // 独立した推論を繰り返す場合、コンテキストごとリセットが最も確実
+      console.log(`[LlamaCppLocalExecutor] Disposing context to prevent VRAM leak...`);
+      await this.llamaContext.dispose();
+      this.llamaContext = null;
+      // 次回実行時に initializeModel() で再作成される
 
       return {
         content: this.sanitizeContent(response),
@@ -752,6 +759,17 @@ export class LlamaCppLocalExecutor extends AIExecutor {
           await session.dispose();
         } catch (disposeError) {
           console.error(`[LlamaCppLocalExecutor] Error disposing session:`, disposeError);
+        }
+      }
+
+      // エラー時もコンテキストをクリーンアップ
+      if (this.llamaContext) {
+        try {
+          await this.llamaContext.dispose();
+          this.llamaContext = null;
+          console.log(`[LlamaCppLocalExecutor] Context disposed after error`);
+        } catch (e) {
+          console.warn(`[LlamaCppLocalExecutor] Error disposing context (ignoring):`, e);
         }
       }
       const duration = Date.now() - startTime;
