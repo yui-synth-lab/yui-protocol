@@ -660,6 +660,7 @@ export class LlamaCppLocalExecutor extends AIExecutor {
 
   async execute(prompt: string, personality: string): Promise<AIExecutionResult> {
     const startTime = Date.now();
+    let session: LlamaChatSession | null = null;
 
     try {
       // モデルを初期化（初回のみ、または設定変更時）
@@ -673,7 +674,7 @@ export class LlamaCppLocalExecutor extends AIExecutor {
 
       // personalityが変わるたびに新しいセッションを作成
       // これによりsystemPromptを適切に設定できる
-      const session = new LlamaChatSession({
+      session = new LlamaChatSession({
         contextSequence: this.llamaContext.getSequence(),
         systemPrompt: personality || undefined, // personalityをsystemPromptとして設定
       });
@@ -693,6 +694,9 @@ export class LlamaCppLocalExecutor extends AIExecutor {
 
       console.log(`[LlamaCppLocalExecutor] Response generated in ${duration}ms`);
 
+      // セッションを破棄
+      await session.dispose();
+
       return {
         content: this.sanitizeContent(response),
         model: this.modelPath,
@@ -700,6 +704,14 @@ export class LlamaCppLocalExecutor extends AIExecutor {
         success: true
       };
     } catch (error) {
+      // エラー時もセッションを破棄
+      if (session) {
+        try {
+          await session.dispose();
+        } catch (disposeError) {
+          console.error(`[LlamaCppLocalExecutor] Error disposing session:`, disposeError);
+        }
+      }
       const duration = Date.now() - startTime;
       let errorMessage = 'Unknown error';
       let errorStack: string | undefined = undefined;
