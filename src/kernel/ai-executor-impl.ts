@@ -567,9 +567,8 @@ export class LlamaCppLocalExecutor extends AIExecutor {
   private static sharedModelPath: string | null = null;
   private static sharedGpuLayers: number | null = null;
 
-  // コンテキストは各インスタンスごとに保持（シーケンス枯渇を防ぐ）
+  // コンテキストは各インスタンスごとに保持
   private llamaContext: LlamaContext | null = null;
-  private contextSequence: any = null; // LlamaContextSequence を再利用
 
   constructor(options: AIExecutorOptions) {
     super(options);
@@ -648,10 +647,7 @@ export class LlamaCppLocalExecutor extends AIExecutor {
         contextSize: this.contextSize,
       });
 
-      // シーケンス取得もリトライ対象
-      console.log(`[LlamaCppLocalExecutor] Acquiring sequence...`);
-      this.contextSequence = this.llamaContext.getSequence();
-      console.log(`[LlamaCppLocalExecutor] ✅ Context and sequence created successfully`);
+      console.log(`[LlamaCppLocalExecutor] ✅ Context created successfully`);
 
     } catch (error: any) {
       const isVramError = error?.name === 'InsufficientMemoryError' ||
@@ -704,6 +700,7 @@ export class LlamaCppLocalExecutor extends AIExecutor {
   async execute(prompt: string, personality: string): Promise<AIExecutionResult> {
     const startTime = Date.now();
     let session: LlamaChatSession | null = null;
+    let contextSequence: any = null; // LlamaContextSequence (毎回新規取得)
 
     try {
       // モデルを初期化（初回のみ、または設定変更時）
@@ -715,12 +712,13 @@ export class LlamaCppLocalExecutor extends AIExecutor {
 
       console.log(`[LlamaCppLocalExecutor] Generating response...`);
 
-      // personalityが変わるたびに新しいセッションを作成
-      // これによりsystemPromptを適切に設定できる
-      // 注: 同じcontextSequenceを再利用する（毎回getSequence()すると枯渇する）
+      // 新しいシーケンスを取得（VRAM解放のため毎回新規取得）
+      contextSequence = this.llamaContext.getSequence();
+
+      // 新しいセッションを作成
       session = new LlamaChatSession({
-        contextSequence: this.contextSequence,
-        systemPrompt: personality || undefined, // personalityをsystemPromptとして設定
+        contextSequence: contextSequence,
+        systemPrompt: personality || undefined,
       });
 
       // プロンプトを実行
@@ -738,19 +736,8 @@ export class LlamaCppLocalExecutor extends AIExecutor {
 
       console.log(`[LlamaCppLocalExecutor] Response generated in ${duration}ms`);
 
-      // セッションを破棄
+      // セッションを破棄（セッションがシーケンスも破棄する）
       await session.dispose();
-
-      // シーケンスをクリーンアップしてVRAMを解放
-      if (this.contextSequence) {
-        try {
-          // シーケンスの履歴をクリアしてメモリを解放
-          await this.contextSequence.clearHistory();
-          console.log(`[LlamaCppLocalExecutor] Sequence history cleared to free VRAM`);
-        } catch (e) {
-          console.warn(`[LlamaCppLocalExecutor] Could not clear sequence history (ignoring):`, e);
-        }
-      }
 
       return {
         content: this.sanitizeContent(response),
@@ -765,16 +752,6 @@ export class LlamaCppLocalExecutor extends AIExecutor {
           await session.dispose();
         } catch (disposeError) {
           console.error(`[LlamaCppLocalExecutor] Error disposing session:`, disposeError);
-        }
-      }
-
-      // エラー時もシーケンスをクリーンアップ
-      if (this.contextSequence) {
-        try {
-          await this.contextSequence.clearHistory();
-          console.log(`[LlamaCppLocalExecutor] Sequence history cleared (error recovery)`);
-        } catch (e) {
-          console.warn(`[LlamaCppLocalExecutor] Could not clear sequence history in error handler (ignoring):`, e);
         }
       }
       const duration = Date.now() - startTime;
