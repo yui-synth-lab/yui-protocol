@@ -569,6 +569,7 @@ export class LlamaCppLocalExecutor extends AIExecutor {
 
   // コンテキストは各インスタンスごとに保持（シーケンス枯渇を防ぐ）
   private llamaContext: LlamaContext | null = null;
+  private contextSequence: any = null; // LlamaContextSequence を再利用
 
   constructor(options: AIExecutorOptions) {
     super(options);
@@ -628,14 +629,16 @@ export class LlamaCppLocalExecutor extends AIExecutor {
       console.log(`[LlamaCppLocalExecutor] Reusing already loaded model`);
     }
 
-    // このインスタンス用のコンテキストを作成（まだ作成されていない場合）
+    // このインスタンス用のコンテキストとシーケンスを作成（まだ作成されていない場合）
     if (!this.llamaContext) {
       try {
         console.log(`[LlamaCppLocalExecutor] Creating context for this instance (context size: ${this.contextSize})`);
         this.llamaContext = await LlamaCppLocalExecutor.sharedLlamaModel!.createContext({
           contextSize: this.contextSize,
         });
-        console.log(`[LlamaCppLocalExecutor] Context created successfully`);
+        // シーケンスを1つ作成して保持する
+        this.contextSequence = this.llamaContext.getSequence();
+        console.log(`[LlamaCppLocalExecutor] Context and sequence created successfully`);
       } catch (error) {
         console.error(`[LlamaCppLocalExecutor] Failed to create context:`, error);
         throw error;
@@ -674,8 +677,9 @@ export class LlamaCppLocalExecutor extends AIExecutor {
 
       // personalityが変わるたびに新しいセッションを作成
       // これによりsystemPromptを適切に設定できる
+      // 注: 同じcontextSequenceを再利用する（毎回getSequence()すると枯渇する）
       session = new LlamaChatSession({
-        contextSequence: this.llamaContext.getSequence(),
+        contextSequence: this.contextSequence,
         systemPrompt: personality || undefined, // personalityをsystemPromptとして設定
       });
 
