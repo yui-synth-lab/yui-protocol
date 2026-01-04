@@ -177,6 +177,7 @@ export class OpenAIExecutor extends AIExecutor {
       // GPT-5 models have different parameter support than GPT-4
       const isGPT5Model = this.model.startsWith('gpt-5');
       const isGPT5Mini = this.model.includes('gpt-5-mini');
+      const isGPT5Nano = this.model.includes('gpt-5-nano');
 
       const requestBody: any = {
         model: this.model,
@@ -189,14 +190,14 @@ export class OpenAIExecutor extends AIExecutor {
       if (isGPT5Model) {
         // GPT-5 specific parameters:
         // - Uses max_completion_tokens instead of max_tokens
-        // - GPT-5 mini only supports temperature=1 (omit for default)
+        // - GPT-5 mini/nano only support temperature=1 (omit for default)
         // - GPT-5.2+ supports temperature normally
         // - Does not support top_p, frequency_penalty, presence_penalty
         // - May include reasoning_tokens in completion_tokens
         requestBody.max_completion_tokens = this.maxTokens || 4000;
 
         // Only add temperature for GPT-5.2 and above (not mini/nano)
-        if (!isGPT5Mini) {
+        if (!isGPT5Mini && !isGPT5Nano) {
           requestBody.temperature = this.temperature;
         }
       } else {
@@ -917,6 +918,7 @@ export class OllamaExecutor extends AIExecutor {
             presence_penalty: this.presencePenalty,
             frequency_penalty: this.frequencyPenalty,
             top_k: this.topK,
+            num_predict: this.maxTokens || 2048,  // Set max output tokens
           }
         });
 
