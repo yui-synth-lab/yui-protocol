@@ -222,6 +222,12 @@ export class OpenAIExecutor extends AIExecutor {
 
       if (!response.ok) {
         const errorText = await response.text();
+        console.error(`[${this.agentId}] OpenAI API Error:`, {
+          status: response.status,
+          statusText: response.statusText,
+          model: this.model,
+          errorText: errorText
+        });
         return {
           content: this.generateFallbackResponse(prompt),
           model: this.model,
@@ -319,6 +325,12 @@ export class AnthropicExecutor extends AIExecutor {
 
       if (!response.ok) {
         const errorText = await response.text();
+        console.error(`[${this.agentId}] OpenAI API Error:`, {
+          status: response.status,
+          statusText: response.statusText,
+          model: this.model,
+          errorText: errorText
+        });
         return {
           content: this.generateFallbackResponse(prompt),
           model: this.model,
