@@ -1,6 +1,7 @@
 import { writeFile, readFile, readdir, unlink } from 'fs/promises';
 import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
+import { getRAGManager } from './rag/rag-manager.js';
 
 export interface SavedOutput {
   id: string;
@@ -60,6 +61,9 @@ export class OutputStorage {
 
     await writeFile(filepath, markdownContent, 'utf-8');
     console.log(`[OutputStorage] Saved output to ${filepath}`);
+
+    // RAG自動インデックス化
+    await this.autoIndexToRAG(filepath);
 
     return output;
   }
@@ -181,6 +185,43 @@ ${content}
     } catch (error) {
       console.error(`[OutputStorage] Error deleting output ${id}:`, error);
       return false;
+    }
+  }
+
+  /**
+   * RAG自動インデックス化
+   * 新しく保存されたMarkdownファイルを自動的にRAGシステムにインデックス化
+   */
+  private async autoIndexToRAG(filepath: string): Promise<void> {
+    try {
+      const ragManager = getRAGManager();
+
+      // RAGが有効でない場合はスキップ
+      if (!ragManager.isReady()) {
+        return; // Silently skip if RAG is not ready
+      }
+
+      // 設定で自動インデックスが無効の場合はスキップ
+      const stats = await ragManager.getStats();
+      if (!stats.config.indexing.autoIndexOutputs) {
+        console.log('[OutputStorage] Auto-indexing outputs is disabled in config');
+        return;
+      }
+
+      const retriever = ragManager.getRetriever();
+      if (!retriever) {
+        return;
+      }
+
+      // ファイルをインデックス化
+      console.log(`[OutputStorage] 🔍 Auto-indexing to RAG: ${filepath}`);
+      const chunksIndexed = await retriever.indexLocalDocuments([filepath]);
+
+      console.log(`[OutputStorage] ✓ Auto-indexed ${chunksIndexed} chunks to RAG`);
+    } catch (error) {
+      // RAGインデックス化が失敗してもファイル保存は成功させる
+      console.warn('[OutputStorage] ⚠️  Failed to auto-index to RAG:', error);
+      console.warn('[OutputStorage] Output file saved, but not indexed. You can manually index it later.');
     }
   }
 } 

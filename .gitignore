@@ -106,6 +106,7 @@ temp/
 # Project specific
 outputs/
 sessions/
+data/
 *.json.bak
 /.cursor
 package-lock.json

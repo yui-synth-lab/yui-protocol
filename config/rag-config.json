@@ -1,0 +1,31 @@
+{
+  "enabled": true,
+  "vectorStore": {
+    "storePath": "./data/vector-store",
+    "embeddingDimension": 1536,
+    "embeddingProvider": "openai",
+    "embeddingModel": "text-embedding-3-small",
+    "indexType": "IVF_FLAT",
+    "distanceMetric": "cosine"
+  },
+  "ingestion": {
+    "chunkSize": 500,
+    "chunkOverlap": 50,
+    "enableMetadataExtraction": true,
+    "supportedFileTypes": [".txt", ".md", ".json"],
+    "batchSize": 10
+  },
+  "retrieval": {
+    "defaultTopK": 5,
+    "defaultMinScore": 0.5,
+    "maxContextTokens": 2000,
+    "enableReranking": true
+  },
+  "indexing": {
+    "autoIndexSessions": true,
+    "autoIndexLocalDocs": false,
+    "autoIndexOutputs": true,
+    "indexingInterval": 60,
+    "watchDirectories": ["./knowledge", "./docs"]
+  }
+}

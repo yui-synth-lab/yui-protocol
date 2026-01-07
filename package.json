@@ -24,7 +24,9 @@
     "test:message-count": "node selenium-tests/test-message-count-update.cjs",
     "test:llamacpp-server": "node test-llamacpp-server.js",
     "test:llamacpp-local": "node test-llamacpp-local.js",
-    "server": "node dist/server/index.js"
+    "server": "node dist/server/index.js",
+    "rag:index-outputs": "tsx scripts/index-outputs.ts",
+    "rag:stats": "tsx scripts/rag-stats.ts"
   },
   "dependencies": {
     "@google/genai": "^1.8.0",
@@ -37,6 +39,7 @@
     "katex": "^0.16.22",
     "node-llama-cpp": "^3.14.5",
     "ollama": "^0.5.16",
+    "openai": "^4.77.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-markdown": "^8.0.7",
@@ -50,7 +53,8 @@
     "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.1",
     "undici": "^7.11.0",
-    "uuid": "^11.1.0"
+    "uuid": "^11.1.0",
+    "vectordb": "latest"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.6.3",
@@ -73,6 +77,7 @@
     "selenium-webdriver": "^4.18.1",
     "supertest": "^7.1.1",
     "tailwindcss": "^3.3.2",
+    "tsx": "^4.21.0",
     "typescript": "^5.3.3",
     "vite": "^6.3.5",
     "vitest": "^3.2.4"

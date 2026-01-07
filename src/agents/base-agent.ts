@@ -5,6 +5,8 @@ import { AIExecutor, createAIExecutor } from '../kernel/ai-executor.js';
 import { ConversationMemoryManager } from '../kernel/memory-manager.js';
 import { ConversationContext, AgentPersonalHistory } from '../types/memory.js';
 import { getV2MemoryConfig } from '../config/v2-config-loader.js';
+import { RAGEnhancedContext, RAGQuery } from '../types/rag.js';
+import { RAGRetriever } from '../kernel/rag/rag-retriever.js';
 
 // Helper: Nudge a value toward a target by a given weight
 function nudgeToTarget(calculated: number, target: number, weight: number = 0.2) {
@@ -47,7 +49,11 @@ export abstract class BaseAgent {
   protected memoryManager: ConversationMemoryManager;
   protected personalHistory: AgentPersonalHistory;
 
-  constructor(agent: Agent, interactionLogger?: InteractionLogger, language: Language = 'en') {
+  // RAG統合
+  protected ragRetriever?: RAGRetriever;
+  protected ragEnabled: boolean = false;
+
+  constructor(agent: Agent, interactionLogger?: InteractionLogger, language: Language = 'en', ragRetriever?: RAGRetriever) {
     this.agent = agent;
     this.interactionLogger = interactionLogger || new InteractionLogger();
     // Use 'en' as default for generation parameters in constructor
@@ -90,6 +96,10 @@ export abstract class BaseAgent {
     // 新しいプロパティを初期化
     this.memoryManager = new ConversationMemoryManager();
     this.personalHistory = this.initializePersonalHistory();
+
+    // RAG統合
+    this.ragRetriever = ragRetriever;
+    this.ragEnabled = !!ragRetriever;
   }
 
   // Initialize AI executor if not already done
@@ -1510,5 +1520,95 @@ export abstract class BaseAgent {
       hasCompression: this.memory.length > memoryConfig.maxRecentMessages,
       estimatedTokens: this.memory.length * 50 // Simple estimation
     };
+  }
+
+  // ========== RAG統合メソッド ==========
+
+  /**
+   * RAG機能を使用して外部知識を取得
+   */
+  protected async retrieveKnowledge(query: string, filters?: RAGQuery['filters']): Promise<RAGEnhancedContext | null> {
+    if (!this.ragEnabled || !this.ragRetriever) {
+      return null;
+    }
+
+    try {
+      const enhancedContext = await this.ragRetriever.retrieveEnhancedContext(query, filters);
+      console.log(`[${this.agent.id}] Retrieved ${enhancedContext.retrievedKnowledge.length} knowledge chunks`);
+      return enhancedContext;
+    } catch (error) {
+      console.error(`[${this.agent.id}] Failed to retrieve knowledge:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * RAG拡張されたプロンプトを生成
+   */
+  protected async enhancePromptWithRAG(
+    originalPrompt: string,
+    query: string,
+    filters?: RAGQuery['filters']
+  ): Promise<string> {
+    if (!this.ragEnabled || !this.ragRetriever) {
+      return originalPrompt;
+    }
+
+    try {
+      const knowledge = await this.retrieveKnowledge(query, filters);
+
+      if (!knowledge || knowledge.retrievedKnowledge.length === 0) {
+        console.log(`[${this.agent.id}] No relevant knowledge found, using original prompt`);
+        return originalPrompt;
+      }
+
+      // プロンプトに外部知識を統合
+      const enhancedPrompt = `${originalPrompt}
+
+${knowledge.formattedContext}
+
+Please consider the above retrieved knowledge when formulating your response. If relevant, cite the sources by their number [1], [2], etc.`;
+
+      console.log(`[${this.agent.id}] Enhanced prompt with ${knowledge.retrievedKnowledge.length} knowledge sources`);
+      return enhancedPrompt;
+    } catch (error) {
+      console.error(`[${this.agent.id}] Failed to enhance prompt with RAG:`, error);
+      return originalPrompt;
+    }
+  }
+
+  /**
+   * RAG機能の有効/無効を設定
+   */
+  public setRAGEnabled(enabled: boolean): void {
+    if (this.ragRetriever) {
+      this.ragEnabled = enabled;
+      console.log(`[${this.agent.id}] RAG ${enabled ? 'enabled' : 'disabled'}`);
+    } else {
+      console.warn(`[${this.agent.id}] Cannot enable RAG: no RAGRetriever configured`);
+    }
+  }
+
+  /**
+   * RAG機能が有効かチェック
+   */
+  public isRAGEnabled(): boolean {
+    return this.ragEnabled && !!this.ragRetriever;
+  }
+
+  /**
+   * エージェント固有のフィルタを適用したRAG検索
+   */
+  protected async retrieveAgentSpecificKnowledge(query: string): Promise<RAGEnhancedContext | null> {
+    if (!this.ragEnabled || !this.ragRetriever) {
+      return null;
+    }
+
+    // エージェントの過去の発言を優先的に検索
+    const filters: RAGQuery['filters'] = {
+      agentId: this.agent.id
+    };
+
+    return await this.retrieveKnowledge(query, filters);
   }
 } 
