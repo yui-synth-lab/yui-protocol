@@ -1,4 +1,4 @@
-# CLAUDE.md - Yui Protocol
+# GEMINI.md - Yui Protocol
 
 ## What (技術構成)
 
@@ -67,26 +67,6 @@ npm run rag:stats           # RAG統計表示
 3. **エージェントの個性**: 各エージェントの思考・記憶スタイルを尊重
 4. **コスト意識**: トークン使用量を継続的に監視
 5. **透明性**: 圧縮・要約プロセスをログに記録
-
-## スキル & サブエージェント
-
-### Skills (`.claude/skills/`)
-
-| スキル | 用途 |
-|--------|------|
-| `create-agent` | 新規エージェント作成 |
-| `run-tests` | テスト実行と検証 |
-| `rag-index` | RAGインデックス管理 |
-| `implement-v2` | v2.0機能実装 |
-| `gemini-analyze` | 大規模コード分析（Gemini API経由） |
-
-### Sub Agents (`.claude/agents/`)
-
-| エージェント | 用途 |
-|--------------|------|
-| `code-reviewer` | コード品質レビュー |
-| `test-runner` | テスト実行と修正 |
-| `v2-implementer` | v2.0機能実装専門 |
 
 ## 詳細ドキュメント
 
