@@ -1,5 +1,5 @@
 import { Agent, Message } from '../types/index.js';
-import { ConsensusIndicator, DialogueState, FacilitatorAction, DynamicRound, FacilitatorLog } from '../types/consensus.js';
+import { ConsensusIndicator, DialogueState, FacilitatorAction, DynamicRound, FacilitatorLog, DynamicInstruction } from '../types/consensus.js';
 import { AIExecutor, createAIExecutor } from '../kernel/ai-executor.js';
 import { InteractionLogger } from '../kernel/interaction-logger.js';
 import { FACILITATOR_ANALYSIS_PROMPT } from '../templates/v2-prompts.js';
@@ -441,6 +441,91 @@ No explanation needed - just the JSON array.`;
     return overlapRatio < 0.4;
   }
 
+  /**
+   * 対話の「欠落」や「安易な合意」を検知
+   * v2.0: 動的インストラクション生成のトリガー判定
+   */
+  public detectDialoguePattern(
+    messages: Message[],
+    consensusData: ConsensusIndicator[],
+    roundNumber: number
+  ): 'easy_consensus' | 'dialogue_gap' | 'topic_stagnation' | null {
+    if (consensusData.length === 0) return null;
+
+    const avgSatisfaction = consensusData.reduce((sum, c) => sum + c.satisfactionLevel, 0) / consensusData.length;
+    const readyCount = consensusData.filter(c => c.readyToMove).length;
+
+    // 安易な合意: 早期ラウンド(1-3)で高い満足度(>=7.0) + 多数が移行可能
+    // v2.0: 閾値を7.5→7.0に調整（発火しやすく）
+    if (roundNumber <= 3 && avgSatisfaction >= 7.0 && readyCount >= consensusData.length * 0.8) {
+      console.log(`[Facilitator] Detected easy_consensus: round=${roundNumber}, avgSatisfaction=${avgSatisfaction.toFixed(1)}, readyRatio=${(readyCount / consensusData.length * 100).toFixed(0)}%`);
+      return 'easy_consensus';
+    }
+
+    // 対話の行き詰まり: 低満足度 + 追加ポイントなし
+    // v2.0: 閾値を5.5→6.0に調整（発火しやすく）
+    const hasAdditionalCount = consensusData.filter(c => c.hasAdditionalPoints).length;
+    if (avgSatisfaction < 6.0 && hasAdditionalCount === 0) {
+      console.log(`[Facilitator] Detected dialogue_gap: avgSatisfaction=${avgSatisfaction.toFixed(1)}, hasAdditionalCount=${hasAdditionalCount}`);
+      return 'dialogue_gap';
+    }
+
+    // トピック停滞: ラウンド3以降で最近のメッセージに多様性がない
+    if (roundNumber >= 3 && !this.detectTopicShift(messages) && messages.length >= 6) {
+      const recentContent = messages.slice(-6).map(m => m.content).join(' ');
+      const uniqueTerms = new Set(recentContent.toLowerCase().split(/\s+/).filter(w => w.length > 3));
+      if (uniqueTerms.size < 15) {
+        console.log(`[Facilitator] Detected topic_stagnation: round=${roundNumber}, uniqueTerms=${uniqueTerms.size}`);
+        return 'topic_stagnation';
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * メタレベルの動的指示を生成
+   * トーン: 「問いを閉じず、矛盾を資源とする」プロジェクト哲学を反映
+   */
+  public async generateDynamicInstruction(
+    pattern: 'easy_consensus' | 'dialogue_gap' | 'topic_stagnation',
+    action: FacilitatorAction,
+    messages: Message[],
+    roundNumber: number
+  ): Promise<DynamicInstruction> {
+    const instructionTemplates: Record<string, string> = {
+      'easy_consensus': `この問いを早急に閉じないでください。現在の合意は表面的かもしれません。
+問いかけ：私たち全員が無意識に前提としていることは何か？考慮されていない視点は？
+矛盾をより深い理解への資源として扱ってください。`,
+
+      'dialogue_gap': `対話が行き詰まりました。解決を強制するのではなく：
+- 真に不確実なものを価値あるものとして認める
+- 簡単な答えに抵抗する核心の緊張を特定する
+- 問いかけ：これを「解決」ではなく「より興味深く」するには？`,
+
+      'topic_stagnation': `対話が循環しています。以前の論点を繰り返さないでください。
+代わりに：真に新しい角度を導入するか、暗黙の前提に挑戦するか、
+このトピックを予想外の何かと結びつけてください。`
+    };
+
+    const toneMap: Record<string, 'exploratory' | 'deconstructive' | 'integrative'> = {
+      'easy_consensus': 'deconstructive',
+      'dialogue_gap': 'exploratory',
+      'topic_stagnation': 'integrative'
+    };
+
+    console.log(`[Facilitator] Generated dynamic instruction for ${pattern}, action: ${action.type}`);
+
+    return {
+      content: instructionTemplates[pattern],
+      tone: toneMap[pattern],
+      metadata: {
+        triggerReason: pattern,
+        generatedAt: new Date()
+      }
+    };
+  }
+
   // Enhanced word count control for agent responses
   public createWordCountGuidance(agentId: string, dominantSpeakers: string[], silentAgents: string[]): string {
     let guidance = '';
@@ -574,15 +659,29 @@ BALANCE GUIDANCE: If one agent is dominating (3+ recent messages), encourage oth
       }
 
       if (Array.isArray(suggestions) && suggestions.length > 0) {
-        const actions = suggestions.map((s: any) => ({
+        const actions: FacilitatorAction[] = suggestions.map((s: any) => ({
           type: s.type || 'summarize',
           target: s.target || '',
           reason: s.reason || 'General discussion improvement',
           priority: s.priority || 5
         }));
 
+        // v2.0: 対話パターンを検出し、必要に応じて動的指示を追加
+        const dialoguePattern = this.detectDialoguePattern(messages, consensus, roundNumber);
+        if (dialoguePattern) {
+          for (const action of actions) {
+            action.dynamicInstruction = await this.generateDynamicInstruction(
+              dialoguePattern,
+              action,
+              messages,
+              roundNumber
+            );
+          }
+          console.log(`[Facilitator] Attached dynamic instructions to ${actions.length} actions (pattern: ${dialoguePattern})`);
+        }
+
         decisionLog.decision.suggestedActions = actions;
-        decisionLog.decision.reasoning = `Generated ${actions.length} actions via AI analysis`;
+        decisionLog.decision.reasoning = `Generated ${actions.length} actions via AI analysis${dialoguePattern ? ` with dynamic instructions (${dialoguePattern})` : ''}`;
         this.sessionLogs.push(decisionLog);
 
         return actions;

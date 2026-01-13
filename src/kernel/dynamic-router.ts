@@ -1,7 +1,8 @@
 import { BaseAgent } from '../agents/base-agent.js';
 import { FacilitatorAgent } from '../agents/facilitator-agent.js';
 import { Message, Session, Agent, AgentResponse, SessionConsensusSnapshot, AgentConsensusData } from '../types/index.js';
-import { ConsensusIndicator, DialogueState, DynamicRound, FacilitatorAction } from '../types/consensus.js';
+import { ConsensusIndicator, DialogueState, DynamicRound, FacilitatorAction, DynamicInstruction } from '../types/consensus.js';
+import { RAGRetriever } from './rag/rag-retriever.js';
 import { SessionStorage } from './session-storage.js';
 import { Language } from '../templates/prompts.js';
 import { createFacilitatorMessage, createConsensusMessage } from '../utils/message-converters.js';
@@ -22,11 +23,17 @@ export class DynamicDialogueRouter {
   private agentParticipationCount: Map<string, number> = new Map(); // エージェントの発言回数
   private initialThoughts: Message[] = []; // Individual Thoughtの結果を保持
   private currentRound: number = 0; // 現在のラウンド番号
+  private ragRetriever?: RAGRetriever; // v2.0: RAG不協和音検出用
 
-  constructor(sessionStorage: SessionStorage, wsEmitter?: (event: string, data: any) => void) {
+  constructor(
+    sessionStorage: SessionStorage,
+    wsEmitter?: (event: string, data: any) => void,
+    ragRetriever?: RAGRetriever // v2.0: RAG不協和音検出用（オプショナル）
+  ) {
     this.facilitator = new FacilitatorAgent();
     this.sessionStorage = sessionStorage;
     this.wsEmitter = wsEmitter;
+    this.ragRetriever = ragRetriever;
 
     // Load configuration
     const consensusConfig = getV2ConsensusConfig();
@@ -689,8 +696,57 @@ export class DynamicDialogueRouter {
     return newMessages;
   }
 
+  /**
+   * RAGで類似の過去結論を検索し、「不協和音」として注入する指示を生成
+   * v2.0: 過去の結論を「正解」ではなく、現在の議論を揺さぶる素材として使用
+   */
+  private async detectRAGDissonance(
+    currentTopic: string,
+    messages: Message[],
+    minSimilarityThreshold: number = 0.75
+  ): Promise<DynamicInstruction['ragDissonance'] | null> {
+    if (!this.ragRetriever) {
+      return null;
+    }
+
+    try {
+      const recentContent = messages.slice(-5).map(m => m.content).join(' ');
+      const queryText = `${currentTopic} ${recentContent.substring(0, 500)}`;
+
+      const ragContext = await this.ragRetriever.retrieveEnhancedContext(queryText, {
+        sourceType: ['session-history']
+      });
+
+      if (!ragContext || ragContext.retrievedKnowledge.length === 0) {
+        return null;
+      }
+
+      const topResult = ragContext.retrievedKnowledge[0];
+
+      if (topResult.score >= minSimilarityThreshold) {
+        const pastConclusion = topResult.chunk.content.substring(0, 200);
+        console.log(`[DynamicRouter] RAG dissonance found: similarity=${topResult.score.toFixed(2)}, source=${topResult.chunk.metadata.sessionId || 'unknown'}`);
+
+        return {
+          sourceSessionId: topResult.chunk.metadata.sessionId || 'unknown',
+          sourceConclusionSummary: pastConclusion,
+          similarityScore: topResult.score,
+          deconstructionHint: `かつて「${pastConclusion}...」と結論づけられました。
+しかし今の文脈で、この結論は不完全だったかもしれません。
+何が変わったか？どんな新しい視点がこの理解に挑戦するか？
+可能性Bを考慮してください。`
+        };
+      }
+
+      return null;
+    } catch (error) {
+      console.error('[DynamicRouter] RAG dissonance detection failed:', error);
+      return null;
+    }
+  }
+
   private async executeAction(
-    action: any,
+    action: FacilitatorAction,
     agents: BaseAgent[],
     messages: Message[],
     language: Language
@@ -699,6 +755,24 @@ export class DynamicDialogueRouter {
     let success = false;
     let errorMessage: string | undefined;
     const agentResponses: string[] = [];
+
+    // v2.0: RAG不協和音チェック（動的指示がない場合のみ）
+    if (!action.dynamicInstruction && this.ragRetriever) {
+      const ragDissonance = await this.detectRAGDissonance(this.originalQuery, messages);
+
+      if (ragDissonance) {
+        action.dynamicInstruction = {
+          content: ragDissonance.deconstructionHint,
+          tone: 'deconstructive',
+          ragDissonance,
+          metadata: {
+            triggerReason: 'rag_similarity',
+            generatedAt: new Date()
+          }
+        };
+        console.log(`[DynamicRouter] RAG dissonance detected (similarity: ${ragDissonance.similarityScore.toFixed(2)}), adding deconstructive instruction`);
+      }
+    }
 
     try {
       switch (action.type) {
@@ -713,7 +787,7 @@ export class DynamicDialogueRouter {
             targetAgent = this.selectBalancedAgent(agents);
             console.log(`[DynamicRouter] Deep dive target auto-selected: ${targetAgent.getAgent().id}`);
           }
-          const deepDiveResponse = await this.askForDeepDive(targetAgent, action.reason, messages, language);
+          const deepDiveResponse = await this.askForDeepDive(targetAgent, action.reason, messages, language, action.dynamicInstruction);
           newMessages.push(deepDiveResponse);
           agentResponses.push(`${targetAgent.getAgent().name}: ${deepDiveResponse.content.slice(0, 100)}...`);
           this.trackAgentParticipation(targetAgent.getAgent().id);
@@ -730,7 +804,7 @@ export class DynamicDialogueRouter {
             // ターゲットが指定されていない、または見つからない場合はバランス良く選択
             clarifyAgent = this.selectBalancedAgent(agents);
           }
-          const clarificationResponse = await this.askForClarification(clarifyAgent, action.reason, messages, language);
+          const clarificationResponse = await this.askForClarification(clarifyAgent, action.reason, messages, language, action.dynamicInstruction);
           newMessages.push(clarificationResponse);
           agentResponses.push(`${clarifyAgent.getAgent().name}: ${clarificationResponse.content.slice(0, 100)}...`);
           this.trackAgentParticipation(clarifyAgent.getAgent().id);
@@ -746,7 +820,7 @@ export class DynamicDialogueRouter {
             // ターゲットが指定されていない、または見つからない場合はバランス良く選択
             perspectiveAgent = this.selectBalancedAgent(agents, undefined, true);
           }
-          const perspectiveResponse = await this.askForPerspectiveShift(perspectiveAgent, action.reason, messages, language);
+          const perspectiveResponse = await this.askForPerspectiveShift(perspectiveAgent, action.reason, messages, language, action.dynamicInstruction);
           newMessages.push(perspectiveResponse);
           agentResponses.push(`${perspectiveAgent.getAgent().name}: ${perspectiveResponse.content.slice(0, 100)}...`);
           this.trackAgentParticipation(perspectiveAgent.getAgent().id);
@@ -756,7 +830,7 @@ export class DynamicDialogueRouter {
         case 'summarize':
           // 論理的スタイルを優先するが、発言バランスも考慮
           const summaryAgent = this.selectBalancedAgent(agents, 'logical', true);
-          const summary = await this.askForSummary(summaryAgent, messages, language);
+          const summary = await this.askForSummary(summaryAgent, messages, language, action.dynamicInstruction);
           newMessages.push(summary);
           agentResponses.push(`${summaryAgent.getAgent().name}: ${summary.content.slice(0, 100)}...`);
           this.trackAgentParticipation(summaryAgent.getAgent().id);
@@ -766,7 +840,7 @@ export class DynamicDialogueRouter {
         case 'redirect':
           // 発言バランスを考慮してエージェントを選んで元のトピックに戻す
           const redirectAgent = this.selectBalancedAgent(agents, undefined, true);
-          const redirect = await this.askForRedirect(redirectAgent, action.reason, messages, language);
+          const redirect = await this.askForRedirect(redirectAgent, action.reason, messages, language, action.dynamicInstruction);
           newMessages.push(redirect);
           agentResponses.push(`${redirectAgent.getAgent().name}: ${redirect.content.slice(0, 100)}...`);
           this.trackAgentParticipation(redirectAgent.getAgent().id);
@@ -792,7 +866,8 @@ export class DynamicDialogueRouter {
     agent: BaseAgent,
     reason: string,
     messages: Message[],
-    language: Language
+    language: Language,
+    dynamicInstruction?: DynamicInstruction
   ): Promise<Message> {
     // 完全なコンテキストを構築（Round 1-2: Initial Thoughts + 最近の議論、Round 3+: 最近の議論のみ）
     const recentMessages = messages.slice(-5);
@@ -801,12 +876,24 @@ export class DynamicDialogueRouter {
       ? "including all agents' initial thoughts and recent discussion"
       : "from recent discussion";
 
-    const prompt = `
-CURRENT DISCUSSION: "${this.originalQuery}"
+    // v2.0: 動的指示がある場合はプロンプトをオーバーライド
+    let instructionSection: string;
 
-CONTEXT (${contextNote}):
-${contextText}
+    if (dynamicInstruction) {
+      instructionSection = `
+ファシリテーター メタ指示 (オーバーライド):
+${dynamicInstruction.content}
 
+${dynamicInstruction.ragDissonance ? `
+過去の視点への挑戦:
+${dynamicInstruction.ragDissonance.deconstructionHint}
+` : ''}
+
+あなた固有の${agent.getAgent().style}スタイルでこのメタ指示を適用してください。
+会話は自然に、150-200語で。問いや比喩で締めくくってください。
+`;
+    } else {
+      instructionSection = `
 FACILITATOR REQUEST: ${reason}
 
 Based on the above context, please contribute your unique perspective to "${this.originalQuery}".
@@ -818,6 +905,16 @@ IMPORTANT GUIDELINES:
 - Bring your unique ${agent.getAgent().style} perspective to advance the discussion
 - Keep it conversational and engaging (150-200 words)
 - End with a thought-provoking question or meaningful metaphor
+`;
+    }
+
+    const prompt = `
+CURRENT DISCUSSION: "${this.originalQuery}"
+
+CONTEXT (${contextNote}):
+${contextText}
+
+${instructionSection}
 
 Start your response naturally without formal greetings.
 `;
@@ -842,6 +939,7 @@ Start your response naturally without formal greetings.
       metadata: {
         facilitatorAction: 'deep_dive',
         reasoning: reason,
+        hasDynamicInstruction: !!dynamicInstruction,
         wordCountTarget: '150-200 words',
         endingGuidance: 'End with question or metaphor'
       }
@@ -852,18 +950,31 @@ Start your response naturally without formal greetings.
     agent: BaseAgent,
     reason: string,
     messages: Message[],
-    language: Language
+    language: Language,
+    dynamicInstruction?: DynamicInstruction
   ): Promise<Message> {
     // 完全なコンテキストを構築（Round 1-2: Initial Thoughts + 最近の議論、Round 3+: 最近の議論のみ）
     const recentMessages = messages.slice(-5);
     const contextText = this.buildFullContext(recentMessages, agent.getAgent().id);
 
-    const prompt = `
-CURRENT DISCUSSION: "${this.originalQuery}"
+    // v2.0: 動的指示がある場合はプロンプトをオーバーライド
+    let instructionSection: string;
 
-CONTEXT:
-${contextText}
+    if (dynamicInstruction) {
+      instructionSection = `
+ファシリテーター メタ指示 (オーバーライド):
+${dynamicInstruction.content}
 
+${dynamicInstruction.ragDissonance ? `
+過去の視点への挑戦:
+${dynamicInstruction.ragDissonance.deconstructionHint}
+` : ''}
+
+あなた固有の${agent.getAgent().style}スタイルでこのメタ指示を適用してください。
+会話は自然に、150-200語で。問いで締めくくってください。
+`;
+    } else {
+      instructionSection = `
 CLARIFICATION NEEDED: ${reason}
 
 Based on the context above, please provide clarification to help advance our understanding of "${this.originalQuery}".
@@ -875,6 +986,16 @@ GUIDELINES:
 - Connect your clarification back to the main question
 - Keep response focused and engaging (150-200 words)
 - End with a question that deepens the inquiry
+`;
+    }
+
+    const prompt = `
+CURRENT DISCUSSION: "${this.originalQuery}"
+
+CONTEXT:
+${contextText}
+
+${instructionSection}
 
 Respond directly to help clarify the discussion.
 `;
@@ -897,7 +1018,8 @@ Respond directly to help clarify the discussion.
       role: 'agent',
       stage: 'clarification' as any,
       metadata: {
-        reasoning: `Facilitator clarification: ${reason}`
+        reasoning: `Facilitator clarification: ${reason}`,
+        hasDynamicInstruction: !!dynamicInstruction
       }
     };
   }
@@ -906,11 +1028,38 @@ Respond directly to help clarify the discussion.
     agent: BaseAgent,
     reason: string,
     messages: Message[],
-    language: Language
+    language: Language,
+    dynamicInstruction?: DynamicInstruction
   ): Promise<Message> {
     // 完全なコンテキストを構築（Round 1-2: Initial Thoughts + 最近の議論、Round 3+: 最近の議論のみ）
     const recentMessages = messages.slice(-5);
     const contextText = this.buildFullContext(recentMessages, agent.getAgent().id);
+
+    // v2.0: 動的指示がある場合はプロンプトをオーバーライド
+    let instructionSection: string;
+
+    if (dynamicInstruction) {
+      instructionSection = `
+ファシリテーター メタ指示 (オーバーライド):
+${dynamicInstruction.content}
+
+${dynamicInstruction.ragDissonance ? `
+過去の視点への挑戦:
+${dynamicInstruction.ragDissonance.deconstructionHint}
+` : ''}
+
+あなた固有の${agent.getAgent().style}スタイルで、既存の前提に挑戦するか、
+まだ探求されていない視点を導入してください。
+`;
+    } else {
+      instructionSection = `
+The facilitator suggests introducing a different perspective to enrich the discussion about this topic.
+
+Reason: ${reason}
+
+Based on the context above, please consider "${this.originalQuery}" from an alternative angle, challenge existing assumptions about this topic, or introduce a viewpoint that hasn't been fully explored yet.
+`;
+    }
 
     const prompt = `
 We are discussing: "${this.originalQuery}"
@@ -918,11 +1067,7 @@ We are discussing: "${this.originalQuery}"
 CONTEXT:
 ${contextText}
 
-The facilitator suggests introducing a different perspective to enrich the discussion about this topic.
-
-Reason: ${reason}
-
-Based on the context above, please consider "${this.originalQuery}" from an alternative angle, challenge existing assumptions about this topic, or introduce a viewpoint that hasn't been fully explored yet.
+${instructionSection}
 `;
 
     const personality = (agent as any).getPersonalityPrompt(language);
@@ -943,7 +1088,8 @@ Based on the context above, please consider "${this.originalQuery}" from an alte
       role: 'agent',
       stage: 'perspective-shift' as any,
       metadata: {
-        reasoning: `Facilitator perspective shift: ${reason}`
+        reasoning: `Facilitator perspective shift: ${reason}`,
+        hasDynamicInstruction: !!dynamicInstruction
       }
     };
   }
@@ -951,11 +1097,26 @@ Based on the context above, please consider "${this.originalQuery}" from an alte
   private async askForSummary(
     agent: BaseAgent,
     messages: Message[],
-    language: Language
+    language: Language,
+    dynamicInstruction?: DynamicInstruction
   ): Promise<Message> {
-    const prompt = `
-We are discussing: "${this.originalQuery}"
+    // v2.0: 動的指示がある場合はプロンプトをオーバーライド
+    let instructionSection: string;
 
+    if (dynamicInstruction) {
+      instructionSection = `
+ファシリテーター メタ指示 (オーバーライド):
+${dynamicInstruction.content}
+
+${dynamicInstruction.ragDissonance ? `
+過去の視点への挑戦:
+${dynamicInstruction.ragDissonance.deconstructionHint}
+` : ''}
+
+要約しつつも、このメタ指示に沿って未解決の緊張や開かれた問いを強調してください。
+`;
+    } else {
+      instructionSection = `
 Please provide a summary of our discussion about this topic, highlighting:
 1. Key insights about "${this.originalQuery}" that have been established
 2. Areas of agreement among participants regarding this topic
@@ -963,6 +1124,13 @@ Please provide a summary of our discussion about this topic, highlighting:
 4. The overall direction of our exploration of this topic
 
 Keep the summary focused on "${this.originalQuery}" and be both concise and comprehensive.
+`;
+    }
+
+    const prompt = `
+We are discussing: "${this.originalQuery}"
+
+${instructionSection}
 `;
 
     const personality = (agent as any).getPersonalityPrompt(language);
@@ -983,7 +1151,8 @@ Keep the summary focused on "${this.originalQuery}" and be both concise and comp
       role: 'agent',
       stage: 'summary' as any,
       metadata: {
-        reasoning: 'Facilitator-requested summary'
+        reasoning: 'Facilitator-requested summary',
+        hasDynamicInstruction: !!dynamicInstruction
       }
     };
   }
@@ -992,18 +1161,31 @@ Keep the summary focused on "${this.originalQuery}" and be both concise and comp
     agent: BaseAgent,
     reason: string,
     messages: Message[],
-    language: Language
+    language: Language,
+    dynamicInstruction?: DynamicInstruction
   ): Promise<Message> {
     // 完全なコンテキストを構築（Round 1-2: Initial Thoughts + 最近の議論、Round 3+: 最近の議論のみ）
     const recentMessages = messages.slice(-5);
     const contextText = this.buildFullContext(recentMessages, agent.getAgent().id);
 
-    const prompt = `
-ORIGINAL DISCUSSION: "${this.originalQuery}"
+    // v2.0: 動的指示がある場合はプロンプトをオーバーライド
+    let instructionSection: string;
 
-CONTEXT:
-${contextText}
+    if (dynamicInstruction) {
+      instructionSection = `
+ファシリテーター メタ指示 (オーバーライド):
+${dynamicInstruction.content}
 
+${dynamicInstruction.ragDissonance ? `
+過去の視点への挑戦:
+${dynamicInstruction.ragDissonance.deconstructionHint}
+` : ''}
+
+議論を元の問いに戻しつつ、このメタ指示に沿った新しい角度を提供してください。
+150-200語で、焦点を絞った問いで締めくくってください。
+`;
+    } else {
+      instructionSection = `
 REDIRECTION NEEDED: ${reason}
 
 Looking at the context above, please help refocus on "${this.originalQuery}" by providing a specific new angle or insight.
@@ -1015,6 +1197,16 @@ GUIDELINES:
 - Bring a fresh perspective that connects back to the core question
 - Be direct and engaging (150-200 words)
 - End with a focused question that brings us back on track
+`;
+    }
+
+    const prompt = `
+ORIGINAL DISCUSSION: "${this.originalQuery}"
+
+CONTEXT:
+${contextText}
+
+${instructionSection}
 
 Jump directly into your perspective on the original question.
 `;
@@ -1037,7 +1229,8 @@ Jump directly into your perspective on the original question.
       role: 'agent',
       stage: 'redirect' as any,
       metadata: {
-        reasoning: `Facilitator redirect: ${reason}`
+        reasoning: `Facilitator redirect: ${reason}`,
+        hasDynamicInstruction: !!dynamicInstruction
       }
     };
   }

@@ -381,3 +381,101 @@ export function compressPromptForTokens(
 
   return [...importantLines, compressedOther].join('\n');
 }
+
+// ===================================================================
+// v2.0: 動的インストラクションプロンプトテンプレート
+// 「問いを閉じず、矛盾を資源とする」プロジェクト哲学を反映
+// ===================================================================
+
+export const DYNAMIC_INSTRUCTION_PROMPTS = {
+  /**
+   * 脱構築的指示: 安易な合意を揺さぶる
+   */
+  deconstructive: {
+    ja: `ファシリテーター メタ指示：
+あなたの役割は「確認」ではなく「挑戦」です。
+- 対話が早すぎる終結に向かっています
+- 疑問視されていない前提を特定してください
+- 矛盾をより深い理解への入り口として扱ってください
+- 問いかけ：「私たちは全員、何か根本的なことを見落としていませんか？」`,
+    en: `FACILITATOR META-INSTRUCTION:
+Your role now is to CHALLENGE rather than CONFIRM.
+- The dialogue is reaching premature closure
+- Identify assumptions that haven't been questioned
+- Treat contradictions as doorways to deeper understanding
+- Ask: "What if we're all missing something fundamental?"`
+  },
+
+  /**
+   * 探索的指示: 行き詰まりを再開する
+   */
+  exploratory: {
+    ja: `ファシリテーター メタ指示：
+対話が行き詰まっています。「解決」ではなく「再開」が役割です。
+- 真の不確実性を価値あるものとして認めてください
+- 簡単な答えに抵抗する緊張を見つけてください
+- 問いかけ：「これをより興味深くするには何が必要ですか？」`,
+    en: `FACILITATOR META-INSTRUCTION:
+The dialogue has stalled. Your role is to REOPEN rather than RESOLVE.
+- Acknowledge genuine uncertainty as valuable
+- Find the tension that resists easy answers
+- Ask: "What would make this MORE interesting, not less complex?"`
+  },
+
+  /**
+   * 統合的指示: トピック停滞を打破する
+   */
+  integrative: {
+    ja: `ファシリテーター メタ指示：
+対話が循環しています。「繰り返し」ではなく「接続」が役割です。
+- 以前の論点を繰り返さないでください
+- 予想外の角度や関連性を見つけてください
+- 問いかけ：「このトピックは何と繋がっていますか？」`,
+    en: `FACILITATOR META-INSTRUCTION:
+The dialogue is circling. Your role is to CONNECT rather than REPEAT.
+- Do not reiterate previous points
+- Find unexpected angles or connections
+- Ask: "What does this topic connect to that we haven't explored?"`
+  },
+
+  /**
+   * RAG不協和音指示: 過去の結論に挑戦する
+   */
+  rag_dissonance: {
+    ja: `過去の視点への挑戦：
+過去の対話で類似の結論が出ています：
+「{pastConclusion}」
+
+あなたの課題：単にこの洞察に同意したり繰り返したりしないでください。
+代わりに問う：「この新しい文脈では、何がこの理解に挑戦または深化させるか？」
+Aが以前結論付けられていても、可能性Bを考慮してください。`,
+    en: `HISTORICAL PERSPECTIVE CHALLENGE:
+A similar conclusion was reached in past dialogue:
+"{pastConclusion}"
+
+Your task: Don't simply agree or repeat this insight.
+Instead, ask: "In this NEW context, what might challenge or deepen this understanding?"
+Consider possibility B even if A was previously concluded.`
+  }
+} as const;
+
+/**
+ * RAG不協和音プロンプトをフォーマット
+ */
+export function formatRAGDissonancePrompt(
+  pastConclusion: string,
+  language: Language = 'en'
+): string {
+  const template = DYNAMIC_INSTRUCTION_PROMPTS.rag_dissonance[language];
+  return template.replace('{pastConclusion}', pastConclusion.substring(0, 200));
+}
+
+/**
+ * 動的指示プロンプトを取得
+ */
+export function getDynamicInstructionPrompt(
+  type: 'deconstructive' | 'exploratory' | 'integrative',
+  language: Language = 'en'
+): string {
+  return DYNAMIC_INSTRUCTION_PROMPTS[type][language];
+}

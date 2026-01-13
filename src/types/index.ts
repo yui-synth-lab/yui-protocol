@@ -108,6 +108,8 @@ export interface Message {
     // v2.0 facilitator action count metadata
     recommendedActionCount?: number;
     totalSuggestedActions?: number;
+    // v2.0 dynamic instruction metadata
+    hasDynamicInstruction?: boolean;
   };
 }
 
