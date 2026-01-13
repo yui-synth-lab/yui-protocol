@@ -1,6 +1,7 @@
 import { BaseAgent } from './base-agent.js';
 import { AgentResponse, Message, IndividualThought, MutualReflection, DialogueStage, Agent, Language } from '../types/index.js';
 import { InteractionLogger } from '../kernel/interaction-logger.js';
+import { RAGRetriever } from '../kernel/rag/rag-retriever.js';
 
 const hekitoConfig: Agent = {
   id: 'hekito-001',
@@ -44,8 +45,8 @@ const hekitoConfig: Agent = {
 };
 
 export class HekitoAgent extends BaseAgent {
-  constructor(interactionLogger?: InteractionLogger) {
-    super(hekitoConfig, interactionLogger);
+  constructor(interactionLogger?: InteractionLogger, ragRetriever?: RAGRetriever | null) {
+    super(hekitoConfig, interactionLogger, 'en', ragRetriever ?? undefined);
   }
 
   async respond(prompt: string, context: Message[], language: Language): Promise<AgentResponse> {

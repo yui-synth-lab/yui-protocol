@@ -118,6 +118,48 @@ export class RAGManager {
   }
 
   /**
+   * Index all sessions from sessions/ directory
+   */
+  async indexAllSessions(sessionsDir: string = './sessions'): Promise<number> {
+    if (!this.initialized || !this.ragRetriever || !this.config.indexing.autoIndexSessions) {
+      return 0;
+    }
+
+    let totalChunks = 0;
+
+    try {
+      const dirPath = path.resolve(sessionsDir);
+      await fs.access(dirPath);
+
+      const files = await fs.readdir(dirPath);
+      const sessionFiles = files.filter(f => f.endsWith('.json'));
+
+      console.log(`[RAGManager] Found ${sessionFiles.length} session files to index`);
+
+      for (const file of sessionFiles) {
+        try {
+          const filePath = path.join(dirPath, file);
+          const content = await fs.readFile(filePath, 'utf-8');
+          const session = JSON.parse(content);
+
+          if (session.messages && Array.isArray(session.messages)) {
+            const chunks = await this.indexSessionMessages(session.id || file.replace('.json', ''), session.messages);
+            totalChunks += chunks;
+          }
+        } catch (error) {
+          console.warn(`[RAGManager] Failed to index session file ${file}:`, error);
+        }
+      }
+
+      console.log(`[RAGManager] Indexed ${totalChunks} chunks from ${sessionFiles.length} session files`);
+      return totalChunks;
+    } catch (error) {
+      console.error('[RAGManager] Failed to index sessions directory:', error);
+      return 0;
+    }
+  }
+
+  /**
    * Index local documents from configured directories
    */
   async indexLocalDocuments(): Promise<number> {

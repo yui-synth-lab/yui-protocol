@@ -1,6 +1,7 @@
 import { BaseAgent } from './base-agent.js';
 import { AgentResponse, Message, IndividualThought, MutualReflection, DialogueStage, Agent, Language } from '../types/index.js';
 import { InteractionLogger } from '../kernel/interaction-logger.js';
+import { RAGRetriever } from '../kernel/rag/rag-retriever.js';
 
 const eiroConfig: Agent = {
   id: 'eiro-001',
@@ -44,8 +45,8 @@ const eiroConfig: Agent = {
 };
 
 export class EiroAgent extends BaseAgent {
-  constructor(interactionLogger?: InteractionLogger) {
-    super(eiroConfig, interactionLogger);
+  constructor(interactionLogger?: InteractionLogger, ragRetriever?: RAGRetriever | null) {
+    super(eiroConfig, interactionLogger, 'en', ragRetriever ?? undefined);
   }
 
   async respond(prompt: string, context: Message[], language: Language): Promise<AgentResponse> {

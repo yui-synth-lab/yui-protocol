@@ -26,6 +26,7 @@
     "test:llamacpp-local": "node test-llamacpp-local.js",
     "server": "node dist/server/index.js",
     "rag:index-outputs": "tsx scripts/index-outputs.ts",
+    "rag:index-sessions": "tsx scripts/index-sessions.ts",
     "rag:stats": "tsx scripts/rag-stats.ts"
   },
   "dependencies": {

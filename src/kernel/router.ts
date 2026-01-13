@@ -171,8 +171,10 @@ export class YuiProtocolRouter implements IRealtimeRouter {
     this.agentManager = agentManager || new AgentManager(this.interactionLogger);
     this.sessionManager = sessionManager || new SessionManager(sessionStorage, this.agentManager);
 
-    // エージェントの初期化
-    this.agentManager.initializeAgents();
+    // エージェントの初期化（非同期、バックグラウンドで実行）
+    this.agentManager.initializeAgents().catch((error) => {
+      console.error('[YuiProtocolRouter] Failed to initialize agents:', error);
+    });
 
     // 新しいダイナミックルーターを初期化
     this.dynamicRouter = new DynamicDialogueRouter(sessionStorage);
@@ -807,7 +809,8 @@ export class YuiProtocolRouter implements IRealtimeRouter {
           language as Language,
           sessionId,
           finalOutput.agentId,
-          currentSequenceNumber
+          currentSequenceNumber,
+          session.messages
         );
         
         // シーケンスごとの出力ファイル名を管理

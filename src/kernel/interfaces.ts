@@ -3,7 +3,7 @@ import { Agent, AgentInstance, Session, Language, Message, AgentResponse } from 
 export interface IAgentManager {
   getAgent(agentId: string): AgentInstance | undefined;
   getAvailableAgents(): Agent[];
-  initializeAgents(): void;
+  initializeAgents(): Promise<void>;
 }
 
 export interface ISessionManager {

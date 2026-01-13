@@ -207,12 +207,18 @@ export abstract class BaseAgent {
       .map(([agentId, conclusion]) => `${agentId}: ${conclusion}`)
       .join('\n\n');
 
-    const stagePrompt = this.getStagePrompt('individual-thought', {
+    let stagePrompt = this.getStagePrompt('individual-thought', {
       query,
       context: contextAnalysis,
       previousInput: previousInfo.previousUserInput,
       previousConclusions: previousConclusionsText
     }, language);
+
+    // RAG拡張: 関連知識でプロンプトを強化
+    if (this.ragEnabled && this.ragRetriever) {
+      stagePrompt = await this.enhancePromptWithRAG(stagePrompt, query);
+    }
+
     const personality = this.getPersonalityPrompt(language);
 
     const content = await this.executeAIWithErrorHandling(
@@ -1567,7 +1573,16 @@ export abstract class BaseAgent {
 
 ${knowledge.formattedContext}
 
-Please consider the above retrieved knowledge when formulating your response. If relevant, cite the sources by their number [1], [2], etc.`;
+## How to Use Past Knowledge
+
+The above contains relevant excerpts from past discussions. When incorporating this knowledge:
+
+- Reference specific sessions naturally (e.g., "As we explored in Session X...")
+- Build upon previous insights to deepen the current discussion
+- Connect ideas across different sessions when relevant
+- Cite sources using [1], [2], etc.
+
+Use this context to enrich your response and show continuity with past dialogues.`;
 
       console.log(`[${this.agent.id}] Enhanced prompt with ${knowledge.retrievedKnowledge.length} knowledge sources`);
       return enhancedPrompt;

@@ -2,6 +2,7 @@ import { writeFile, readFile, readdir, unlink } from 'fs/promises';
 import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { getRAGManager } from './rag/rag-manager.js';
+import { Message } from '../types/index.js';
 
 export interface SavedOutput {
   id: string;
@@ -36,7 +37,8 @@ export class OutputStorage {
     language: 'en' | 'ja',
     sessionId: string,
     agentId: string,
-    sequenceNumber: number
+    sequenceNumber: number,
+    sessionMessages?: Message[]
   ): Promise<SavedOutput> {
     const id = `${sessionId}_${sequenceNumber}`;
     const timestamp = new Date();
@@ -62,8 +64,13 @@ export class OutputStorage {
     await writeFile(filepath, markdownContent, 'utf-8');
     console.log(`[OutputStorage] Saved output to ${filepath}`);
 
-    // RAG自動インデックス化
+    // RAG自動インデックス化（outputs）
     await this.autoIndexToRAG(filepath);
+
+    // RAG自動インデックス化（sessions）
+    if (sessionMessages && sessionMessages.length > 0) {
+      await this.autoIndexSessionToRAG(sessionId, sessionMessages);
+    }
 
     return output;
   }
@@ -185,6 +192,37 @@ ${content}
     } catch (error) {
       console.error(`[OutputStorage] Error deleting output ${id}:`, error);
       return false;
+    }
+  }
+
+  /**
+   * RAG自動インデックス化（セッションメッセージ）
+   * セッションのメッセージを自動的にRAGシステムにインデックス化
+   */
+  private async autoIndexSessionToRAG(sessionId: string, messages: Message[]): Promise<void> {
+    try {
+      const ragManager = getRAGManager();
+
+      // RAGが有効でない場合はスキップ
+      if (!ragManager.isReady()) {
+        return;
+      }
+
+      // 設定で自動インデックスが無効の場合はスキップ
+      const stats = await ragManager.getStats();
+      if (!stats.config.indexing.autoIndexSessions) {
+        return;
+      }
+
+      // セッションメッセージをインデックス化
+      console.log(`[OutputStorage] 🔍 Auto-indexing session ${sessionId} to RAG`);
+      const chunksIndexed = await ragManager.indexSessionMessages(sessionId, messages);
+
+      if (chunksIndexed > 0) {
+        console.log(`[OutputStorage] ✓ Auto-indexed ${chunksIndexed} chunks from session ${sessionId}`);
+      }
+    } catch (error) {
+      console.warn('[OutputStorage] ⚠️  Failed to auto-index session to RAG:', error);
     }
   }
 

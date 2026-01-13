@@ -2,6 +2,7 @@ import { BaseAgent } from './base-agent.js';
 import { AgentResponse, Message, IndividualThought, MutualReflection, DialogueStage, Conflict, SynthesisAttempt, Agent } from '../types/index.js';
 import { InteractionLogger } from '../kernel/interaction-logger.js';
 import { Language } from '../templates/prompts.js';
+import { RAGRetriever } from '../kernel/rag/rag-retriever.js';
 
 const yuiConfig: Agent = {
   id: 'yui-000',
@@ -43,8 +44,8 @@ const yuiConfig: Agent = {
 };
 
 export class YuiAgent extends BaseAgent {
-  constructor(interactionLogger?: InteractionLogger) {
-    super(yuiConfig, interactionLogger);
+  constructor(interactionLogger?: InteractionLogger, ragRetriever?: RAGRetriever | null) {
+    super(yuiConfig, interactionLogger, 'en', ragRetriever ?? undefined);
   }
 
   async respond(prompt: string, context: Message[], language: Language): Promise<AgentResponse> {

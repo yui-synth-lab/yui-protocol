@@ -1,6 +1,7 @@
 import { BaseAgent } from './base-agent.js';
 import { AgentResponse, Message, IndividualThought, MutualReflection, DialogueStage, Agent, Language } from '../types/index.js';
 import { InteractionLogger } from '../kernel/interaction-logger.js';
+import { RAGRetriever } from '../kernel/rag/rag-retriever.js';
 
 const kanshiConfig: Agent = {
   id: 'kanshi-001',
@@ -44,8 +45,8 @@ const kanshiConfig: Agent = {
 };
 
 export class KanshiAgent extends BaseAgent {
-  constructor(interactionLogger?: InteractionLogger) {
-    super(kanshiConfig, interactionLogger);
+  constructor(interactionLogger?: InteractionLogger, ragRetriever?: RAGRetriever | null) {
+    super(kanshiConfig, interactionLogger, 'en', ragRetriever ?? undefined);
   }
 
   async respond(prompt: string, context: Message[], language: Language): Promise<AgentResponse> {
