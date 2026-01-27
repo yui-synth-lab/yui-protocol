@@ -303,7 +303,7 @@ app.post('/api/sessions', (async (req: Request, res: Response) => {
 
 app.get('/api/sessions/:sessionId', (async (req: Request, res: Response) => {
   try {
-    const { sessionId } = req.params;
+    const sessionId = req.params.sessionId as string;
     const session = await realtimeRouter.getSession(sessionId);
 
     if (!session) {
@@ -349,7 +349,7 @@ app.post('/api/realtime/sessions/:sessionId/stage', (async (req: Request, res: R
   console.log(`[Server] Request body:`, req.body);
   
   try {
-    const { sessionId } = req.params;
+    const sessionId = req.params.sessionId as string;
     const { prompt, stage, language = 'ja' } = req.body;
     
     console.log(`[Server] Processing stage ${stage} for session ${sessionId} with prompt: ${prompt?.substring(0, 100)}...`);
@@ -426,7 +426,7 @@ app.post('/api/realtime/sessions/:sessionId/stage', (async (req: Request, res: R
 // Endpoint to reset session when starting new process
 app.post('/api/sessions/:sessionId/reset', (async (req: Request, res: Response) => {
   try {
-    const { sessionId } = req.params;
+    const sessionId = req.params.sessionId as string;
     
     // Reset stage progress information but keep messages
     const session = await realtimeRouter.getSession(sessionId);
@@ -451,7 +451,7 @@ app.post('/api/sessions/:sessionId/reset', (async (req: Request, res: Response) 
 // Endpoint to reset realtime session when starting new process
 app.post('/api/realtime/sessions/:sessionId/reset', (async (req: Request, res: Response) => {
   try {
-    const { sessionId } = req.params;
+    const sessionId = req.params.sessionId as string;
     
     console.log(`[Server] Resetting realtime session ${sessionId}`);
     
@@ -478,7 +478,7 @@ app.post('/api/realtime/sessions/:sessionId/reset', (async (req: Request, res: R
 // Endpoint to get last summary
 app.get('/api/sessions/:sessionId/last-summary', (async (req: Request, res: Response) => {
   try {
-    const { sessionId } = req.params;
+    const sessionId = req.params.sessionId as string;
     
     // Get summary from last output-generation stage
     const session = await realtimeRouter.getSession(sessionId);
@@ -507,7 +507,7 @@ app.get('/api/sessions/:sessionId/last-summary', (async (req: Request, res: Resp
 // Endpoint to get last summary for realtime sessions
 app.get('/api/realtime/sessions/:sessionId/last-summary', (async (req: Request, res: Response) => {
   try {
-    const { sessionId } = req.params;
+    const sessionId = req.params.sessionId as string;
     
     console.log(`[Server] Getting last summary for realtime session ${sessionId}`);
     
@@ -537,7 +537,7 @@ app.get('/api/realtime/sessions/:sessionId/last-summary', (async (req: Request, 
 
 app.get('/api/realtime/sessions/:sessionId', (async (req: Request, res: Response) => {
   try {
-    const { sessionId } = req.params;
+    const sessionId = req.params.sessionId as string;
     const session = await realtimeRouter.getSession(sessionId);
     
     if (!session) {
@@ -554,7 +554,7 @@ app.get('/api/realtime/sessions/:sessionId', (async (req: Request, res: Response
 
 app.delete('/api/sessions/:sessionId', (async (req: Request, res: Response) => {
   try {
-    const { sessionId } = req.params;
+    const sessionId = req.params.sessionId as string;
     const deleted = await realtimeRouter.deleteSession(sessionId);
     
     if (!deleted) {
@@ -571,7 +571,7 @@ app.delete('/api/sessions/:sessionId', (async (req: Request, res: Response) => {
 // Endpoint to start new sequence
 app.post('/api/sessions/:sessionId/start-new-sequence', (async (req: Request, res: Response) => {
   try {
-    const { sessionId } = req.params;
+    const sessionId = req.params.sessionId as string;
     const { userPrompt } = req.body;
     console.log(`[Server] Starting new sequence for session ${sessionId}`);
     
@@ -652,7 +652,7 @@ app.delete('/api/outputs/:id', (async (req: Request, res: Response) => {
 // v2.0 dynamic dialogue endpoints
 app.post('/api/v2/sessions/:sessionId/start', (async (req: Request, res: Response) => {
   try {
-    const { sessionId } = req.params;
+    const sessionId = req.params.sessionId as string;
     const { prompt, language = 'en' } = req.body;
 
     if (!prompt) {
