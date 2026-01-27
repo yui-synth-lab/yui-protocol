@@ -49,9 +49,12 @@ You are {name} ({id}), a {style} AI agent with {priority} priority.
 {dialogueInstruction}
 
 # IMPORTANT
-- Do not use <think> tags or any thinking tags in your response. Provide your response directly without any thinking process tags.
-- Respond in character, considering your unique perspective, style, and communication approach. Show your personality through your specific choices, examples, and interactions with the ideas presented.
 - Respond ONLY in {language}. Do not use any other language.
+
+# THINKING PROCESS
+- You are encouraged to use <think>...</think> tags to analyze the context, formulate your arguments, and structure your response before outputting the final content.
+- The content within <think> tags will not be shown to the user, so use it freely to organize your thoughts.
+- Make sure to close the tag with </think> before starting your actual response.
 `;
 
 // Unified language instruction for prompts
@@ -94,6 +97,7 @@ DO NOT use any other formatting, sections, or detailed analysis. ONLY use the da
 
 
 // Vote analysis prompt template
+// Vote analysis prompt template
 export const VOTE_ANALYSIS_PROMPT = `You are an AI assistant tasked with analyzing voting content from agent outputs.
 
 Your task is to extract ONLY the voting information from the provided agent outputs. Focus specifically on:
@@ -106,25 +110,29 @@ Agent Outputs:
 {agentOutputs}
 
 CRITICAL OUTPUT FORMAT REQUIREMENT:
-You MUST respond with ONLY the following format, with each agent on a separate line:
-
-- [Agent Name]: [Voted Agent Name] - [Brief reasoning for the vote]
+You MUST respond with a valid JSON array of objects. Do not wrap it in code blocks.
+Format:
+[
+  {
+    "voterId": "agent-id-who-voted",
+    "targetId": "agent-id-voted-for",
+    "reason": "brief reasoning"
+  }
+]
 
 Example:
-- yui-000: kanshi-001 - Provided the most comprehensive analysis with practical solutions
-- eiro-001: kanshi-001 - Demonstrated logical reasoning and systematic approach
-- kanshi-001: yui-000 - Showed emotional intelligence and balanced perspective
+[
+  { "voterId": "yui-000", "targetId": "kanshi-001", "reason": "Provided the most comprehensive analysis" },
+  { "voterId": "eiro-001", "targetId": "kanshi-001", "reason": "Demonstrated logical reasoning" }
+]
 
 **IMPORTANT RULES:**
-1. Each agent should appear ONLY ONCE in the summary
-2. Focus ONLY on voting information - ignore other content
-3. If an agent didn't vote or vote is unclear, indicate "No clear vote"
-4. Use the exact agent names as provided
-5. Keep reasoning concise but informative (1-2 sentences)
-6. Do not use any other formatting, sections, or detailed analysis
-7. ONLY use the dash format above - this is required for system parsing
+1. Each agent should appear ONLY ONCE as a voter
+2. If an agent didn't vote or vote is unclear, do not include them in the array
+3. Use the exact agent IDs as provided
+4. Do not include self-votes (voterId === targetId)
+5. RESPONSE MUST BE ONLY THE JSON ARRAY. NO OTHER TEXT.`;
 
-DO NOT use any other formatting, sections, or detailed analysis. ONLY use the dash format above. This is required for system parsing.`;
 
 // Default (non-sammarizer) instruction for all agents
 export const DIALOGUE_INSTRUCTION = '[Engage deeply with the substance of ideas. Challenge assumptions, explore implications, and build upon concepts. Focus on the core insights and understanding rather than surface-level differences.]';
@@ -145,7 +153,7 @@ PREVIOUS SEQUENCE USER INPUT: {previousInput}
 PREVIOUS SEQUENCE CONCLUSIONS:
 {previousConclusions}
 
-IMPORTANT: Do not use <think> tags or any thinking tags in your response. Provide your response directly without any thinking process tags.
+IMPORTANT: Use <think>...</think> tags to plan your response if needed. The content within these tags will be hidden from the final output.
 
 Respond naturally as if you're having a conversation. Share your thoughts, feelings, and perspective on this query in your own unique way. Be authentic to your personality and communication style.
 
@@ -197,7 +205,7 @@ Respond by:
 - Challenge or clarify their ideas directly
 - Do NOT discuss the value of dialogue, cooperation, or harmony
 
-IMPORTANT: Do not use <think> tags or any thinking tags in your response. Provide your response directly without any thinking process tags.
+IMPORTANT: Use <think>...</think> tags to plan your response if needed. The content within these tags will be hidden from the final output.
 
 MAXIMUM 250 WORDS TOTAL.
 `,
@@ -228,7 +236,7 @@ Respond by:
 - Do NOT discuss the value of dialogue, cooperation, or harmony
 - Do NOT generalize about the importance of resolving conflict or working together
 
-IMPORTANT: Do not use <think> tags or any thinking tags in your response. Provide your response directly without any thinking process tags.
+IMPORTANT: Use <think>...</think> tags to plan your response if needed. The content within these tags will be hidden from the final output.
 
 MAXIMUM 200 WORDS TOTAL.
 `,
@@ -263,7 +271,7 @@ Speak to the other agents, acknowledge their contributions, and invite them to h
 - 他のエージェントを参照する際は必ずID（例: yui-000, kanshi-001など）で呼ぶこと。
 - When referring to other agents, always use their Agent ID (e.g., yui-000, kanshi-001).
 
-IMPORTANT: Do not use <think> tags or any thinking tags in your response. Provide your response directly without any thinking process tags.
+IMPORTANT: Use <think>...</think> tags to plan your response if needed. The content within these tags will be hidden from the final output.
 
 MAXIMUM 250 WORDS TOTAL.
 `,
@@ -309,7 +317,7 @@ Share your final thoughts in your own voice, weaving together the threads of und
 - Consider their role in the synthesis and conflict resolution
 - Do NOT vote for yourself under any circumstances
 
-IMPORTANT: Do not use <think> tags or any thinking tags in your response. Provide your response directly without any thinking process tags.
+IMPORTANT: Use <think>...</think> tags to plan your response if needed. The content within these tags will be hidden from the final output.
 
 MAXIMUM 300 WORDS TOTAL.
 `,
@@ -356,7 +364,7 @@ For each agent, detail:
 - **New Insights**: Novel ideas that emerged through interaction
 - **Integration Attempts**: Early efforts to combine different perspectives
 
-IMPORTANT: Do not use <think> tags or any thinking tags in your response. Provide your response directly without any thinking process tags.
+IMPORTANT: Use <think>...</think> tags to plan your analysis if needed.
 
 Please provide a thorough analysis that captures the intellectual depth of the interactions and prepares agents for effective conflict resolution in the next stage.
 `,
@@ -462,7 +470,7 @@ For each agent, detail:
 - **Success Criteria**: What will make the final output successful
 - **Implementation Considerations**: How the final output should be structured
 
-IMPORTANT: Do not use <think> tags or any thinking tags in your response. Provide your response directly without any thinking process tags.
+IMPORTANT: Use <think>...</think> tags to plan your analysis if needed.
 
 Please provide a thorough analysis that captures the synthesis dynamics and prepares agents for effective final output generation.
 `,
@@ -494,7 +502,7 @@ but you must do so through the lens of your own unique perspective, expertise, a
 - Write in Markdown, using clear structure, sections, and paragraphs
 - Use your own section names and narrative flow if you wish
 - Be as detailed and expansive as necessary to fully capture the intellectual richness and depth of the session
-- Do not use <think> tags or any thinking tags in your response. Provide your response directly, clearly, and sincerely.
+- **Use <think>...</think> tags** to organize your thoughts and structure your final synthesis. The content within these tags will be filtered out.
 - **Do not mention or include any voting results or recommendations for a summarizer. Focus only on the content and outcome of the discussion itself.**
 
 
@@ -593,14 +601,14 @@ export function parseVotes(content: string, agentId: string): string | null {
     const match = content.match(pattern);
     if (match) {
       const votedAgent = match[1].trim();
-      
+
       // Check if the vote is for the agent themselves
-      if (votedAgent.toLowerCase().includes(agentId.toLowerCase()) || 
-          agentId.toLowerCase().includes(votedAgent.toLowerCase())) {
+      if (votedAgent.toLowerCase().includes(agentId.toLowerCase()) ||
+        agentId.toLowerCase().includes(votedAgent.toLowerCase())) {
         console.warn(`[VoteParser] Agent ${agentId} attempted to vote for themselves: ${votedAgent}`);
         return null; // Exclude self-votes
       }
-      
+
       return votedAgent;
     }
   }
@@ -609,13 +617,48 @@ export function parseVotes(content: string, agentId: string): string | null {
 }
 
 // Helper function to extract vote details including reasoning
-export function extractVoteDetails(content: string, agentId: string, agents?: Array<{id: string, name: string}>): { 
-  votedAgent: string | null; 
-  reasoning: string | null; 
-  voteSection: string | null 
+export function extractVoteDetails(content: string, agentId: string, agents?: Array<{ id: string, name: string }>): {
+  votedAgent: string | null;
+  reasoning: string | null;
+  voteSection: string | null
 } {
   let votedAgent: string | null = null;
-  // Extract the vote section from the content
+  let reasoning: string | null = null;
+  let voteSection: string | null = null;
+
+  // 1. Try JSON parsing first
+  try {
+    // Extract JSON array
+    const jsonMatch = content.match(/\[\s*\{[\s\S]*\}\s*\]/);
+    if (jsonMatch) {
+      const jsonContent = JSON.parse(jsonMatch[0]);
+      if (Array.isArray(jsonContent) && jsonContent.length > 0) {
+        // Find the vote by this agent (assuming the array contains votes from multiple agents, or just one object if the prompt asked for it)
+        // The prompt asks for an array of objects: { voterId, targetId, reason }
+
+        // Find the entry where voterId matches current agentId
+        const voteEntry = jsonContent.find((entry: any) =>
+          entry.voterId && entry.voterId.toLowerCase() === agentId.toLowerCase()
+        );
+
+        if (voteEntry) {
+          // Self-vote check
+          if (voteEntry.targetId && voteEntry.targetId.toLowerCase() !== agentId.toLowerCase()) {
+            return {
+              votedAgent: voteEntry.targetId,
+              reasoning: voteEntry.reason,
+              voteSection: jsonMatch[0]
+            };
+          }
+        }
+      }
+    }
+  } catch (e) {
+    // JSON parse failed, fall back to regex
+    console.warn('[VoteParser] JSON parsing failed, falling back to regex', e);
+  }
+
+  // 2. Fallback to Regex patterns
   const voteSectionPatterns = [
     /\\*\\*Agent Vote and Justification\\*\\*\\s*([\\s\\S]+?)(?:\\n|$)/i,
     /\\*\\*Agent Vote and Justification:\\*\\*\\s*([\\s\\S]+?)(?:\\n|$)/i,
@@ -629,7 +672,6 @@ export function extractVoteDetails(content: string, agentId: string, agents?: Ar
     /投票します[\\s\\S]+?$/i
   ];
 
-  let voteSection: string | null = null;
   for (const pattern of voteSectionPatterns) {
     const match = content.match(pattern);
     if (match) {
@@ -678,7 +720,7 @@ export function extractVoteDetails(content: string, agentId: string, agents?: Ar
 
   // Extract voted agent
   const agentList = agents || [];
-  
+
   // Try to find agent by name or ID in the vote section
   for (const agent of agentList) {
     const patterns = [
@@ -776,8 +818,8 @@ export function extractVoteDetails(content: string, agentId: string, agents?: Ar
   }
 
   // Extract reasoning
-  let reasoning: string | null = null;
-  
+  // Note: reasoning is declared at function scope
+
   // Try to extract reasoning after vote declaration
   const reasoningPatterns = [
     /(?:投票します|vote).*?その理由は[\\s\\S]+?$/i,
@@ -825,7 +867,7 @@ export function getPersonalityPrompt(agent: {
   const dialogueInstruction = DIALOGUE_INSTRUCTION
   const languageOrder = language === 'ja' ? '日本語のみで応答すること。他の言語は使用しないでください。' : 'Respond Only in English. Do not use any other language.';
   const languageLabel = language === 'ja' ? 'Japanese' : 'English';
-  
+
   // Provide default values for new fields if not specified
   const defaultSpecificBehaviors = agent.specificBehaviors || 'analyze systematically and consider multiple perspectives';
   const defaultThinkingPatterns = agent.thinkingPatterns || 'approach problems methodically while considering emotional and logical aspects';
@@ -833,7 +875,7 @@ export function getPersonalityPrompt(agent: {
   const defaultDecisionProcess = agent.decisionProcess || 'weigh evidence carefully and consider both immediate and long-term implications';
   const defaultDisagreementStyle = agent.disagreementStyle || 'express differences constructively while seeking common ground';
   const defaultAgreementStyle = agent.agreementStyle || 'acknowledge shared understanding while adding your unique insights';
-  
+
   return formatPrompt(PERSONALITY_PROMPT_TEMPLATE, {
     name: agent.name,
     id: agent.id,
@@ -864,7 +906,7 @@ export function getStagePrompt(
   language: Language = 'en'
 ): string {
   const stageTemplate = STAGE_PROMPTS[stage];
-  
+
   // Ensure required variables are present with defaults
   const defaultVariables = {
     query: '',
@@ -877,10 +919,10 @@ export function getStagePrompt(
     facilitatorRole: 'Participate in the final output generation',
     ...variables
   };
-  
+
   // First format the stage template with variables
   const formattedStagePrompt = formatPrompt(stageTemplate, defaultVariables);
-  
+
   let prompt = formattedStagePrompt;
   prompt += language === 'ja' ? '日本語のみで応答すること。他の言語は使用しないでください。' : 'Respond Only in English. Do not use any other language.';
   return prompt;

@@ -34,12 +34,18 @@ Please indicate:
 4. Are you ready to move toward conclusion? (yes/no)
 5. Brief reasoning for your satisfaction level
 
-**IMPORTANT: Use EXACTLY this format with English field names, but write the Reasoning content in ${language === 'ja' ? 'Japanese' : 'English'}:**
-Satisfaction: [1-10]
-Additional points: [yes/no]
-Questions: [list or "none"]
-Ready to conclude: [yes/no]
-Reasoning: [brief explanation in ${language === 'ja' ? 'Japanese' : 'English'}]
+**IMPORTANT: YOU MUST RESPOND WITH A SINGLE VALID JSON BLOCK ONLY.**
+**JSON FORMAT:**
+\`\`\`json
+{
+  "satisfaction": [1-10],
+  "additionalPoints": [true/false],
+  "questions": ["question 1", "question 2", ...],
+  "readyToConclude": [true/false],
+  "reasoning": "brief explanation in ${language === 'ja' ? 'Japanese' : 'English'}"
+}
+\`\`\`
+DO NOT include any text outside the JSON block.
 `;
 
 export const CONSENSUS_CHECK_PROMPT = createConsensusCheckPrompt('en');
@@ -75,12 +81,18 @@ Please respond with:
 
 {additionalGuidance}
 
-**IMPORTANT: Use EXACTLY this format with English field names, but write the Reasoning content in ${language === 'ja' ? 'Japanese' : 'English'}:**
-Satisfaction: [1-10]
-New insights this round: [yes/no]
-Another round valuable: [yes/no]
-Ready to conclude: [yes/no]
-Reasoning: [detailed explanation in ${language === 'ja' ? 'Japanese' : 'English'}]
+**IMPORTANT: YOU MUST RESPOND WITH A SINGLE VALID JSON BLOCK ONLY.**
+**JSON FORMAT:**
+\`\`\`json
+{
+  "satisfaction": [1-10],
+  "newInsights": [true/false],
+  "anotherRoundValuable": [true/false],
+  "readyToConclude": [true/false],
+  "reasoning": "detailed explanation in ${language === 'ja' ? 'Japanese' : 'English'}"
+}
+\`\`\`
+DO NOT include any text outside the JSON block.
 `;
 
 // "Beautiful incompleteness" guidance for philosophical discussions
@@ -346,11 +358,16 @@ export function adjustPromptForAgent(
   };
 
   const adjustment = agentAdjustments[agentId];
+  // 拡張: エージェントの拡張パーソナリティフィールドがあればそれを統合
+  // Note: この関数は汎用的に呼ばれるため、agentオブジェクトへの直接アクセスが難しい場合は
+  // 呼び出し元で処理するのが理想だが、ここでは簡易的なマッピング強化を行う
+
   if (adjustment) {
-    return basePrompt + adjustment[language];
+    return basePrompt + adjustment[language] + '\n\nIMPORTANT: Use <think>...</think> tags to plan your response.';
   }
 
-  return basePrompt;
+  // デフォルトでも思考タグの使用を推奨
+  return basePrompt + '\n\nIMPORTANT: Use <think>...</think> tags to plan your response.';
 }
 
 // Prompt compression for token efficiency

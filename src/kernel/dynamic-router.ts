@@ -167,9 +167,9 @@ export class DynamicDialogueRouter {
 
       // 初回ラウンドはコンセンサスデータがないため収束判定をスキップ
       if (totalAgentsChecked > 0 && (
-          !dialogueState.shouldContinue ||
-          (dialogueState.overallConsensus >= 7.0 && round >= 3) ||
-          (averageSatisfaction >= 8.0 && readyToMoveCount >= majorityThreshold && round >= 2))) {
+        !dialogueState.shouldContinue ||
+        (dialogueState.overallConsensus >= 7.0 && round >= 3) ||
+        (averageSatisfaction >= 8.0 && readyToMoveCount >= majorityThreshold && round >= 2))) {
         console.log(`[DynamicRouter] Convergence reached. Consensus: ${dialogueState.overallConsensus}, Satisfaction: ${averageSatisfaction}, Ready: ${readyToMoveCount}/${totalAgentsChecked}, Round: ${round}`);
 
         // 収束理由を判定
@@ -581,6 +581,41 @@ export class DynamicDialogueRouter {
     let reasoning = '';
 
     try {
+      // 1. Try JSON parsing first
+      const jsonMatch = response.match(/\[\s*\{[\s\S]*\}\s*\]|\{\s*"[\s\S]*"\s*:\s*[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          const json = JSON.parse(jsonMatch[0]);
+          // Map JSON fields to ConsensusIndicator fields
+          if (json.satisfaction) satisfactionLevel = Math.min(10, Math.max(1, parseInt(json.satisfaction)));
+
+          // Map boolean fields
+          if (json.readyToConclude !== undefined) readyToMove = json.readyToConclude;
+          else if (json.readyToMove !== undefined) readyToMove = json.readyToMove; // Fallback
+
+          if (json.additionalPoints !== undefined) hasAdditionalPoints = json.additionalPoints;
+          else if (json.anotherRoundValuable !== undefined) hasAdditionalPoints = json.anotherRoundValuable;
+          else if (json.hasAdditionalPoints !== undefined) hasAdditionalPoints = json.hasAdditionalPoints;
+
+          if (json.questions && Array.isArray(json.questions)) questionsForOthers = json.questions;
+
+          if (json.reasoning) reasoning = json.reasoning;
+
+          // If successful, return immediately
+          return {
+            agentId,
+            satisfactionLevel,
+            hasAdditionalPoints,
+            questionsForOthers,
+            readyToMove,
+            reasoning
+          };
+        } catch (e) {
+          console.warn(`[DynamicRouter] JSON parsing failed for ${agentId}, falling back to text parsing`, e);
+        }
+      }
+
+      // 2. Fallback to Text Parsing
       const lines = response.split('\n');
       let capturingReasoning = false;
       let reasoningLines: string[] = [];
@@ -631,9 +666,9 @@ export class DynamicDialogueRouter {
       }
 
       // Reasoning を結合
-      reasoning = reasoningLines.join(' ').trim();
-      if (!reasoning) {
-        reasoning = '';
+      const textReasoning = reasoningLines.join(' ').trim();
+      if (textReasoning) {
+        reasoning = textReasoning;
       }
 
       // 満足度ベースの自動判定ロジック強化
@@ -1371,12 +1406,12 @@ ${isFirst ? `🌱 **YOUR ROLE AS THE FOUNDATION BUILDER**:
 - Establish key analytical frameworks and foundational insights
 - Set the stage for others to build upon your analysis
 - Focus on ${this.getFinalizerFocus(finalizer.getAgent().id)}` :
-(isLast ? `🎆 **YOUR ROLE AS THE SYNTHESIS INTEGRATOR**:
+          (isLast ? `🎆 **YOUR ROLE AS THE SYNTHESIS INTEGRATOR**:
 - Weave together all previous analyses into a unified conclusion
 - Build upon insights from ${finalizers.slice(0, -1).map(f => f.getAgent().name).join(' and ')}
 - Provide the culminating understanding that honors all perspectives
 - Create the definitive conclusion about "${this.originalQuery}"` :
-`🌿 **YOUR ROLE AS THE PERSPECTIVE ENRICHER**:
+            `🌿 **YOUR ROLE AS THE PERSPECTIVE ENRICHER**:
 - Build meaningfully on what ${finalizers.slice(0, index).map(f => f.getAgent().name).join(' and ')} established
 - Add your unique ${finalizer.getAgent().style} insights to deepen understanding
 - Bridge different analytical approaches and fill important gaps
@@ -1950,7 +1985,7 @@ Note: You cannot vote for yourself. Vote for the agent you think can best synthe
     // 最近発言していないエージェントを優先
     let candidates = agents;
 
-    console.log(`[DynamicRouter] selectBalancedAgent called - Current participation:`, 
+    console.log(`[DynamicRouter] selectBalancedAgent called - Current participation:`,
       Array.from(this.agentParticipationCount.entries()).map(([id, count]) => `${id}:${count}`).join(', '));
     console.log(`[DynamicRouter] Recent speakers:`, this.recentSpeakers);
 
@@ -1971,7 +2006,7 @@ Note: You cannot vote for yourself. Vote for the agent you think can best synthe
       return countA - countB;
     });
 
-    console.log(`[DynamicRouter] Sorted by participation:`, 
+    console.log(`[DynamicRouter] Sorted by participation:`,
       sortedByParticipation.map(a => `${a.getAgent().id}:${this.agentParticipationCount.get(a.getAgent().id) || 0}`));
 
     // 特定のスタイルが指定されている場合

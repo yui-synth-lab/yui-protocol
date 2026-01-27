@@ -765,7 +765,8 @@ app.get('/api/health', ((req: Request, res: Response) => {
 }) as RequestHandler);
 
 // Catch-all route for SPA - serve index.html for any non-API routes
-app.get('*', ((req: Request, res: Response) => {
+// Express 5 requires named wildcard parameter
+app.get('/{*path}', ((req: Request, res: Response) => {
   // Skip API routes
   if (req.path.startsWith('/api/')) {
     return res.status(404).json({ error: 'API endpoint not found' });

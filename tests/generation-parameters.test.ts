@@ -3,13 +3,13 @@ import { EiroAgent } from '../src/agents/agent-eiro';
 import { YogaAgent } from '../src/agents/agent-yoga';
 import { KanshiAgent } from '../src/agents/agent-kanshi';
 import { HekitoAgent } from '../src/agents/agent-hekito';
-import { yuiAgent } from '../src/agents/agent-yui';
+import { YuiAgent } from '../src/agents/agent-yui';
 import { InteractionLogger } from '../src/kernel/interaction-logger';
 
 describe('Agent generation parameter calculation', () => {
   const interactionLogger = new InteractionLogger();
   const agents = [
-    new yuiAgent(interactionLogger),
+    new YuiAgent(interactionLogger),
     new YogaAgent(interactionLogger),
     new EiroAgent(interactionLogger),
     new HekitoAgent(interactionLogger),

@@ -14,6 +14,7 @@ export default defineConfig({
   },
   build: {
     emptyOutDir: true,
+    cssMinify: 'lightningcss',
     rollupOptions: {
       output: {
         entryFileNames: 'assets/[name].js',

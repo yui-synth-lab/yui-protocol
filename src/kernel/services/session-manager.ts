@@ -35,37 +35,102 @@ export class SessionManager {
   async getSession(sessionId: string): Promise<Session | undefined> {
     // メモリ内のセッションを先にチェック
     let session = this.sessions.get(sessionId);
-    
+
     // メモリ内にない場合は永続化されたセッションから読み込み
     if (!session) {
       const loadedSession = await this.sessionStorage.loadSession(sessionId);
       if (loadedSession) {
+        // JSON形式のoutput-generation summaryをMarkdownに変換
+        this.convertLegacyVoteSummaries(loadedSession);
         this.sessions.set(sessionId, loadedSession);
         session = loadedSession;
       }
     }
-    
+
     return session;
+  }
+
+  /**
+   * レガシーなJSON形式の投票サマリーをMarkdown形式に変換
+   * 同時に、個別メッセージのメタデータに投票情報を反映
+   */
+  private convertLegacyVoteSummaries(session: Session): void {
+    for (const message of session.messages) {
+      if (
+        message.agentId === 'system' &&
+        message.stage === 'output-generation' &&
+        message.content.includes('output-generation summary:')
+      ) {
+        const summaryContent = message.content.replace('output-generation summary:\n', '');
+
+        // JSON配列形式かチェック
+        if (summaryContent.trim().startsWith('[')) {
+          try {
+            const jsonData = JSON.parse(summaryContent);
+            if (Array.isArray(jsonData)) {
+              // Markdown形式に変換
+              const markdownLines = jsonData.map((vote: any) => {
+                const voterName = this.getAgentName(vote.voterId, session.agents);
+                const targetName = this.getAgentName(vote.targetId, session.agents);
+                return `- ${voterName} (${vote.voterId}): ${targetName} (${vote.targetId}) - ${vote.reason}`;
+              });
+
+              message.content = `output-generation summary:\n${markdownLines.join('\n')}`;
+
+              // 個別メッセージのメタデータに投票情報を反映
+              for (const vote of jsonData) {
+                const targetMessage = session.messages.find(m =>
+                  m.agentId === vote.voterId &&
+                  m.stage === 'output-generation' &&
+                  m.sequenceNumber === message.sequenceNumber
+                );
+
+                if (targetMessage) {
+                  if (!targetMessage.metadata) {
+                    targetMessage.metadata = {};
+                  }
+                  targetMessage.metadata.voteFor = vote.targetId;
+                  targetMessage.metadata.voteReasoning = vote.reason;
+                }
+              }
+            }
+          } catch (error) {
+            // JSON parse失敗の場合はスキップ
+            console.log(`[SessionManager] Could not parse vote summary as JSON for session ${session.id}`);
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * エージェントIDから名前を取得
+   */
+  private getAgentName(agentId: string, agents: Agent[]): string {
+    const agent = agents.find(a => a.id === agentId);
+    return agent ? agent.name : agentId;
   }
 
   async getAllSessions(): Promise<Session[]> {
     // 永続化されたセッションも読み込む
     const storedSessions = await this.sessionStorage.getAllSessions();
-    
+
     // メモリ内のセッションと永続化されたセッションをマージ
     const allSessions = new Map<string, Session>();
-    
+
     // 永続化されたセッションを先に読み込み
     for (const session of storedSessions) {
+      // JSON形式のoutput-generation summaryをMarkdownに変換
+      this.convertLegacyVoteSummaries(session);
       allSessions.set(session.id, session);
       this.sessions.set(session.id, session);
     }
-    
+
     // メモリ内のセッションを追加（永続化されたセッションを上書き）
     for (const [id, session] of this.sessions) {
       allSessions.set(id, session);
     }
-    
+
     return Array.from(allSessions.values());
   }
 

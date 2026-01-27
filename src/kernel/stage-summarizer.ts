@@ -264,6 +264,9 @@ export class StageSummarizer {
       // 投票解析結果をパース
       const voteAnalysis = this.parseVoteAnalysis(result.content, agents);
 
+      // JSON形式をMarkdown形式にフォーマット
+      const formattedContent = this.formatVoteAnalysisAsMarkdown(voteAnalysis, agents);
+
       // ログ出力（成功）
       if (sessionId) {
         await this.logInteraction(
@@ -277,7 +280,7 @@ export class StageSummarizer {
       }
       const voteAnalysisResult: VoteAnalysisResult = {
         voteAnalysis,
-        content: result.content
+        content: formattedContent
       };
       return voteAnalysisResult;
     } catch (error) {
@@ -413,6 +416,35 @@ export class StageSummarizer {
     }
 
     return summary;
+  }
+
+  /**
+   * 投票解析結果をMarkdown形式にフォーマット
+   */
+  private formatVoteAnalysisAsMarkdown(voteAnalysis: VoteAnalysis[], agents: Agent[]): string {
+    const agentMap = new Map<string, string>();
+    agents.forEach(agent => {
+      agentMap.set(agent.id, agent.name);
+    });
+
+    const lines = voteAnalysis
+      .filter(vote => vote.votedAgent !== null) // 投票があったもののみ
+      .map(vote => {
+        const voterName = agentMap.get(vote.agentId) || vote.agentId;
+        const votedName = agentMap.get(vote.votedAgent!) || vote.votedAgent;
+        const reason = vote.reasoning || '理由なし';
+        return `- ${voterName} (${vote.agentId}): ${votedName} (${vote.votedAgent}) - ${reason}`;
+      });
+
+    // 投票しなかったエージェントも追加
+    voteAnalysis
+      .filter(vote => vote.votedAgent === null)
+      .forEach(vote => {
+        const voterName = agentMap.get(vote.agentId) || vote.agentId;
+        lines.push(`- ${voterName} (${vote.agentId}): No clear vote - ${voterName} は投票を行っていません。`);
+      });
+
+    return lines.join('\n');
   }
 
   private parseVoteAnalysis(content: string, agents: Agent[]): VoteAnalysis[] {

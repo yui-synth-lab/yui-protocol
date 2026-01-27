@@ -80,10 +80,10 @@ export class OutputStorage {
 
     return `# ${title}
 
-**Session ID:** ${sessionId}  
-**Sequence Number:** ${sequenceNumber}  
-**Agent ID:** ${agentId}  
-**Language:** ${language === 'ja' ? 'Japanese' : 'English'}  
+**Session ID:** ${sessionId}
+**Sequence Number:** ${sequenceNumber}
+**Agent ID:** ${agentId}
+**Language:** ${language === 'ja' ? 'Japanese' : 'English'}
 **Created:** ${createdAt.toISOString()}
 
 ## User Query
