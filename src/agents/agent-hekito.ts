@@ -33,7 +33,7 @@ const hekitoConfig: Agent = {
   modelConfig: {
     provider: (process.env.AGENT_HEKITO_001_PROVIDER as 'openai' | 'anthropic' | 'gemini' | 'ollama' | 'gemini-cli' | 'custom') || 'gemini',
     model: (process.env.AGENT_HEKITO_001_MODEL || 'gemini-3-flash-preview'),
-    finalizerModel: (process.env.AGENT_HEKITO_001_FINALIZER_MODEL || 'gemini-3-pro-preview')
+    finalizerModel: (process.env.AGENT_HEKITO_001_FINALIZER_MODEL || 'gemini-3.1-pro-preview')
   },
   // Enhanced personality fields for more concrete expression
   specificBehaviors: 'start by collecting and organizing data points, then identify patterns and correlations, always looking for quantitative evidence to support or challenge assumptions, and presenting findings in clear, visual terms',

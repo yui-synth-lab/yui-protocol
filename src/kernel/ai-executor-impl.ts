@@ -10,7 +10,7 @@ import { getLlama, Llama, LlamaModel, LlamaContext, LlamaChatSession } from 'nod
 const noTimeoutFetch = (input: string | URL | globalThis.Request, init?: RequestInit) => {
   const someInit = init || {}
 
-  return fetch(input, { ...someInit, dispatcher: new Agent({ headersTimeout: 2700000 }) } as any)
+  return fetch(input, { ...someInit, dispatcher: new Agent({ headersTimeout: 2700000, bodyTimeout: 2700000, connectTimeout: 2700000 }) } as any)
 }
 
 // Gemini CLI Implementation
@@ -176,8 +176,8 @@ export class OpenAIExecutor extends AIExecutor {
     try {
       // GPT-5 models have different parameter support than GPT-4
       const isGPT5Model = this.model.startsWith('gpt-5');
-      const isGPT5Mini = this.model.includes('gpt-5-mini');
-      const isGPT5Nano = this.model.includes('gpt-5-nano');
+      const isGPT5Mini = this.model.includes('gpt-5.4-mini') || this.model.includes('gpt-5-mini');
+      const isGPT5Nano = this.model.includes('gpt-5.4-nano') || this.model.includes('gpt-5-nano');
 
       const requestBody: any = {
         model: this.model,
@@ -194,7 +194,10 @@ export class OpenAIExecutor extends AIExecutor {
         // - GPT-5.2+ supports temperature normally
         // - Does not support top_p, frequency_penalty, presence_penalty
         // - May include reasoning_tokens in completion_tokens
-        requestBody.max_completion_tokens = this.maxTokens || 4000;
+        // - gpt-5.4 uses extended thinking; reasoning tokens count toward max_completion_tokens
+        //   so we need a larger budget (16000) to avoid empty output (finish_reason: length)
+        const isGPT54 = this.model.startsWith('gpt-5.4') && !isGPT5Mini && !isGPT5Nano;
+        requestBody.max_completion_tokens = isGPT54 ? 16000 : (this.maxTokens || 4000);
 
         // Only add temperature for GPT-5.2 and above (not mini/nano)
         if (!isGPT5Mini && !isGPT5Nano) {
@@ -303,6 +306,14 @@ export class AnthropicExecutor extends AIExecutor {
     }
 
     try {
+      // Claude 4.x models with extended thinking need larger max_tokens
+      // (thinking tokens count toward max_tokens budget)
+      const isClaude4Extended = this.model.startsWith('claude-') &&
+        (this.model.includes('-opus-4') || this.model.includes('-sonnet-4'));
+      const effectiveMaxTokens = isClaude4Extended
+        ? Math.max(this.maxTokens || 4000, 16000)
+        : (this.maxTokens || 4000);
+
       const response = await noTimeoutFetch(`${this.baseUrl}/messages`, {
         method: 'POST',
         headers: {
@@ -312,7 +323,7 @@ export class AnthropicExecutor extends AIExecutor {
         },
         body: JSON.stringify({
           model: this.model,
-          max_tokens: this.maxTokens,
+          max_tokens: effectiveMaxTokens,
           system: personality,
           messages: [{ role: 'user', content: prompt }],
           temperature: this.temperature,

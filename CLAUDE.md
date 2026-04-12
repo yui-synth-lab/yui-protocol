@@ -1,95 +1,103 @@
-# CLAUDE.md - Yui Protocol
+# CLAUDE.md
 
-## What (技術構成)
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-マルチエージェント対話システム。複数のAIエージェントが哲学的テーマについて対話し、創発的な洞察を生成する。
+## What
 
-### プロジェクト構造
+Multi-agent philosophical dialogue system where multiple AI agents discuss themes and generate emergent insights. Two parallel routing systems coexist: v1.0 (fixed stage) and v2.0 (dynamic consensus-driven).
 
-```text
-src/
-├── agents/          # エージェント実装 (Yui, Eiro, Kanshi, Yoga, Hekito, Facilitator)
-├── kernel/          # コアシステム
-│   ├── router.ts         # v1.0 固定ステージ制ルーター
-│   ├── dynamic-router.ts # v2.0 動的対話ルーター
-│   ├── memory-manager.ts # 記憶階層化システム
-│   ├── rag/              # RAG (検索拡張生成) システム
-│   └── services/         # サービス層
-├── server/          # Express API サーバー
-├── types/           # TypeScript 型定義
-├── templates/       # プロンプトテンプレート
-└── config/          # 設定ローダー
-```
-
-### 技術スタック
-
-- **Runtime**: TypeScript + Node.js (ESM)
-- **Build**: Vite
-- **Backend**: Express + Socket.IO
-- **Frontend**: React
-- **RAG**: LanceDB (vectordb)
-- **Test**: Vitest
-
-## Why (目的)
-
-「納得するまで対話を続ける」動的システム。記憶の階層化とトークン効率化を両立させ、深い思索の場を提供する。
-
-## How (作業方法)
-
-### 基本コマンド
+## Commands
 
 ```bash
-npm run build          # ビルド (Vite + TypeScript)
-npm run dev            # フロントエンド開発サーバー
-npm run dev:server     # バックエンド開発サーバー
-npm run test           # テスト実行
-npm run test:coverage  # カバレッジ付きテスト
+npm run build          # Vite frontend + tsc server (must pass before merging)
+npm run dev            # Frontend dev server (port 3000)
+npm run dev:server     # Backend API server (port 3001) — requires built dist/
+npm run test           # Run all Vitest tests (non-interactive)
+npm run test:coverage  # With coverage report
+
+# Run a single test file
+npx vitest run tests/router.test.ts
+
+# RAG index management
+npm run rag:index-outputs   # Index dialogue outputs into LanceDB
+npm run rag:index-sessions  # Index session data
+npm run rag:stats           # Show vector store statistics
 ```
 
-### RAG関連コマンド
+**Validation order**: `npm run build` → `npm run test`. Type errors are caught at build time.
 
-```bash
-npm run rag:index-outputs   # 出力をインデックス化
-npm run rag:index-sessions  # セッションをインデックス化
-npm run rag:stats           # RAG統計表示
-```
+## Architecture
 
-### 変更の検証
+### Dual Router System
 
-1. `npm run build` でビルドエラーがないことを確認
-2. `npm run test` でテストが通ることを確認
-3. 型エラーはビルド時に検出される
+- **v1.0** ([src/kernel/router.ts](src/kernel/router.ts)): `YuiProtocolRouter` — fixed dialogue stages: `individual_thought → mutual_reflection → conflict → synthesis → final`. Stages are executed sequentially via `executeStageRealtime()`.
+- **v2.0** ([src/kernel/dynamic-router.ts](src/kernel/dynamic-router.ts)): `DynamicDialogueRouter` — round-based, continues until consensus threshold is reached (`convergenceThreshold` in `config/v2-settings.json`). Uses a `FacilitatorAgent` to direct each round.
 
-## 設計原則
+Both routers share a `SessionStorage` instance and emit progress via WebSocket (Socket.IO).
 
-1. **後方互換性**: v1.0システムを破壊しない。新機能は並行追加
-2. **段階的進化**: 急激な変更ではなく自然な進化
-3. **エージェントの個性**: 各エージェントの思考・記憶スタイルを尊重
-4. **コスト意識**: トークン使用量を継続的に監視
-5. **透明性**: 圧縮・要約プロセスをログに記録
+### Agent System
 
-## スキル & サブエージェント
+Each agent in [src/agents/](src/agents/) extends `BaseAgent` ([src/agents/base-agent.ts](src/agents/base-agent.ts)) and declares a static config (`Agent` type) with personality, model config, and style. Agent model/provider can be overridden per-agent via env vars: `AGENT_YUI_000_PROVIDER`, `AGENT_YUI_000_MODEL`, `AGENT_YUI_000_FINALIZER_MODEL`.
 
-### Skills (`.claude/skills/`)
+Agents: **Yui** (emotive/breadth), **Eiro** (logical), **Kanshi** (critical), **Yoga** (intuitive), **Hekito** (analytical), **Facilitator** (meta, v2.0 only).
 
-| スキル | 用途 |
-|--------|------|
-| `create-agent` | 新規エージェント作成 |
-| `run-tests` | テスト実行と検証 |
-| `rag-index` | RAGインデックス管理 |
-| `implement-v2` | v2.0機能実装 |
-| `gemini-analyze` | 大規模コード分析（Gemini API経由） |
+`BaseAgent` manages:
 
-### Sub Agents (`.claude/agents/`)
+- `ConversationMemoryManager` — hierarchical memory compression (recent messages kept verbatim, older messages compressed)
+- `RAGRetriever` — optional RAG context injection per agent turn
+- Two `AIExecutor` instances: one for normal turns, one for finalization (may use a different model)
 
-| エージェント | 用途 |
-|--------------|------|
-| `code-reviewer` | コード品質レビュー |
-| `test-runner` | テスト実行と修正 |
-| `v2-implementer` | v2.0機能実装専門 |
+### AI Execution
 
-## 詳細ドキュメント
+[src/kernel/ai-executor.ts](src/kernel/ai-executor.ts) is an abstract class. [src/kernel/ai-executor-impl.ts](src/kernel/ai-executor-impl.ts) provides concrete implementations for: `openai`, `anthropic`, `gemini`, `gemini-cli`, `ollama`, `custom`. Provider is selected per-agent from `modelConfig.provider`.
 
-- [docs/v2-implementation-plan.md](docs/v2-implementation-plan.md) - v2.0実装計画
-- [docs/RAG-GUIDE.md](docs/RAG-GUIDE.md) - RAGシステムガイド
-- [agent_docs/](agent_docs/) - タスク固有ドキュメント
+### Server & API
+
+[src/server/index.ts](src/server/index.ts) — Express 5 + Socket.IO server on port 3001. Serves built React frontend from `dist/`. WebSocket events broadcast per-message progress during dialogue execution. Sessions are identified by UUID and stored in `SessionStorage` (in-memory with file persistence via `OutputStorage`).
+
+Key REST endpoints:
+
+- `POST /api/sessions` — create session (v1.0 or v2.0)
+- `POST /api/sessions/:id/stages/:stage` — execute a v1.0 stage
+- `POST /api/sessions/:id/dynamic` — run v2.0 dynamic dialogue
+- `GET /api/agents` — list available agents
+
+### RAG System
+
+[src/kernel/rag/](src/kernel/rag/) — LanceDB-backed vector store (`vectordb` package). Documents are embedded and retrieved to provide historical context during dialogue. Configured via `config/rag-config.json`. Agents with `memoryScope: 'cross-session'` can access RAG-retrieved context.
+
+### Configuration
+
+- `config/v2-settings.json` — consensus thresholds, memory limits, facilitator action priorities, collaborative finalization settings
+- `config/rag-config.json` — RAG embedding and retrieval settings
+- `src/config/v2-config-loader.ts` — singleton `V2ConfigLoader` for runtime config access
+
+### Templates
+
+- [src/templates/prompts.ts](src/templates/prompts.ts) — v1.0 stage prompts, personality formatting, vote extraction
+- [src/templates/v2-prompts.ts](src/templates/v2-prompts.ts) — v2.0 round guidance, facilitator prompts
+
+## Design Principles
+
+1. **Backward compatibility**: v1.0 must never break. New features are added in parallel.
+2. **Agent individuality**: Each agent's personality, memory style, and thinking patterns must be respected and not homogenized.
+3. **Token cost awareness**: Monitor token usage; memory compression targets 30% of original token count.
+4. **Transparency**: Compression and summarization processes are logged.
+
+## Skills & Sub-agents
+
+| Tool | Use for |
+| ---- | ------- |
+| `/create-agent` | Adding new agents |
+| `/run-tests` | Running and fixing tests |
+| `/rag-index` | Managing RAG indexes |
+| `/implement-v2` | v2.0 feature work |
+| `/gemini-analyze` | Large codebase analysis via Gemini CLI |
+| `code-reviewer` agent | Code quality review |
+| `v2-implementer` agent | Specialized v2.0 implementation |
+
+## Key Docs
+
+- [docs/v2-implementation-plan.md](docs/v2-implementation-plan.md) — v2.0 phased implementation plan
+- [docs/RAG-GUIDE.md](docs/RAG-GUIDE.md) — RAG system guide
+- [config/README.md](config/README.md) — configuration reference

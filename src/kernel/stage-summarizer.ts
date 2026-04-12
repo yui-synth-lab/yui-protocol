@@ -448,75 +448,91 @@ export class StageSummarizer {
   }
 
   private parseVoteAnalysis(content: string, agents: Agent[]): VoteAnalysis[] {
-    const lines = content.split('\n').filter(line => line.trim());
     const voteAnalysis: VoteAnalysis[] = [];
     const foundAgentIds = new Set<string>();
+    const validAgentIds = agents.map(a => a.id);
 
-    // デバッグ用ログ
     console.log(`[StageSummarizer] Parsing vote analysis content: ${content.substring(0, 200)}...`);
 
+    // 1. Try JSON array format (matches VOTE_ANALYSIS_PROMPT output)
+    try {
+      const jsonMatch = content.match(/\[\s*\{[\s\S]*?\}\s*\]/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (Array.isArray(parsed)) {
+          for (const entry of parsed) {
+            const voterId = entry.voterId?.trim();
+            const targetId = entry.targetId?.trim();
+            const reason = entry.reason?.trim() ?? null;
+            if (
+              voterId && targetId &&
+              validAgentIds.includes(voterId) &&
+              validAgentIds.includes(targetId) &&
+              voterId !== targetId
+            ) {
+              foundAgentIds.add(voterId);
+              voteAnalysis.push({
+                agentId: voterId,
+                votedAgent: targetId,
+                reasoning: reason,
+                timestamp: new Date()
+              });
+            }
+          }
+          if (voteAnalysis.length > 0) {
+            console.log(`[StageSummarizer] JSON parse succeeded: ${voteAnalysis.length} votes`);
+            // fall through to add nulls for missing agents
+            for (const agent of agents) {
+              if (!foundAgentIds.has(agent.id)) {
+                voteAnalysis.push({ agentId: agent.id, votedAgent: null, reasoning: null, timestamp: new Date() });
+              }
+            }
+            return voteAnalysis;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[StageSummarizer] JSON parse failed, falling back to line patterns', e);
+    }
+
+    // 2. Fallback: line-based patterns
+    const lines = content.split('\n').filter(line => line.trim());
     for (const line of lines) {
       console.log(`[StageSummarizer] Processing line: "${line}"`);
-      // 複数のパターンを試す
       const patterns = [
-        // 日本語形式: - エージェント名 (ID): 投票先名 (ID) - 理由
+        // - エージェント名 (ID): 投票先名 (ID) - 理由
         /^\-\s*([^\s(]+)\s*\(([a-zA-Z0-9\-_]+)\):\s*([^\s(]+)\s*\(([a-zA-Z0-9\-_]+)\)\s*-\s*(.+)$/,
-        // 日本語形式: - エージェント名 (ID): 投票先ID - 理由
+        // - エージェント名 (ID): 投票先ID - 理由
         /^\-\s*([^\s(]+)\s*\(([a-zA-Z0-9\-_]+)\):\s*([a-zA-Z0-9\-_]+)\s*-\s*(.+)$/,
-        // パターン1: - agent-id: voted-agent-id - reasoning
+        // - agent-id: voted-agent-id - reasoning
         /^\-\s*([a-zA-Z0-9\-_]+):\s*([a-zA-Z0-9\-_]+)\s*-\s*(.+)$/,
-        // パターン2: - agent-name (agent-id): voted-agent-name (voted-agent-id) - reasoning
+        // - agent-name (agent-id): voted-agent-name (voted-agent-id) - reasoning
         /^\-\s*[^()]+\(([^)]+)\):\s*[^()]+\(([^)]+)\)\s*-\s*(.+)$/,
-        // パターン3: - agent-id: voted-agent-id - reasoning (より柔軟)
+        // - agent-id: voted-agent-id - reasoning (flexible)
         /^\-\s*([^:]+):\s*([^\s]+)\s*-\s*(.+)$/
       ];
 
-      let match: RegExpMatchArray | null = null;
       let agentId: string | null = null;
       let votedAgentId: string | null = null;
       let reasoning: string | null = null;
+      let matched = false;
       for (const [i, pattern] of patterns.entries()) {
-        match = line.match(pattern);
+        const match = line.match(pattern);
         if (match) {
-          // 日本語形式: - エージェント名 (ID): 投票先名 (ID) - 理由
-          if (i === 0) {
-            agentId = match[2]?.trim() ?? null;
-            votedAgentId = match[4]?.trim() ?? null;
-            reasoning = match[5]?.trim() ?? null;
-          // 日本語形式: - エージェント名 (ID): 投票先ID - 理由
-          } else if (i === 1) {
-            agentId = match[2]?.trim() ?? null;
-            votedAgentId = match[3]?.trim() ?? null;
-            reasoning = match[4]?.trim() ?? null;
-          // 英語形式: - agent-id: voted-agent-id - reasoning
-          } else if (i === 2 || i === 4) {
-            agentId = match[1]?.trim() ?? null;
-            votedAgentId = match[2]?.trim() ?? null;
-            reasoning = match[3]?.trim() ?? null;
-          // 英語形式: - agent-name (agent-id): voted-agent-name (voted-agent-id) - reasoning
-          } else if (i === 3) {
-            agentId = match[1]?.trim() ?? null;
-            votedAgentId = match[2]?.trim() ?? null;
-            reasoning = match[3]?.trim() ?? null;
-          }
+          if (i === 0) { agentId = match[2]?.trim() ?? null; votedAgentId = match[4]?.trim() ?? null; reasoning = match[5]?.trim() ?? null; }
+          else if (i === 1) { agentId = match[2]?.trim() ?? null; votedAgentId = match[3]?.trim() ?? null; reasoning = match[4]?.trim() ?? null; }
+          else if (i === 2 || i === 4) { agentId = match[1]?.trim() ?? null; votedAgentId = match[2]?.trim() ?? null; reasoning = match[3]?.trim() ?? null; }
+          else if (i === 3) { agentId = match[1]?.trim() ?? null; votedAgentId = match[2]?.trim() ?? null; reasoning = match[3]?.trim() ?? null; }
+          matched = true;
           break;
         }
       }
 
-      if (match) {
-        // エージェントIDが有効かチェック
-        const validAgentIds = agents.map(a => a.id);
-        if (agentId && votedAgentId && validAgentIds.includes(agentId) && validAgentIds.includes(votedAgentId)) {
-          foundAgentIds.add(agentId);
-          voteAnalysis.push({
-            agentId,
-            votedAgent: votedAgentId,
-            reasoning,
-            timestamp: new Date()
-          });
-        } else {
-          console.log(`[StageSummarizer] Invalid agent IDs: agentId=${agentId}, votedAgentId=${votedAgentId}`);
-        }
+      if (matched && agentId && votedAgentId && validAgentIds.includes(agentId) && validAgentIds.includes(votedAgentId) && agentId !== votedAgentId) {
+        foundAgentIds.add(agentId);
+        voteAnalysis.push({ agentId, votedAgent: votedAgentId, reasoning, timestamp: new Date() });
+      } else if (matched) {
+        console.log(`[StageSummarizer] Invalid agent IDs: agentId=${agentId}, votedAgentId=${votedAgentId}`);
       } else {
         console.log(`[StageSummarizer] No match for line: "${line}"`);
       }

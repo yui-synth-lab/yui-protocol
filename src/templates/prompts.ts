@@ -658,31 +658,79 @@ export function extractVoteDetails(content: string, agentId: string, agents?: Ar
     console.warn('[VoteParser] JSON parsing failed, falling back to regex', e);
   }
 
+  // 1.5. Direct "{agentId/name}に投票" patterns (agent reference before 投票)
+  if (agents) {
+    for (const agent of agents) {
+      if (agent.id.toLowerCase() === agentId.toLowerCase()) continue; // skip self
+      const escapedId = escapeRegExp(agent.id);
+      const escapedName = escapeRegExp(agent.name);
+      const directPatterns = [
+        new RegExp(`${escapedId}(?:氏|さん|様)?(?:\\s*\\([^)]*\\))?に投票`, 'i'),
+        new RegExp(`${escapedName}(?:氏|さん|様)?(?:\\s*\\([^)]*\\))?に投票`, 'i'),
+        // "名前-番号様に投票" format e.g. 観至-001様に投票
+        new RegExp(`${escapedName}-[0-9]+(?:氏|さん|様)?に投票`, 'i'),
+        // "(name)に投票" or "name (id)に投票"
+        new RegExp(`\\(${escapedId}\\)に投票`, 'i'),
+      ];
+      for (const pat of directPatterns) {
+        const m = content.match(pat);
+        if (m) {
+          // Return the line containing the match as voteSection for context
+          const matchIndex = m.index ?? 0;
+          const lineStart = content.lastIndexOf('\n', matchIndex - 1) + 1;
+          const lineEnd = content.indexOf('\n', matchIndex);
+          const voteLine = content.slice(lineStart, lineEnd === -1 ? undefined : lineEnd);
+          // Extract reasoning: everything after 投票(します) on same and following lines
+          const afterMatch = content.slice(matchIndex);
+          const reasonMatch = afterMatch.match(/に投票(?:します)?[。.]*\s*([\s\S]+)/i);
+          const extractedReasoning = reasonMatch ? reasonMatch[1].trim() : null;
+          return {
+            votedAgent: agent.id,
+            reasoning: extractedReasoning || voteLine,
+            voteSection: voteLine
+          };
+        }
+      }
+    }
+  }
+
   // 2. Fallback to Regex patterns
+  // Covers observed real-world patterns:
+  //   **Agent Vote and Justification** / **Agent Vote and Justification:**
+  //   **Agent Vote and Justification: agent-id**
+  //   **Agent Vote**: id / **Agent Vote: id** / **Agent Vote:** id
+  //   **Vote:** id / [Vote: id]
+  //   **投票: id** / **投票：id** / 投票: id
+  //   私の投票先は... / 私は**name**氏に投票します
   const voteSectionPatterns = [
-    /\\*\\*Agent Vote and Justification\\*\\*\\s*([\\s\\S]+?)(?:\\n|$)/i,
-    /\\*\\*Agent Vote and Justification:\\*\\*\\s*([\\s\\S]+?)(?:\\n|$)/i,
-    /Agent Vote[：:]*\\s*([\\s\\S]+?)(?:\\n|$)/i,
-    /投票[：:]*\\s*([\\s\\S]+?)(?:\\n|$)/i,
-    /vote[：:]*\\s*([\\s\\S]+?)(?:\\n|$)/i,
-    /which agent should summarize[：:]*\\s*([\\s\\S]+?)(?:\\n|$)/i,
-    /summarize and why[：:]*\\s*([\\s\\S]+?)(?:\\n|$)/i,
-    /私は\\*\\*([^\\*]+)\\*\\*氏に投票します[\\s\\S]+?$/i,
-    /私の投票先は[\\s\\S]+?$/i,
-    /投票します[\\s\\S]+?$/i
+    /\*\*Agent Vote and Justification[：:*]*\*\*\s*([\s\S]+)$/i,
+    /\*\*Agent Vote[：:]\s*([^\n*]+)\*\*/i,
+    /\*\*Agent Vote\*\*[：:]\s*([\s\S]+)$/i,
+    /\*\*Agent Vote\*\*\s*([\s\S]+)$/i,
+    /\*\*Vote[：:]\s*([^\n*]+)\*\*/i,
+    /\[Vote[：:]\s*([^\]]+)\]/i,
+    /Agent Vote[：:]*\s*([\s\S]+)$/i,
+    /\*\*投票[：:：]\s*([^\n*]+)\*\*/i,
+    /投票[：:：]*\s*([\s\S]+)$/i,
+    /vote[：:]*\s*([\s\S]+)$/i,
+    /which agent should summarize[：:]*\s*([\s\S]+)$/i,
+    /summarize and why[：:]*\s*([\s\S]+)$/i,
+    /私は\*\*([^*]+)\*\*氏に投票します[\s\S]+?$/i,
+    /私の投票先は[\s\S]+?$/i,
+    /投票します[\s\S]+?$/i
   ];
 
   for (const pattern of voteSectionPatterns) {
     const match = content.match(pattern);
     if (match) {
-      voteSection = match[1] || match[0];
+      voteSection = match[0]; // Use full match for context; agent extraction happens below
       break;
     }
   }
 
   // If no specific vote section found, try to find vote in the last part of content
   if (!voteSection) {
-    const lines = content.split('\\n').reverse();
+    const lines = content.split('\n').reverse();
     for (const line of lines) {
       if (line.includes('投票') || line.includes('vote') || line.includes('氏に') || line.includes('さん')) {
         voteSection = line;
@@ -822,12 +870,12 @@ export function extractVoteDetails(content: string, agentId: string, agents?: Ar
 
   // Try to extract reasoning after vote declaration
   const reasoningPatterns = [
-    /(?:投票します|vote).*?その理由は[\\s\\S]+?$/i,
-    /(?:投票します|vote).*?理由は[\\s\\S]+?$/i,
-    /(?:投票します|vote).*?理由[\\s\\S]+?$/i,
-    /(?:投票します|vote).*?第一に[\\s\\S]+?$/i,
-    /(?:投票します|vote).*?because[\\s\\S]+?$/i,
-    /(?:投票します|vote).*?reason[\\s\\S]+?$/i
+    /(?:投票します|vote).*?その理由は[\s\S]+?$/i,
+    /(?:投票します|vote).*?理由は[\s\S]+?$/i,
+    /(?:投票します|vote).*?理由[\s\S]+?$/i,
+    /(?:投票します|vote).*?第一に[\s\S]+?$/i,
+    /(?:投票します|vote).*?because[\s\S]+?$/i,
+    /(?:投票します|vote).*?reason[\s\S]+?$/i
   ];
 
   for (const pattern of reasoningPatterns) {
