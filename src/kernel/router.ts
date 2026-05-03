@@ -48,7 +48,8 @@ function shuffleArray<T>(array: T[]): T[] {
   return arr;
 }
 
-// Helper function to remove circular references
+// Helper function to remove circular references.
+// Uses backtracking so shared (non-cyclic) objects are serialized correctly.
 function removeCircularReferences(obj: unknown, seen: WeakSet<object> = new WeakSet()): unknown {
   if (obj === null || typeof obj !== 'object') {
     return obj;
@@ -60,15 +61,19 @@ function removeCircularReferences(obj: unknown, seen: WeakSet<object> = new Weak
     return '[Circular Reference]';
   }
   seen.add(obj);
+  let result: unknown;
   if (Array.isArray(obj)) {
-    return obj.map((item: unknown) => removeCircularReferences(item, seen));
-  }
-  const result: Record<string, unknown> = {};
-  for (const key in obj) {
-    if (obj.hasOwnProperty(key)) {
-      result[key] = removeCircularReferences((obj as Record<string, unknown>)[key], seen);
+    result = obj.map((item: unknown) => removeCircularReferences(item, seen));
+  } else {
+    const r: Record<string, unknown> = {};
+    for (const key in obj) {
+      if (Object.prototype.hasOwnProperty.call(obj, key)) {
+        r[key] = removeCircularReferences((obj as Record<string, unknown>)[key], seen);
+      }
     }
+    result = r;
   }
+  seen.delete(obj);
   return result;
 }
 

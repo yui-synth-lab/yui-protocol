@@ -1350,7 +1350,7 @@ Remember: You are not just summarizing - you are synthesizing, integrating, and 
     language: Language,
     sessionId: string,
     round: number
-  ): Promise<Message> {
+  ): Promise<null> {
     console.log(`[DynamicRouter] Starting collaborative finalization with ${finalizers.length} finalizers`);
 
     // Step 1: 協力紹介メッセージを作成・送信
@@ -1530,8 +1530,8 @@ ${this.getCollaborativeInstructions(finalizer.getAgent().id, isFirst, isLast, in
 
     console.log(`[DynamicRouter] Collaborative finalization completed with ${collaborationMessages.length} contributions`);
 
-    // 最後のメッセージ（統合担当）をメインの結果として返す
-    return collaborationMessages[collaborationMessages.length - 1];
+    // messages への push は内部で完了済みのため null を返す（呼び出し側の二重 push を防ぐ）
+    return null;
   }
 
   // ファイナライザーのフォーカスエリアを取得
