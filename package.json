@@ -7,7 +7,7 @@
     "dev": "vite",
     "dev:server": "node dist/server/index.js",
     "clean": "rimraf dist",
-    "build": "vite build && tsc -p tsconfig.server.json",
+    "build": "npm run check:deps && vite build && tsc -p tsconfig.server.json",
     "preview": "vite preview",
     "test": "vitest --run",
     "check:deps": "depcruise src --config .dependency-cruiser.cjs",
