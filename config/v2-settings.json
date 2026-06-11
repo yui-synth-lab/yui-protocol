@@ -5,9 +5,12 @@
     "compressionRatio": 0.3
   },
   "consensus": {
-    "convergenceThreshold": 7.5,
+    "convergenceThreshold": 7.0,
     "maxRounds": 20,
-    "minSatisfactionLevel": 6.5
+    "minSatisfactionLevel": 6.5,
+    "minRoundsForConvergence": 3,
+    "highSatisfactionThreshold": 8.0,
+    "minRoundsForSatisfactionConvergence": 2
   },
   "facilitator": {
     "actionPriority": {

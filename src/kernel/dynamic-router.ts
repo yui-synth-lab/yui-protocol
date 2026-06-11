@@ -10,11 +10,13 @@ import { createConvergenceMessage, createVotingStartMessage, createVotingResultM
 import { createCollaborationIntroMessage, createCollaborationProgressMessage, createCollaborationSummaryMessage } from '../utils/collaboration-messages.js';
 import { getRoundGuidanceText, v2PromptTemplates } from '../templates/v2-prompts.js';
 import { getV2ConsensusConfig } from '../config/v2-config-loader.js';
+import { ConvergenceJudge } from '../dialogue/convergence-judge.js';
 
 export class DynamicDialogueRouter {
   private facilitator: FacilitatorAgent;
   private maxRounds: number;
-  private convergenceThreshold: number;
+  private convergenceJudge: ConvergenceJudge;
+  private llmCallEstimate: number = 0; // M7: セッション内のLLM呼び出し概数（バジェット判定用）
   private sessionStorage: SessionStorage;
   private activeConsensusChecks = new Set<string>(); // 重複実行防止
   private wsEmitter?: (event: string, data: any) => void; // WebSocket emitter
@@ -39,7 +41,14 @@ export class DynamicDialogueRouter {
     // Load configuration
     const consensusConfig = getV2ConsensusConfig();
     this.maxRounds = consensusConfig.maxRounds;
-    this.convergenceThreshold = consensusConfig.convergenceThreshold;
+    // 収束判定を config に接続（従来は 7.0/8.0 等がハードコードされ convergenceThreshold は未使用だった）
+    this.convergenceJudge = new ConvergenceJudge({
+      convergenceThreshold: consensusConfig.convergenceThreshold,
+      minRoundsForConvergence: consensusConfig.minRoundsForConvergence,
+      highSatisfactionThreshold: consensusConfig.highSatisfactionThreshold,
+      minRoundsForSatisfactionConvergence: consensusConfig.minRoundsForSatisfactionConvergence,
+      maxLlmCallsPerSession: consensusConfig.maxLlmCallsPerSession
+    });
   }
 
   async conductDynamicDialogue(
@@ -62,6 +71,7 @@ export class DynamicDialogueRouter {
     this.agentParticipationCount.clear();
     this.initialThoughts = []; // Initial Thoughtをリセット
     this.currentRound = 0; // ラウンド番号をリセット
+    this.llmCallEstimate = 0; // LLM呼び出しカウンタをリセット（M7）
     this.agentNamesById.clear();
     agentList.forEach(agent => {
       this.agentParticipationCount.set(agent.getAgent().id, 0);
@@ -164,42 +174,21 @@ export class DynamicDialogueRouter {
         });
       }
 
-      // 収束判定 - より厳密な条件
-      const readyToMoveCount = consensusData.length > 0 ? consensusData.filter(c => c.readyToMove).length : 0;
-      const averageSatisfaction = consensusData.length > 0 ?
-        consensusData.reduce((sum, c) => sum + c.satisfactionLevel, 0) / consensusData.length : 0;
-      const totalAgentsChecked = consensusData.length;
-      const majorityThreshold = Math.ceil(totalAgentsChecked / 2);
-
-      // 初回ラウンドはコンセンサスデータがないため収束判定をスキップ
-      if (totalAgentsChecked > 0 && (
-        !dialogueState.shouldContinue ||
-        (dialogueState.overallConsensus >= 7.0 && round >= 3) ||
-        (averageSatisfaction >= 8.0 && readyToMoveCount >= majorityThreshold && round >= 2))) {
-        console.log(`[DynamicRouter] Convergence reached. Consensus: ${dialogueState.overallConsensus}, Satisfaction: ${averageSatisfaction}, Ready: ${readyToMoveCount}/${totalAgentsChecked}, Round: ${round}`);
-
-        // 収束理由を判定
-        let convergenceReason: 'natural_consensus' | 'max_rounds' | 'facilitator_decision' | 'high_satisfaction';
-        if (averageSatisfaction >= 8.0 && readyToMoveCount >= majorityThreshold) {
-          convergenceReason = 'natural_consensus';
-        } else if (!dialogueState.shouldContinue) {
-          convergenceReason = 'facilitator_decision';
-        } else if (dialogueState.overallConsensus >= 7.0 && round >= 3) {
-          convergenceReason = 'high_satisfaction';
-        } else {
-          convergenceReason = 'natural_consensus';
-        }
+      // 収束判定（ConvergenceJudge に抽出。config 接続済み・バジェット超過時は強制収束: M7）
+      const decision = this.convergenceJudge.judge(consensusData, dialogueState, round, this.llmCallEstimate);
+      if (decision.converged) {
+        console.log(`[DynamicRouter] Convergence reached. Consensus: ${dialogueState.overallConsensus}, Satisfaction: ${decision.averageSatisfaction}, Ready: ${decision.readyToMoveCount}/${decision.totalAgentsChecked}, Round: ${round}${decision.budgetExceeded ? ' (LLM call budget exceeded)' : ''}`);
 
         // 収束説明メッセージを追加
         const convergenceMessage = createConvergenceMessage(
-          convergenceReason,
+          decision.reason!,
           round,
           dialogueState.overallConsensus,
-          readyToMoveCount,
+          decision.readyToMoveCount,
           consensusData.length,
           sessionId,
           language,
-          `平均満足度: ${averageSatisfaction.toFixed(1)}/10`
+          `平均満足度: ${decision.averageSatisfaction.toFixed(1)}/10`
         );
         messages.push(convergenceMessage);
 
@@ -250,6 +239,8 @@ export class DynamicDialogueRouter {
         dialogueState.recommendedActionCount
       );
       messages.push(...nextActions);
+      // ファシリテーター分析(1) + 実行アクション数を呼び出し概数に計上（M7）
+      this.llmCallEstimate += 1 + nextActions.length;
 
       // Emit new messages
       for (const message of nextActions) {
@@ -420,6 +411,7 @@ export class DynamicDialogueRouter {
 
         // 初期応答でも参加カウントを追跡
         this.trackAgentParticipation(agent.getAgent().id);
+        this.llmCallEstimate++;
 
         responses.push(message);
 
@@ -475,6 +467,7 @@ export class DynamicDialogueRouter {
 
       try {
         const consensus = await this.askForConsensus(agent, messages, language, currentRound);
+        this.llmCallEstimate++;
         consensusData.push(consensus);
         checkedAgents++;
 
@@ -566,12 +559,14 @@ export class DynamicDialogueRouter {
       .replace('{contextText}', contextText)
       .replace('{additionalGuidance}', additionalGuidance);
 
+    // コンセンサス確認は様式化タスクのため mechanical tier で実行可能（M2、config オプトイン）
     const response = await agent.executeWithPersonality(
       prompt,
       'consensus-check' as DialogueStage,
       'consensus gathering',
       language,
-      'dynamic-session'
+      'dynamic-session',
+      'mechanical'
     );
 
     return this.parseConsensusResponse(response, agent.getAgent().id);
@@ -1317,6 +1312,7 @@ Remember: You are not just summarizing - you are synthesizing, integrating, and 
           language,
           'dynamic-session'
         );
+        this.llmCallEstimate++;
 
         return {
           id: this.generateMessageId(),
@@ -1452,6 +1448,7 @@ ${this.getCollaborativeInstructions(finalizer.getAgent().id, isFirst, isLast, in
         language,
         'dynamic-session'
       );
+      this.llmCallEstimate++;
 
       const finalizerMessage: Message = {
         id: this.generateMessageId(),
@@ -1833,13 +1830,16 @@ Reason: [reason for selection]
 
 Note: You cannot vote for yourself. Vote for the agent you think can best synthesize our discussion.`;
 
+    // 投票は様式化タスクのため mechanical tier で実行可能（M2、config オプトイン）
     const response = await agent.executeWithPersonality(
       prompt,
       'voting',
       'finalizer voting',
       language,
-      'dynamic-vote'
+      'dynamic-vote',
+      'mechanical'
     );
+    this.llmCallEstimate++;
 
     return this.parseVoteResponse(response, agent.getAgent().id, agentList, allAgents);
   }

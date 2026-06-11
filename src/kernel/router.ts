@@ -34,6 +34,8 @@ import { SessionManager } from './services/session-manager.js';
 import { extractVoteDetails, getStagePrompt } from '../templates/prompts.js';
 import { DynamicDialogueRouter } from './dynamic-router.js';
 import { shuffleArray } from '../utils/random.js';
+import { analyzeVotesByRegex, formatVoteAnalysisMarkdown } from '../dialogue/voting/vote-parser.js';
+import { getV2CostOptimizationConfig } from '../config/v2-config-loader.js';
 
 // ユーティリティ関数
 function sleep(ms: number): Promise<void> {
@@ -250,7 +252,7 @@ export class YuiProtocolRouter implements IRealtimeRouter {
         await sleep(this.delay);
         console.log(`[Router] AI-based vote analysis delay: ${this.delay}ms`);
         console.log(`[Router] Starting AI-based vote analysis for ${responses.length} agents`);
-        voteAnalysis = await this.stageSummarizer.analyzeVotes(
+        voteAnalysis = await this.analyzeVotesCostAware(
           responses,
           session.agents,
           sessionId,
@@ -905,6 +907,34 @@ export class YuiProtocolRouter implements IRealtimeRouter {
         `Stage 4 Summary:\n${stage4Summary.summary.map(item => `- **${item.speaker}**: ${item.position}`).join('\n')}` : 
         'No previous stage data available'
     };
+  }
+
+  /**
+   * M4: regex-first / AI-fallback の投票解析（config オプトイン）。
+   * costOptimization.regexFirstVoteAnalysis が true かつ正規表現で全票が確定した場合、
+   * AI 解析（stage-summarizer.analyzeVotes）の呼び出しをスキップしてコストを削減する。
+   */
+  private async analyzeVotesCostAware(
+    responses: AgentResponse[],
+    agents: Agent[],
+    sessionId: string,
+    language: Language
+  ) {
+    if (getV2CostOptimizationConfig().regexFirstVoteAnalysis) {
+      const regexResult = analyzeVotesByRegex(
+        responses.map(r => ({ agentId: r.agentId, content: r.content })),
+        agents
+      );
+      if (regexResult.resolvedAll) {
+        console.log(`[Router] Vote analysis resolved by regex for all ${regexResult.analyses.length} agents — skipping AI analysis (M4)`);
+        return {
+          voteAnalysis: regexResult.analyses,
+          content: formatVoteAnalysisMarkdown(regexResult.analyses, agents)
+        };
+      }
+      console.log(`[Router] Regex vote analysis incomplete — falling back to AI analysis`);
+    }
+    return this.stageSummarizer.analyzeVotes(responses, agents, sessionId, language);
   }
 
   // テスト用のメソッド

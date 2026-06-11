@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { V2Settings, DEFAULT_V2_SETTINGS } from '../types/v2-config.js';
+import { V2Settings, DEFAULT_V2_SETTINGS, ModelTierConfig, CostOptimizationConfig } from '../types/v2-config.js';
 
 export class V2ConfigLoader {
   private static instance: V2ConfigLoader;
@@ -56,7 +56,10 @@ export class V2ConfigLoader {
           ...DEFAULT_V2_SETTINGS.facilitator.actionPriority,
           ...partial.facilitator?.actionPriority
         }
-      }
+      },
+      // コスト最適化設定はオプトイン（未設定なら undefined のまま＝従来挙動）
+      modelTiers: partial.modelTiers,
+      costOptimization: partial.costOptimization
     };
   }
 
@@ -150,4 +153,14 @@ export function getV2ConsensusConfig(): V2Settings['consensus'] {
 
 export function getV2FacilitatorConfig(): V2Settings['facilitator'] {
   return V2ConfigLoader.getInstance().getFacilitatorConfig();
+}
+
+// コスト最適化（M2/M3）: タスク階層のモデル設定を取得。未設定なら undefined
+export function getV2ModelTierConfig(tier: 'mechanical' | 'summary'): ModelTierConfig | undefined {
+  return V2ConfigLoader.getInstance().getConfig().modelTiers?.[tier];
+}
+
+// コスト最適化（M4 ほか）の設定を取得
+export function getV2CostOptimizationConfig(): CostOptimizationConfig {
+  return V2ConfigLoader.getInstance().getConfig().costOptimization ?? {};
 }

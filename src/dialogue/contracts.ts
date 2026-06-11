@@ -18,13 +18,16 @@ export interface DialogueAgent {
   /**
    * 人格プロンプトを付与して自由形式プロンプトを実行する（v2ラウンド用の公開API）。
    * sessionId 未設定時は fallbackSessionId がログ用セッションIDとして使われる。
+   * tier に 'mechanical'/'summary' を指定し config/v2-settings.json の modelTiers が
+   * 設定されている場合、安価モデル＋短縮人格＋出力上限で実行される（コスト削減 M2/M3、オプトイン）。
    */
   executeWithPersonality(
     prompt: string,
     stage: DialogueStage,
     operationName: string,
     language: Language,
-    fallbackSessionId?: string
+    fallbackSessionId?: string,
+    tier?: TaskTier
   ): Promise<string>;
   /** ファイナライザ用モデル（高コスト枠）で実行する */
   executeWithFinalizerModel(
