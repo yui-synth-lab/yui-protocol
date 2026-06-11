@@ -45,10 +45,19 @@ export interface CostOptimizationConfig {
   regexFirstVoteAnalysis?: boolean; // M4: 正規表現で全票確定時はAI投票解析をスキップ
 }
 
+// v2.0 協調ファイナライズの設定（従来 config/v2-settings.json に存在したが未配線だったもの）
+export interface FinalizationConfig {
+  enableCollaborativeFinalization?: boolean; // false なら常に単独ファイナライザ（既定: true）
+  maxCollaborativeFinalizers?: number;       // 協調ファイナライザの最大人数（既定: 3）
+  collaborationStepDelay?: number;           // 各ファイナライザ間の待機 ms（既定: 1500）
+  showProgressMessages?: boolean;            // 進行状況メッセージの表示（既定: true）
+}
+
 export interface V2Settings {
   memory: MemoryConfig;
   consensus: ConsensusConfig;
   facilitator: FacilitatorConfig;
+  finalization?: FinalizationConfig;
   modelTiers?: ModelTiersConfig;
   costOptimization?: CostOptimizationConfig;
 }

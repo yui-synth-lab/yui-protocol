@@ -58,6 +58,7 @@ export class V2ConfigLoader {
         }
       },
       // コスト最適化設定はオプトイン（未設定なら undefined のまま＝従来挙動）
+      finalization: partial.finalization,
       modelTiers: partial.modelTiers,
       costOptimization: partial.costOptimization
     };
@@ -158,6 +159,11 @@ export function getV2FacilitatorConfig(): V2Settings['facilitator'] {
 // コスト最適化（M2/M3）: タスク階層のモデル設定を取得。未設定なら undefined
 export function getV2ModelTierConfig(tier: 'mechanical' | 'summary'): ModelTierConfig | undefined {
   return V2ConfigLoader.getInstance().getConfig().modelTiers?.[tier];
+}
+
+// 協調ファイナライズの設定を取得（未設定なら空＝既定値で従来挙動）
+export function getV2FinalizationConfig(): NonNullable<V2Settings['finalization']> {
+  return V2ConfigLoader.getInstance().getConfig().finalization ?? {};
 }
 
 // コスト最適化（M4 ほか）の設定を取得

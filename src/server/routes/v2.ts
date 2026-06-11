@@ -3,6 +3,7 @@
 import { Express, Request, Response, RequestHandler } from 'express';
 import { removeCircularReferences } from '../../kernel/session-storage.js';
 import { createDynamicRouter, collectDialogueAgents } from '../../bootstrap/index.js';
+import { getRAGManager } from '../../kernel/rag/rag-manager.js';
 import type { Language, Session } from '../../types/index.js';
 import type { ServerContext } from '../context.js';
 
@@ -93,8 +94,10 @@ async function executeV2SessionWithWebSocket(
       io.to(sessionId).emit(event, data);
     };
 
-    // v2 ルーターは bootstrap 経由で構築する（v1 ルーターは v2 を参照しない）
-    const dynamicRouter = createDynamicRouter(sessionStorage, wsEmitter, undefined, interactionLogger);
+    // v2 ルーターは bootstrap 経由で構築する（v1 ルーターは v2 を参照しない）。
+    // RAG が初期化済みなら retriever を渡し、不協和音検出（過去の結論との類似時に脱構築を促す）を有効化する
+    const ragRetriever = getRAGManager().isReady() ? getRAGManager().getRetriever() ?? undefined : undefined;
+    const dynamicRouter = createDynamicRouter(sessionStorage, wsEmitter, ragRetriever, interactionLogger);
     const agents = collectDialogueAgents(agentManager, sessionId);
     const session = await dynamicRouter.conductDynamicDialogue(prompt, agents, sessionId, language);
     return session;
