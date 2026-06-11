@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import ThreadView from './ThreadView';
 import DynamicThreadView from './DynamicThreadView';
 import { Session, Agent } from '../types/index';
+import * as api from './api/client';
 import {
   BrowserRouter as Router,
   Routes,
@@ -305,8 +306,7 @@ export function AppRoutes() {
 
   const loadAvailableAgents = async () => {
     try {
-      const response = await fetch('/api/agents');
-      const agents = await response.json();
+      const agents = await api.fetchAgents();
       setAvailableAgents(agents);
     } catch (error) {
       console.error('Failed to load agents:', error);
@@ -315,8 +315,7 @@ export function AppRoutes() {
 
   const loadSessions = async () => {
     try {
-      const response = await fetch('/api/sessions');
-      const sessionsData = await response.json();
+      const sessionsData = await api.fetchSessionSummaries();
       
       // Sort sessions by updatedAt in descending order only on initial load
       const sortedSessions = sessionsData.sort((a: any, b: any) => {
@@ -366,15 +365,7 @@ export function AppRoutes() {
     try {
       console.log('App: Creating session with:', { title, selectedAgentIds, language, version });
       
-      const response = await fetch('/api/sessions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ title, agentIds: selectedAgentIds, language, version }),
-      });
-      
-      const newSession = await response.json();
+      const newSession = await api.createSession({ title, agentIds: selectedAgentIds, language, version });
       console.log('App: Received new session:', newSession);
       
       // Create the new session object
@@ -413,10 +404,9 @@ export function AppRoutes() {
   const selectSession = async (session: Session) => {
     // Load full session data when selected
     try {
-      const response = await fetch(`/api/sessions/${session.id}`);
-      if (response.ok) {
-        const fullSessionData = await response.json();
-        
+      const fullSessionData = await api.fetchSession(session.id);
+      if (fullSessionData) {
+
         // Update the session in the list with full data
         setSessions(prev => prev.map(s => 
           s.id === session.id ? fullSessionData : s

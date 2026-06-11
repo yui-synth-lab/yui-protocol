@@ -2,7 +2,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Session, Agent, Message, AgentConsensusData } from '../types/index.js';
 import MessagesView from './MessagesView.js';
 import ConsensusIndicator from './ConsensusIndicator.js';
-import { io, Socket } from 'socket.io-client';
+import { Socket } from 'socket.io-client';
+import * as api from './api/client';
+import { createSessionSocket } from './api/socket';
 
 interface DynamicThreadViewProps {
   session: Session;
@@ -65,11 +67,7 @@ const DynamicThreadView: React.FC<DynamicThreadViewProps> = ({
 
   // Initialize WebSocket connection
   useEffect(() => {
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const wsHost = window.location.hostname;
-    const wsPort = 3001;
-    const wsUrl = `${wsProtocol}://${wsHost}:${wsPort}`;
-    const newSocket = io(wsUrl);
+    const newSocket = createSessionSocket();
 
     newSocket.on('connect', () => {
       console.log('[WebSocket] Connected to server for v2.0');
@@ -157,30 +155,15 @@ const DynamicThreadView: React.FC<DynamicThreadViewProps> = ({
 
     try {
       // Start the dynamic dialogue via API
-      const response = await fetch(`/api/v2/sessions/${session.id}/start`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          prompt: userPrompt,
-          language: session.language || 'en'
-        }),
-      });
-
-      if (response.ok) {
-        console.log('[DynamicThreadView] Dynamic dialogue started, listening for WebSocket updates...');
-        setUserPrompt('');
-        // Don't call onSessionUpdate here - wait for WebSocket completion
-      } else {
-        const error = await response.json();
-        console.error('Error starting dynamic dialogue:', error);
-        alert(`Error: ${error.error || 'Failed to start dynamic dialogue'}`);
-        setIsProcessing(false);
-      }
+      await api.startDynamicDialogue(session.id, userPrompt, session.language || 'en');
+      console.log('[DynamicThreadView] Dynamic dialogue started, listening for WebSocket updates...');
+      setUserPrompt('');
+      // Don't call onSessionUpdate here - wait for WebSocket completion
     } catch (error) {
       console.error('Error starting dynamic dialogue:', error);
-      alert('Failed to start dynamic dialogue. Please try again.');
+      alert(error instanceof Error && error.message !== 'Failed to start dynamic dialogue'
+        ? `Error: ${error.message}`
+        : 'Failed to start dynamic dialogue. Please try again.');
       setIsProcessing(false);
     }
     // Don't set isProcessing(false) here - wait for WebSocket completion

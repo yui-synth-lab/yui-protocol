@@ -2,7 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Session, Message, DialogueStage, Language, Agent } from '../types/index.js';
 import MessagesView from './MessagesView.js';
 import StageIndicator from './StageIndicator.js';
-import { io, Socket } from 'socket.io-client';
+import { Socket } from 'socket.io-client';
+import * as api from './api/client';
+import { createSessionSocket } from './api/socket';
 
 interface ThreadViewProps {
   session: Session;
@@ -39,13 +41,8 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, availableAgents, onSes
 
   // Initialize WebSocket connection
   useEffect(() => {
-    // WebSocketサーバーのURLを動的に決定
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const wsHost = window.location.hostname;
-    const wsPort = 3001; // サーバー側のポートに合わせてください
-    const wsUrl = `${wsProtocol}://${wsHost}:${wsPort}`;
-    const newSocket = io(wsUrl);
-    
+    const newSocket = createSessionSocket();
+
     newSocket.on('connect', () => {
       console.log('[WebSocket] Connected to server');
       setIsConnected(true);
@@ -185,12 +182,7 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, availableAgents, onSes
 
     try {
       if (session.status === 'completed') {
-        const response = await fetch(`/api/sessions/${session.id}/start-new-sequence`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userPrompt: promptToSend })
-        });
-        if (response.ok) {
+        if (await api.startNewSequence(session.id, promptToSend)) {
           // セッション情報をリロードし、emitはuseEffectで新しいsession.idで行う
           setPendingAutoStartPrompt(promptToSend);
           await reloadSessionData();
@@ -245,12 +237,7 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, availableAgents, onSes
 
     try {
       if (session.status === 'completed') {
-        const response = await fetch(`/api/sessions/${session.id}/start-new-sequence`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userPrompt: prompt })
-        });
-        if (response.ok) {
+        if (await api.startNewSequence(session.id, prompt)) {
           setPendingAutoStartPrompt(prompt);
           await reloadSessionData();
         } else {
@@ -275,9 +262,8 @@ const ThreadView: React.FC<ThreadViewProps> = ({ session, availableAgents, onSes
     try {
       console.log(`[UI] Reloading session data for: ${session.id}`);
 
-      const response = await fetch(`/api/sessions/${session.id}`);
-      if (response.ok) {
-        const sessionData = await response.json();
+      const sessionData = await api.fetchSession(session.id);
+      if (sessionData) {
         notifySessionUpdate(sessionData);
         // Reset the flag after successfully loading session data
         setHasLoadedSessionData(false);
