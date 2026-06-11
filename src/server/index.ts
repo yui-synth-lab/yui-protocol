@@ -725,10 +725,26 @@ app.get('/api/v2/stats', (async (req: Request, res: Response) => {
     res.json({
       success: true,
       stats,
+      tokenUsage: sharedInteractionLogger.getAllTokenStats(),
       version: '2.0'
     });
   } catch (error) {
     console.error('[API] Error getting v2.0 stats:', error);
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+  }
+}) as RequestHandler);
+
+// セッション別トークン使用量エンドポイント（コスト会計 M1）
+app.get('/api/sessions/:sessionId/token-usage', ((req: Request, res: Response) => {
+  try {
+    const sessionId = req.params.sessionId as string;
+    const usage = sharedInteractionLogger.getSessionTokenStats(sessionId);
+    if (!usage) {
+      return res.status(404).json({ error: 'No token usage recorded for this session' });
+    }
+    res.json({ success: true, usage });
+  } catch (error) {
+    console.error('[API] Error getting token usage:', error);
     res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
   }
 }) as RequestHandler);

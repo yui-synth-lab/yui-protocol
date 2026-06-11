@@ -17,6 +17,7 @@ export interface SimplifiedInteractionLog {
   personality?: string; // Added personality field
   provider?: string; // AIサービス名
   model?: string;     // モデル名
+  tokensUsed?: number; // 実際に消費したトークン数（プロバイダが返す場合のみ）
   // Facilitator-specific fields
   facilitatorAction?: string;
   facilitatorReasoning?: string;
@@ -36,14 +37,63 @@ export interface SimplifiedInteractionLog {
 
 export type FileSystem = typeof fs;
 
+// セッション単位のトークン使用量集計（コスト会計 M1）
+export interface SessionTokenStats {
+  sessionId: string;
+  totalTokens: number;
+  totalCalls: number;
+  failedCalls: number;
+  byAgent: Record<string, { tokens: number; calls: number }>;
+  byStage: Record<string, { tokens: number; calls: number }>;
+  byModel: Record<string, { tokens: number; calls: number }>;
+}
+
 export class InteractionLogger {
   private logDir: string;
   private fs: FileSystem;
+  private tokenStats: Map<string, SessionTokenStats> = new Map();
 
   constructor(logDir: string = './logs', fileSystem?: FileSystem) {
     this.logDir = logDir;
     this.fs = fileSystem || fs;
     this.ensureDirectories();
+  }
+
+  // トークン使用量をセッション別に集計（ログ保存と独立して常に成功する）
+  private recordTokenUsage(log: SimplifiedInteractionLog): void {
+    let stats = this.tokenStats.get(log.sessionId);
+    if (!stats) {
+      stats = {
+        sessionId: log.sessionId,
+        totalTokens: 0,
+        totalCalls: 0,
+        failedCalls: 0,
+        byAgent: {},
+        byStage: {},
+        byModel: {}
+      };
+      this.tokenStats.set(log.sessionId, stats);
+    }
+    const tokens = log.tokensUsed ?? 0;
+    stats.totalCalls++;
+    if (log.status !== 'success') stats.failedCalls++;
+    stats.totalTokens += tokens;
+    const bump = (record: Record<string, { tokens: number; calls: number }>, key: string) => {
+      if (!record[key]) record[key] = { tokens: 0, calls: 0 };
+      record[key].tokens += tokens;
+      record[key].calls++;
+    };
+    bump(stats.byAgent, log.agentId);
+    bump(stats.byStage, log.stage);
+    if (log.model) bump(stats.byModel, `${log.provider ?? 'unknown'}/${log.model}`);
+  }
+
+  public getSessionTokenStats(sessionId: string): SessionTokenStats | undefined {
+    return this.tokenStats.get(sessionId);
+  }
+
+  public getAllTokenStats(): SessionTokenStats[] {
+    return Array.from(this.tokenStats.values());
   }
 
   private async ensureDirectories(): Promise<void> {
@@ -56,6 +106,7 @@ export class InteractionLogger {
 
   // Save simplified interaction log with hierarchical structure
   public async saveInteractionLog(log: SimplifiedInteractionLog): Promise<void> {
+    this.recordTokenUsage(log);
     try {
       // Create hierarchical directory structure: logs/sessionId/stage/agentId.json
       const sessionDir = path.join(this.logDir, log.sessionId);

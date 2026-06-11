@@ -1,12 +1,12 @@
-import { DialogueStage } from '../types/index.js';
+import type { DialogueStage, Language } from '../types/index.js';
 
 // 文字列を正規表現用にエスケープ
 function escapeRegExp(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// Language options
-export type Language = 'en' | 'ja';
+// Language options (re-exported from types for backward compatibility)
+export type { Language };
 
 // Base personality prompt template
 export const PERSONALITY_PROMPT_TEMPLATE = `

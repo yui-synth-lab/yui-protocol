@@ -1,4 +1,4 @@
-import { Message } from './index.js';
+import type { Message } from './index.js';
 
 // 記憶の階層化インターフェース
 export interface LayeredMemory {

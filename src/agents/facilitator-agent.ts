@@ -4,6 +4,7 @@ import { AIExecutor, createAIExecutor } from '../kernel/ai-executor.js';
 import { InteractionLogger } from '../kernel/interaction-logger.js';
 import { FACILITATOR_ANALYSIS_PROMPT } from '../templates/v2-prompts.js';
 import { getV2ConsensusConfig, getV2FacilitatorConfig } from '../config/v2-config-loader.js';
+import { shuffleArray } from '../utils/random.js';
 
 export class FacilitatorAgent {
   private readonly agentId = 'facilitator-001';
@@ -84,22 +85,13 @@ No explanation needed - just the JSON array.`;
         return order;
       } else {
         console.warn(`[Facilitator] Invalid order returned, using random shuffle`);
-        return this.shuffleArray([...agentIds]);
+        return shuffleArray([...agentIds]);
       }
     } catch (error) {
       console.error(`[Facilitator] Error determining speaking order:`, error);
       // Fallback to random shuffle
-      return this.shuffleArray(agents.map(a => a.id));
+      return shuffleArray(agents.map(a => a.id));
     }
-  }
-
-  private shuffleArray<T>(array: T[]): T[] {
-    const shuffled = [...array];
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-    }
-    return shuffled;
   }
 
 

@@ -2,7 +2,6 @@ import { Agent, Message, AgentResponse, DialogueStage, IndividualThought, Mutual
 import { getPersonalityPrompt, getStagePrompt, Language, SUMMARIZER_STAGE_PROMPT, formatPrompt, parseVotes, extractVoteDetails } from '../templates/prompts.js';
 import { InteractionLogger, SimplifiedInteractionLog } from '../kernel/interaction-logger.js';
 import { AIExecutor, createAIExecutor } from '../kernel/ai-executor.js';
-import { ConversationMemoryManager } from '../kernel/memory-manager.js';
 import { ConversationContext, AgentPersonalHistory } from '../types/memory.js';
 import { getV2MemoryConfig } from '../config/v2-config-loader.js';
 import { RAGEnhancedContext, RAGQuery } from '../types/rag.js';
@@ -45,8 +44,6 @@ export abstract class BaseAgent {
   private aiExecutorPromiseFinalize?: Promise<AIExecutor>;
   protected isSummarizer: boolean;
 
-  // 新しいプロパティ: Phase 1メモリ階層化
-  protected memoryManager: ConversationMemoryManager;
   protected personalHistory: AgentPersonalHistory;
 
   // RAG統合
@@ -93,8 +90,6 @@ export abstract class BaseAgent {
     });
     this.isSummarizer = false;
 
-    // 新しいプロパティを初期化
-    this.memoryManager = new ConversationMemoryManager();
     this.personalHistory = this.initializePersonalHistory();
 
     // RAG統合
@@ -444,7 +439,8 @@ export abstract class BaseAgent {
     status: 'success' | 'error' | 'timeout' = 'success',
     error?: string,
     provider?: string,
-    model?: string
+    model?: string,
+    tokensUsed?: number
   ): Promise<void> {
     const actualSessionId = sessionId === 'unknown-session' ? this.sessionId || sessionId : sessionId;
     const log: SimplifiedInteractionLog = {
@@ -461,7 +457,8 @@ export abstract class BaseAgent {
       error,
       personality,
       provider,
-      model
+      model,
+      tokensUsed
     };
 
     await this.interactionLogger.saveInteractionLog(log);
@@ -1189,7 +1186,8 @@ export abstract class BaseAgent {
         result.success ? 'success' : 'error',
         result.success ? undefined : `AI execution failed: ${result.error}${result.errorDetails ? ` | Details: ${JSON.stringify(result.errorDetails)}` : ''}`,
         executor['provider'],
-        executor['model']
+        executor['model'],
+        result.tokensUsed
       );
       return result.content;
     } catch (error) {
@@ -1262,7 +1260,8 @@ export abstract class BaseAgent {
         result.success ? 'success' : 'error',
         result.success ? undefined : `AI execution failed: ${result.error}${result.errorDetails ? ` | Details: ${JSON.stringify(result.errorDetails)}` : ''}`,
         executor['provider'],
-        executor['model']
+        executor['model'],
+        result.tokensUsed
       );
 
       console.log(`[BaseAgent] Used high-cost LLM for finalizer ${customAgentId}, provider: ${executor['provider']}, model: ${executor['model']}`);

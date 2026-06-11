@@ -1,7 +1,7 @@
-import { Language } from '../templates/prompts.js';
 import type { FacilitatorLog } from './consensus.js';
 
-export type { Language };
+// Language options (defined in the foundation layer; templates re-export this)
+export type Language = 'en' | 'ja';
 
 export interface ModelConfig {
   provider: 'openai' | 'anthropic' | 'gemini' | 'ollama' | 'gemini-cli' | 'custom';

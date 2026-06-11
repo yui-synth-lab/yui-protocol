@@ -25,7 +25,7 @@ import {
   IAgentManager,
   ISessionManager
 } from './interfaces.js';
-import { SessionStorage } from './session-storage.js';
+import { SessionStorage, removeCircularReferences } from './session-storage.js';
 import { OutputStorage } from './output-storage.js';
 import { InteractionLogger } from './interaction-logger.js';
 import { createStageSummarizer } from './stage-summarizer.js';
@@ -33,48 +33,11 @@ import { AgentManager } from './services/agent-manager.js';
 import { SessionManager } from './services/session-manager.js';
 import { extractVoteDetails, getStagePrompt } from '../templates/prompts.js';
 import { DynamicDialogueRouter } from './dynamic-router.js';
+import { shuffleArray } from '../utils/random.js';
 
 // ユーティリティ関数
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function shuffleArray<T>(array: T[]): T[] {
-  const arr = array.slice();
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
-}
-
-// Helper function to remove circular references.
-// Uses backtracking so shared (non-cyclic) objects are serialized correctly.
-function removeCircularReferences(obj: unknown, seen: WeakSet<object> = new WeakSet()): unknown {
-  if (obj === null || typeof obj !== 'object') {
-    return obj;
-  }
-  if (obj instanceof Date) {
-    return obj.toISOString();
-  }
-  if (seen.has(obj)) {
-    return '[Circular Reference]';
-  }
-  seen.add(obj);
-  let result: unknown;
-  if (Array.isArray(obj)) {
-    result = obj.map((item: unknown) => removeCircularReferences(item, seen));
-  } else {
-    const r: Record<string, unknown> = {};
-    for (const key in obj) {
-      if (Object.prototype.hasOwnProperty.call(obj, key)) {
-        r[key] = removeCircularReferences((obj as Record<string, unknown>)[key], seen);
-      }
-    }
-    result = r;
-  }
-  seen.delete(obj);
-  return result;
 }
 
 /**

@@ -3,15 +3,6 @@ import { ConversationContext, SelfSummary, AgentPersonalHistory, MemoryLayer, Co
 import { AIExecutor, createAIExecutor } from './ai-executor.js';
 import { getV2MemoryConfig } from '../config/v2-config-loader.js';
 
-export class ConversationMemoryManager {
-  private aiExecutor?: AIExecutor;
-
-  constructor() {
-    // AI Executor for summarization
-    this.aiExecutor = undefined; // Will be initialized lazily
-  }
-}
-
 // v2.0 記憶階層化システム
 export class MemoryManager {
   private layers: Map<string, MemoryLayer> = new Map();
