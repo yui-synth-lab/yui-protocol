@@ -303,19 +303,22 @@ Share your final thoughts in your own voice, weaving together the threads of und
 - When referring to other agents, always use their Agent ID (e.g., yui-000, kanshi-001).
 
 **Agent Vote and Justification** (1 paragraph)
-- Vote for ONE agent (NOT yourself) by their exact Agent ID (e.g., hekito-001)
+- You are {agentId}. You are NOT a vote candidate — evaluating your own contribution as the best does not make you votable.
+- Vote for exactly ONE agent from this candidate list: {voteCandidates}
+- Write the vote on its own line in exactly this format: 投票: [candidate-agent-id]
 - Provide 3 specific reasons why this agent is best suited to summarize
 - Reference their specific contributions and strengths demonstrated in the discussion
 
 **VOTING GUIDELINES:**
-- Use exact Agent ID (e.g., hekito-001, kanshi-001, yoga-001, eiro-001, yui-000)
+- Use the exact Agent ID from the candidate list above
 - Focus on demonstrated abilities, not personality
 - Consider their role in the synthesis and conflict resolution
-- Do NOT vote for yourself under any circumstances
 
 IMPORTANT: Use <think>...</think> tags to plan your response if needed. The content within these tags will be hidden from the final output.
 
 MAXIMUM 300 WORDS TOTAL.
+
+FINAL CHECK before answering: your vote line must name one of [{voteCandidates}]. A vote for yourself ({agentId}) is invalid and will be discarded.
 `,
 
   'mutual-reflection-summary': `

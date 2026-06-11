@@ -379,6 +379,12 @@ export abstract class BaseAgent implements DialogueAgent {
     const userMessage = context.find(m => m.role === 'user');
     const query = userMessage?.content || 'No user query provided';
     const contextAnalysis = this.analyzeContext(context);
+    // 投票候補 = この対話に発言したエージェントのうち自分以外（自己投票の構造的防止）
+    const voteCandidates = Array.from(new Set(
+      context
+        .filter(m => m.role === 'agent' && m.agentId && m.agentId !== this.agent.id)
+        .map(m => m.agentId)
+    )).join(', ') || 'the other participating agents';
     let stagePrompt: string;
     if (this.isSummarizer) {
       stagePrompt = formatPrompt(SUMMARIZER_STAGE_PROMPT, {
@@ -390,7 +396,9 @@ export abstract class BaseAgent implements DialogueAgent {
       stagePrompt = this.getStagePrompt('output-generation', {
         query,
         finalData: JSON.stringify(finalData, null, 2),
-        context: contextAnalysis
+        context: contextAnalysis,
+        agentId: this.agent.id,
+        voteCandidates
       }, language);
     }
     const personality = this.getPersonalityPrompt(language);
