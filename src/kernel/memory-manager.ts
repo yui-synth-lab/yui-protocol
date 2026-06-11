@@ -1,7 +1,7 @@
 import { Message } from '../types/index.js';
 import { ConversationContext, SelfSummary, AgentPersonalHistory, MemoryLayer, CompressedMemory, AgentMemoryContext, MemoryCompressionConfig } from '../types/memory.js';
 import { AIExecutor, createAIExecutor } from './ai-executor.js';
-import { getV2MemoryConfig } from '../config/v2-config-loader.js';
+import { getV2MemoryConfig, getV2ModelTierConfig } from '../config/v2-config-loader.js';
 
 // v2.0 記憶階層化システム
 export class MemoryManager {
@@ -244,10 +244,14 @@ IMPORTANT: エージェントの個性を反映し、自分の発言履歴を正
 
   private async getAIExecutor(): Promise<AIExecutor> {
     if (!this.aiExecutor) {
+      // M6: メモリ圧縮は summary tier の安価モデルで実行（config 設定時のみ。未設定なら従来どおり）
+      const summaryTier = getV2ModelTierConfig('summary');
       this.aiExecutor = await createAIExecutor('memory-manager', {
-        model: process.env.MEMORY_MANAGER_MODEL,
+        provider: summaryTier?.provider,
+        model: summaryTier?.model ?? process.env.MEMORY_MANAGER_MODEL,
         temperature: 0.3,
-        topP: 0.9
+        topP: 0.9,
+        customConfig: summaryTier?.maxTokens ? { maxTokens: summaryTier.maxTokens } : undefined
       });
     }
     return this.aiExecutor;

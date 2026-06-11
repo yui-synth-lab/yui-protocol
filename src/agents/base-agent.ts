@@ -2,6 +2,7 @@ import { Agent, Message, AgentResponse, DialogueStage, IndividualThought, Mutual
 import { getPersonalityPrompt, getStagePrompt, Language, SUMMARIZER_STAGE_PROMPT, formatPrompt, parseVotes, extractVoteDetails } from '../templates/prompts.js';
 import { InteractionLogger, SimplifiedInteractionLog } from '../kernel/interaction-logger.js';
 import { AIExecutor } from '../kernel/ai-executor.js';
+import { MemoryManager } from '../kernel/memory-manager.js';
 import { defaultExecutorFactory } from '../kernel/executor-factory.js';
 import type { DialogueAgent, ExecutorFactory } from '../dialogue/contracts.js';
 import {
@@ -61,6 +62,9 @@ export abstract class BaseAgent implements DialogueAgent {
   protected isSummarizer: boolean;
   protected executorFactory: ExecutorFactory;
 
+  // M6: 階層メモリ圧縮（トークン閾値超過時のみ発動。圧縮過程はログ化される）
+  protected memoryManager: MemoryManager;
+
   protected personalHistory: AgentPersonalHistory;
 
   // RAG統合
@@ -113,6 +117,7 @@ export abstract class BaseAgent implements DialogueAgent {
       topK: generationParams.topK
     });
     this.isSummarizer = false;
+    this.memoryManager = new MemoryManager();
 
     this.personalHistory = this.initializePersonalHistory();
 
@@ -218,7 +223,13 @@ export abstract class BaseAgent implements DialogueAgent {
     const userMessage = context.find(m => m.role === 'user');
     const query = userMessage?.content || prompt || 'No user query provided';
     const relevantContext = this.getRelevantContext(context);
-    const contextAnalysis = this.analyzeContext(relevantContext);
+    let contextAnalysis = this.analyzeContext(relevantContext);
+
+    // M6: トークン閾値超過時のみ階層メモリ圧縮で文脈を再構築する（閾値以下ではプロンプト不変）
+    const compressedContext = await this.prepareContext(context);
+    if (compressedContext.summarizedMid || compressedContext.essenceCore.length > 0) {
+      contextAnalysis = this.analyzeCompressedContext(compressedContext);
+    }
 
     // 前回シーケンスの情報を取得
     const previousInfo = this.getPreviousSequenceInfo(context, language);
@@ -1124,13 +1135,9 @@ export abstract class BaseAgent implements DialogueAgent {
 
   // 新メソッド: コンテキスト準備
   protected async prepareContext(messages: Message[]): Promise<ConversationContext> {
-    // Use basic context preparation instead of compressIfNeeded
-    return {
-      recentFull: messages.slice(-5),
-      summarizedMid: '',
-      essenceCore: [],
-      totalTokenEstimate: messages.length * 50
-    };
+    // M6: 階層メモリ圧縮を実体化。トークン閾値（config/v2-settings.json memory.tokenThreshold）
+    // 以下では AI 呼び出しなしで全文を返し、超過時のみ圧縮（要約＋エッセンス抽出）する。
+    return this.memoryManager.compressIfNeeded(messages, this.agent.id);
   }
 
   // 新メソッド: 圧縮されたコンテキストの分析
