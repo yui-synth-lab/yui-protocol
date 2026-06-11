@@ -33,6 +33,15 @@ module.exports = {
       to: { path: '^src/agents', pathNot: '^src/agents/facilitator-agent\\.ts$' }
     },
     {
+      name: 'storage-must-not-depend-on-rag',
+      severity: 'error',
+      comment:
+        '永続化層は RAG を知らない（Phase 4）。RAG 自動インデックスは bootstrap が ' +
+        'OutputSavedListener として配線する。',
+      from: { path: '^src/kernel/(output-storage|session-storage)\\.ts$' },
+      to: { path: '^src/kernel/rag' }
+    },
+    {
       name: 'v1-router-must-not-depend-on-v2',
       severity: 'error',
       comment:

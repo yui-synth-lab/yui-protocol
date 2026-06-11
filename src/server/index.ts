@@ -8,11 +8,11 @@ import { Server as SocketIOServer } from 'socket.io';
 import { YuiProtocolRouter } from '../kernel/router.js';
 import { SessionStorage, removeCircularReferences } from '../kernel/session-storage.js';
 import { Session } from '../types/index.js';
-import { OutputStorage } from '../kernel/output-storage.js';
 import { InteractionLogger } from '../kernel/interaction-logger.js';
 import { createStageSummarizer } from '../kernel/stage-summarizer.js';
 import { V2ConfigLoader } from '../config/v2-config-loader.js';
-import { createDefaultAgentManager, createDynamicRouter, collectDialogueAgents } from '../bootstrap/index.js';
+import { createDefaultAgentManager, createDynamicRouter, collectDialogueAgents, createDefaultOutputStorage } from '../bootstrap/index.js';
+import { isV1SequenceComplete, remainingV1Stages } from '../orchestration/v1/stage-sequencer.js';
 
 const app = express();
 const server = createServer(app);
@@ -44,8 +44,8 @@ if (!v2ConfigLoader.validateConfig()) {
 // Initialize shared session storage
 const sharedSessionStorage = new SessionStorage();
 
-// Initialize shared output storage
-const sharedOutputStorage = new OutputStorage();
+// Initialize shared output storage (RAG auto-indexing is wired as a listener by the composition root)
+const sharedOutputStorage = createDefaultOutputStorage();
 
 // Initialize shared interaction logger
 const sharedInteractionLogger = new InteractionLogger();
@@ -140,11 +140,8 @@ async function startSessionExecution(sessionId: string, userPrompt: string) {
       throw new Error(`Session ${sessionId} not found`);
     }
 
-    // Check if all stages are completed
-    let completedStages = session.stageHistory?.filter(h => h.endTime) || [];
-    let isAllStagesCompleted = completedStages.length >= 8; // 5 main + 3 summary stages
-
-    if (isAllStagesCompleted) {
+    // ステージ進行ルールは orchestration/v1/stage-sequencer.ts に集約（Phase 4）
+    if (isV1SequenceComplete(session)) {
       console.log(`[SessionExecutor] All stages completed, starting new sequence`);
       await realtimeRouter.startNewSequence(sessionId, userPrompt);
       // 新しいシーケンスの状態を取得し直す
@@ -160,29 +157,10 @@ async function startSessionExecution(sessionId: string, userPrompt: string) {
       if (latestUserMessage && latestUserMessage.content) {
         userPrompt = latestUserMessage.content;
       }
-      completedStages = session.stageHistory?.filter(h => h.endTime) || [];
-      isAllStagesCompleted = completedStages.length >= 8;
     }
 
-    // Define all stages including summary stages
-    const allStages: string[] = [
-      'individual-thought',
-      'mutual-reflection',
-      'mutual-reflection-summary',
-      'conflict-resolution',
-      'conflict-resolution-summary',
-      'synthesis-attempt',
-      'synthesis-attempt-summary',
-      'output-generation',
-      'finalize'
-    ];
-
-    // Determine starting stage
-    const currentProgress = completedStages.length;
-    const remainingStages = allStages.slice(currentProgress);
-
-    console.log(`[SessionExecutor] Current progress: ${currentProgress}/${allStages.length}, remaining stages: ${remainingStages.join(', ')}`);
-    console.log(`[SessionExecutor] Remaining stages:`, remainingStages);
+    const remainingStages = remainingV1Stages(session);
+    console.log(`[SessionExecutor] Remaining stages: ${remainingStages.join(', ')}`);
     for (const stage of remainingStages) {
       console.log(`[SessionExecutor] About to execute stage: ${stage} (userPrompt: ${userPrompt})`);
       // Notify clients about stage start
