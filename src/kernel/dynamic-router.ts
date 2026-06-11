@@ -8,9 +8,9 @@ import { Language } from '../templates/prompts.js';
 import { createFacilitatorMessage, createConsensusMessage } from '../utils/message-converters.js';
 import { createConvergenceMessage, createVotingStartMessage, createVotingResultMessage } from '../utils/convergence-messages.js';
 import { createCollaborationIntroMessage, createCollaborationProgressMessage, createCollaborationSummaryMessage } from '../utils/collaboration-messages.js';
-import { getRoundGuidanceText, v2PromptTemplates } from '../templates/v2-prompts.js';
 import { getV2ConsensusConfig } from '../config/v2-config-loader.js';
 import { ConvergenceJudge } from '../dialogue/convergence-judge.js';
+import { ConsensusCollector } from '../orchestration/v2/consensus-collector.js';
 
 export class DynamicDialogueRouter {
   private facilitator: FacilitatorPort;
@@ -18,7 +18,7 @@ export class DynamicDialogueRouter {
   private convergenceJudge: ConvergenceJudge;
   private llmCallEstimate: number = 0; // M7: セッション内のLLM呼び出し概数（バジェット判定用）
   private sessionStorage: SessionStorage;
-  private activeConsensusChecks = new Set<string>(); // 重複実行防止
+  private consensusCollector = new ConsensusCollector();
   private wsEmitter?: (event: string, data: any) => void; // WebSocket emitter
   private originalQuery: string = ''; // 初期クエリを保持
   private recentSpeakers: string[] = []; // 最近発言したエージェントを追跡
@@ -437,99 +437,22 @@ export class DynamicDialogueRouter {
     return responses;
   }
 
+  // コンセンサス収集・解析は orchestration/v2/consensus-collector.ts に抽出済み（Phase 3）。
+  // askForConsensus はテストからスタブされるため、コールバックとして注入する。
   private async gatherConsensus(
     agents: DialogueAgent[],
     messages: Message[],
     language: Language,
     currentRound: number = 0
   ): Promise<ConsensusIndicator[]> {
-    const consensusData: ConsensusIndicator[] = [];
-
-    // エージェントの順番をランダムにシャッフル
-    const shuffledAgents = [...agents].sort(() => Math.random() - 0.5);
-    const totalAgents = shuffledAgents.length;
-    const majorityThreshold = Math.ceil(totalAgents / 2); // 過半数
-
-    console.log(`[DynamicRouter] Starting optimized consensus gathering - checking up to ${totalAgents} agents, early exit at ${majorityThreshold} continuing votes`);
-
-    let continuingVotes = 0;
-    let checkedAgents = 0;
-
-    for (const agent of shuffledAgents) {
-      const agentKey = `${agent.getAgent().id}-consensus`;
-
-      // 重複実行チェック
-      if (this.activeConsensusChecks.has(agentKey)) {
-        console.warn(`[DynamicRouter] Skipping duplicate consensus check for ${agent.getAgent().name}`);
-        continue;
-      }
-
-      this.activeConsensusChecks.add(agentKey);
-
-      try {
-        const consensus = await this.askForConsensus(agent, messages, language, currentRound);
-        this.llmCallEstimate++;
-        consensusData.push(consensus);
-        checkedAgents++;
-
-        // 継続したいエージェントをカウント (readyToMove が false または hasAdditionalPoints が true)
-        if (!consensus.readyToMove || consensus.hasAdditionalPoints) {
-          continuingVotes++;
-          console.log(`[DynamicRouter] ${agent.getAgent().name} wants to continue (ready:${consensus.readyToMove}, critical:${consensus.hasAdditionalPoints}) (${continuingVotes}/${checkedAgents})`);
-        } else {
-          console.log(`[DynamicRouter] ${agent.getAgent().name} ready to conclude (ready:${consensus.readyToMove}, critical:${consensus.hasAdditionalPoints}) (${continuingVotes}/${checkedAgents})`);
-        }
-
-        // 早期終了条件: 継続票が過半数を超えた時点で次ラウンドへ
-        if (continuingVotes >= majorityThreshold) {
-          console.log(`[DynamicRouter] Early exit: ${continuingVotes}/${checkedAgents} agents want to continue (majority reached)`);
-
-          // 既に回答したエージェントの平均満足度を計算
-          const actualResponses = consensusData.filter(c => !c.reasoning?.includes('Error occurred'));
-          const avgSatisfaction = actualResponses.length > 0
-            ? actualResponses.reduce((sum, c) => sum + c.satisfactionLevel, 0) / actualResponses.length
-            : 6; // フォールバック値
-
-          const avgHasAdditionalPoints = actualResponses.length > 0
-            ? actualResponses.filter(c => c.hasAdditionalPoints).length / actualResponses.length
-            : 0.5;
-
-          console.log(`[DynamicRouter] Early exit estimation: avgSatisfaction=${avgSatisfaction.toFixed(1)}, avgHasAdditionalPoints=${(avgHasAdditionalPoints * 100).toFixed(0)}%`);
-
-          // 残りのエージェントには推定値を追加（既存の平均値に基づく）
-          for (let i = checkedAgents; i < totalAgents; i++) {
-            const remainingAgent = shuffledAgents[i];
-            consensusData.push({
-              agentId: remainingAgent.getAgent().id,
-              satisfactionLevel: Math.round(avgSatisfaction * 10) / 10, // 既存の平均値を使用
-              hasAdditionalPoints: avgHasAdditionalPoints > 0.5, // 過半数が追加ポイントありなら true
-              questionsForOthers: [],
-              readyToMove: false, // 継続を仮定（過半数が継続票のため）
-              reasoning: `Early exit - estimated based on ${actualResponses.length} actual responses (avg satisfaction: ${avgSatisfaction.toFixed(1)})`
-            });
-          }
-          break;
-        }
-
-      } catch (error) {
-        console.error(`[DynamicRouter] Error gathering consensus from ${agent.getAgent().name}:`, error);
-        // フォールバック値
-        consensusData.push({
-          agentId: agent.getAgent().id,
-          satisfactionLevel: 5,
-          hasAdditionalPoints: false,
-          questionsForOthers: [],
-          readyToMove: true,
-          reasoning: 'Error occurred during consensus gathering'
-        });
-        checkedAgents++;
-      } finally {
-        this.activeConsensusChecks.delete(agentKey);
-      }
-    }
-
-    console.log(`[DynamicRouter] Consensus gathering completed: checked ${checkedAgents}/${totalAgents} agents, ${continuingVotes} want to continue`);
-    return consensusData;
+    return this.consensusCollector.gather(
+      agents,
+      messages,
+      language,
+      currentRound,
+      (agent, msgs, lang, round) => this.askForConsensus(agent, msgs, lang, round),
+      () => { this.llmCallEstimate++; }
+    );
   }
 
   private async askForConsensus(
@@ -538,27 +461,7 @@ export class DynamicDialogueRouter {
     language: Language,
     currentRound: number = 0
   ): Promise<ConsensusIndicator> {
-    const recentMessages = messages.slice(-5);
-    const contextText = recentMessages.map(m => `${m.agentId}: ${m.content}`).join('\n\n');
-
-    // Detect if topic is philosophical based on query content
-    const philosophicalKeywords = ['時間', 'time', '存在', 'existence', '意識', 'consciousness', '本質', 'essence', '哲学', 'philosophy', '真理', 'truth', '永遠', 'eternity'];
-    const isPhilosophical = philosophicalKeywords.some(keyword =>
-      this.originalQuery.toLowerCase().includes(keyword.toLowerCase())
-    );
-
-    const roundGuidance = getRoundGuidanceText(currentRound, isPhilosophical);
-    const additionalGuidance = currentRound <= 2 ?
-      'NOTE: In early rounds, consider whether the discussion could benefit from more exploration and different perspectives before concluding.' :
-      'Consider: A satisfaction level of 6+ with meaningful insights often indicates readiness for conclusion.';
-
-    const promptTemplate = v2PromptTemplates.dynamic_consensus[language];
-    const prompt = promptTemplate
-      .replace('{originalQuery}', this.originalQuery)
-      .replace('{currentRound}', currentRound.toString())
-      .replace('{roundGuidance}', roundGuidance)
-      .replace('{contextText}', contextText)
-      .replace('{additionalGuidance}', additionalGuidance);
+    const prompt = this.consensusCollector.buildConsensusPrompt(this.originalQuery, messages, language, currentRound);
 
     // コンセンサス確認は様式化タスクのため mechanical tier で実行可能（M2、config オプトイン）
     const response = await agent.executeWithPersonality(
@@ -574,123 +477,9 @@ export class DynamicDialogueRouter {
   }
 
   private parseConsensusResponse(response: string, agentId: string): ConsensusIndicator {
-    // デフォルト値
-    let satisfactionLevel = 5;
-    let hasAdditionalPoints = false;
-    let questionsForOthers: string[] = [];
-    let readyToMove = false; // デフォルトをfalseに変更（慎重な判断）
-    let reasoning = '';
-
-    try {
-      // 1. Try JSON parsing first
-      const jsonMatch = response.match(/\[\s*\{[\s\S]*\}\s*\]|\{\s*"[\s\S]*"\s*:\s*[\s\S]*\}/);
-      if (jsonMatch) {
-        try {
-          const json = JSON.parse(jsonMatch[0]);
-          // Map JSON fields to ConsensusIndicator fields
-          if (json.satisfaction) satisfactionLevel = Math.min(10, Math.max(1, parseInt(json.satisfaction)));
-
-          // Map boolean fields
-          if (json.readyToConclude !== undefined) readyToMove = json.readyToConclude;
-          else if (json.readyToMove !== undefined) readyToMove = json.readyToMove; // Fallback
-
-          if (json.additionalPoints !== undefined) hasAdditionalPoints = json.additionalPoints;
-          else if (json.anotherRoundValuable !== undefined) hasAdditionalPoints = json.anotherRoundValuable;
-          else if (json.hasAdditionalPoints !== undefined) hasAdditionalPoints = json.hasAdditionalPoints;
-
-          if (json.questions && Array.isArray(json.questions)) questionsForOthers = json.questions;
-
-          if (json.reasoning) reasoning = json.reasoning;
-
-          // If successful, return immediately
-          return {
-            agentId,
-            satisfactionLevel,
-            hasAdditionalPoints,
-            questionsForOthers,
-            readyToMove,
-            reasoning
-          };
-        } catch (e) {
-          console.warn(`[DynamicRouter] JSON parsing failed for ${agentId}, falling back to text parsing`, e);
-        }
-      }
-
-      // 2. Fallback to Text Parsing
-      const lines = response.split('\n');
-      let capturingReasoning = false;
-      let reasoningLines: string[] = [];
-
-      for (let i = 0; i < lines.length; i++) {
-        const trimmed = lines[i].trim();
-
-        if (trimmed.startsWith('Satisfaction:')) {
-          const match = trimmed.match(/(\d+)/);
-          if (match) satisfactionLevel = Math.min(10, Math.max(1, parseInt(match[1])));
-          capturingReasoning = false;
-        } else if (trimmed.startsWith('Meaningful insights:')) {
-          // 新しいフォーマットでは meaningful insights を評価
-          const hasMeaningfulInsights = trimmed.toLowerCase().includes('yes');
-          // 意味ある洞察は満足度の指標であり、追加議論の必要性とは別
-          // hasAdditionalPointsは別途Critical pointsで判定する
-          capturingReasoning = false;
-        } else if (trimmed.startsWith('Ready to conclude:')) {
-          readyToMove = trimmed.toLowerCase().includes('yes');
-          capturingReasoning = false;
-        } else if (trimmed.startsWith('Critical points remaining:')) {
-          // 重要な未討論ポイントがある場合、継続が必要
-          const hasCriticalPoints = trimmed.toLowerCase().includes('yes');
-          if (hasCriticalPoints) {
-            readyToMove = false; // 重要ポイントがあれば継続
-            hasAdditionalPoints = true;
-          }
-          capturingReasoning = false;
-        } else if (trimmed.startsWith('Reasoning:')) {
-          // Reasoning の開始
-          const firstLine = trimmed.replace('Reasoning:', '').trim();
-          if (firstLine) {
-            reasoningLines.push(firstLine);
-          }
-          capturingReasoning = true;
-        } else if (capturingReasoning && trimmed) {
-          // Reasoning の続き（空行でない場合）
-          // 次のフィールドの開始をチェック
-          const isNextField = trimmed.match(/^(Satisfaction|Meaningful insights|Ready to conclude|Critical points remaining|New insights|Another round):/i);
-          if (isNextField) {
-            capturingReasoning = false;
-            // このラインは次のイテレーションで処理される
-            i--; // ループカウンタを戻す
-          } else {
-            reasoningLines.push(trimmed);
-          }
-        }
-      }
-
-      // Reasoning を結合
-      const textReasoning = reasoningLines.join(' ').trim();
-      if (textReasoning) {
-        reasoning = textReasoning;
-      }
-
-      // 満足度ベースの自動判定ロジック強化
-      if (satisfactionLevel >= 7 && hasAdditionalPoints && !readyToMove) {
-        // 高満足度でも継続希望の場合、満足度を基準に判断を調整
-        console.log(`[DynamicRouter] ${agentId}: High satisfaction (${satisfactionLevel}) detected, considering readiness adjustment`);
-      }
-
-    } catch (error) {
-      console.warn(`[DynamicRouter] Error parsing consensus response from ${agentId}:`, error);
-    }
-
-    return {
-      agentId,
-      satisfactionLevel,
-      hasAdditionalPoints,
-      questionsForOthers,
-      readyToMove,
-      reasoning
-    };
+    return this.consensusCollector.parseConsensusResponse(response, agentId);
   }
+
 
   private async executeActions(
     actions: any[],
