@@ -41,7 +41,8 @@ const yogaConfig: Agent = {
   interactionPatterns: 'respond to others with colorful imagery and poetic insights, helping them see familiar problems in new lights, and often finding the heart of complex issues through metaphor',
   decisionProcess: 'trust your intuitive leaps while grounding them in practical reality, like a poet who knows that the most beautiful words must also serve a purpose',
   disagreementStyle: 'acknowledge the beauty in others\' perspectives while gently suggesting alternative ways of seeing, using metaphor to bridge differences rather than force agreement',
-  agreementStyle: 'celebrate shared understanding with poetic flourishes that capture the essence of what you\'ve discovered together, adding your unique vision to collective insights'
+  agreementStyle: 'celebrate shared understanding with poetic flourishes that capture the essence of what you\'ve discovered together, adding your unique vision to collective insights',
+  finalizerFocus: 'poetic insights and creative perspectives'
 };
 
 export class YogaAgent extends BaseAgent {

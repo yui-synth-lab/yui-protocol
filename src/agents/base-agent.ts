@@ -1,7 +1,9 @@
 import { Agent, Message, AgentResponse, DialogueStage, IndividualThought, MutualReflection } from '../types/index.js';
 import { getPersonalityPrompt, getStagePrompt, Language, SUMMARIZER_STAGE_PROMPT, formatPrompt, parseVotes, extractVoteDetails } from '../templates/prompts.js';
 import { InteractionLogger, SimplifiedInteractionLog } from '../kernel/interaction-logger.js';
-import { AIExecutor, createAIExecutor } from '../kernel/ai-executor.js';
+import { AIExecutor } from '../kernel/ai-executor.js';
+import { defaultExecutorFactory } from '../kernel/executor-factory.js';
+import type { DialogueAgent, ExecutorFactory } from '../dialogue/contracts.js';
 import { ConversationContext, AgentPersonalHistory } from '../types/memory.js';
 import { getV2MemoryConfig } from '../config/v2-config-loader.js';
 import { RAGEnhancedContext, RAGQuery } from '../types/rag.js';
@@ -33,7 +35,7 @@ function getModelConfigFromEnv(agentId: string, defaultConfig: any) {
   return defaultConfig;
 }
 
-export abstract class BaseAgent {
+export abstract class BaseAgent implements DialogueAgent {
   protected agent: Agent;
   protected memory: Message[] = [];
   protected interactionLogger: InteractionLogger;
@@ -43,6 +45,7 @@ export abstract class BaseAgent {
   protected aiExecutorFinalize?: AIExecutor;
   private aiExecutorPromiseFinalize?: Promise<AIExecutor>;
   protected isSummarizer: boolean;
+  protected executorFactory: ExecutorFactory;
 
   protected personalHistory: AgentPersonalHistory;
 
@@ -50,9 +53,16 @@ export abstract class BaseAgent {
   protected ragRetriever?: RAGRetriever;
   protected ragEnabled: boolean = false;
 
-  constructor(agent: Agent, interactionLogger?: InteractionLogger, language: Language = 'en', ragRetriever?: RAGRetriever) {
+  constructor(
+    agent: Agent,
+    interactionLogger?: InteractionLogger,
+    language: Language = 'en',
+    ragRetriever?: RAGRetriever,
+    executorFactory: ExecutorFactory = defaultExecutorFactory
+  ) {
     this.agent = agent;
     this.interactionLogger = interactionLogger || new InteractionLogger();
+    this.executorFactory = executorFactory;
     // Use 'en' as default for generation parameters in constructor
     const generationParams = this.getGenerationParameters();
 
@@ -65,7 +75,7 @@ export abstract class BaseAgent {
     // Override with environment variables if present
     const modelConfig = getModelConfigFromEnv(agent.id, defaultModelConfig);
 
-    this.aiExecutorPromise = createAIExecutor(agent.id, {
+    this.aiExecutorPromise = this.executorFactory.getExecutor(agent.id, {
       provider: modelConfig.provider,
       model: modelConfig.model,
       temperature: generationParams.temperature,
@@ -78,7 +88,7 @@ export abstract class BaseAgent {
 
     // Use finalizer model if specified, otherwise use the same model
     const finalizerModel = modelConfig.finalizerModel || modelConfig.model;
-    this.aiExecutorPromiseFinalize = createAIExecutor(agent.id + '-finalizer', {
+    this.aiExecutorPromiseFinalize = this.executorFactory.getExecutor(agent.id + '-finalizer', {
       provider: modelConfig.provider,
       model: finalizerModel,
       temperature: generationParams.temperature,
@@ -1236,7 +1246,8 @@ export abstract class BaseAgent {
       // Use finalizer model if specified
       const finalizerModel = modelConfig.finalizerModel || modelConfig.model;
 
-      executor = await createAIExecutor(customAgentId, {
+      // ExecutorFactory 経由で取得（同一 agentId+model はキャッシュされ、呼び出し毎の再生成を避ける: M8）
+      executor = await this.executorFactory.getExecutor(customAgentId, {
         provider: modelConfig.provider,
         model: finalizerModel,
         temperature: generationParams.temperature,
@@ -1284,6 +1295,43 @@ export abstract class BaseAgent {
       );
       throw error;
     }
+  }
+
+  // ========== DialogueAgent 公開API（v2ルーター用） ==========
+  // ルーターが protected メソッドへ `as any` でアクセスしていた箇所の正式な公開窓口。
+
+  public async executeWithPersonality(
+    prompt: string,
+    stage: DialogueStage,
+    operationName: string,
+    language: Language,
+    fallbackSessionId: string = 'unknown-session'
+  ): Promise<string> {
+    return this.executeAIWithErrorHandling(
+      prompt,
+      this.getPersonalityPrompt(language),
+      this.sessionId || fallbackSessionId,
+      stage,
+      operationName
+    );
+  }
+
+  public async executeWithFinalizerModel(
+    prompt: string,
+    customAgentId: string,
+    stage: DialogueStage,
+    operationName: string,
+    language: Language,
+    fallbackSessionId: string = 'unknown-session'
+  ): Promise<string> {
+    return this.executeAIWithFinalizerModel(
+      prompt,
+      this.getPersonalityPrompt(language),
+      customAgentId,
+      this.sessionId || fallbackSessionId,
+      stage,
+      operationName
+    );
   }
 
 

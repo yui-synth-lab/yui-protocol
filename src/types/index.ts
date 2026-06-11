@@ -45,6 +45,7 @@ export interface Agent {
   disagreementStyle?: string;
   agreementStyle?: string;
   expertise?: string[]; // Areas of expertise for this agent
+  finalizerFocus?: string; // Focus area description when acting as a collaborative finalizer (v2.0)
 }
 
 export interface Message {

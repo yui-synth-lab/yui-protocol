@@ -20,6 +20,16 @@ module.exports = {
       comment: 'types/ は基盤層。templates/kernel/agents/server/ui に依存してはならない。',
       from: { path: '^src/types' },
       to: { path: '^src/(templates|kernel|agents|server|ui)' }
+    },
+    {
+      name: 'kernel-must-not-import-agents',
+      severity: 'error',
+      comment:
+        'orchestration(kernel) はエージェント具象に依存しない（Phase 2）。' +
+        '具象生成は src/agents/registry.ts + src/bootstrap/ に集約。' +
+        'facilitator-agent.ts への依存のみ Phase 3 の分解まで暫定許容。',
+      from: { path: '^src/kernel' },
+      to: { path: '^src/agents', pathNot: '^src/agents/facilitator-agent\\.ts$' }
     }
   ],
   options: {

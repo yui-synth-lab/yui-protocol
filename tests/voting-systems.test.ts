@@ -137,7 +137,7 @@ describe('Voting Systems - V1 vs V2 Comparison', () => {
       // Mock vote responses
       mockAgents.forEach((agent, index) => {
         const targetAgent = testAgents[(index + 1) % testAgents.length];
-        agent['executeAIWithErrorHandling'] = vi.fn().mockResolvedValue(
+        agent['executeWithPersonality'] = vi.fn().mockResolvedValue(
           `投票: ${targetAgent.id}\n理由: ${targetAgent.name}が最も適切だと思います`
         );
       });
@@ -390,7 +390,8 @@ function createMockBaseAgent(agent: Agent): BaseAgent {
   const mockAgent = {
     getAgent: () => agent,
     getSessionId: () => 'test-session',
-    executeAIWithErrorHandling: vi.fn(),
+    executeWithPersonality: vi.fn(),
+    executeWithFinalizerModel: vi.fn(),
     prepareContext: vi.fn().mockResolvedValue([]),
     analyzeCompressedContext: vi.fn().mockReturnValue('Test context'),
     getPersonalityPrompt: vi.fn().mockReturnValue('Test personality')

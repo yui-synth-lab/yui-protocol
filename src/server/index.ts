@@ -12,6 +12,7 @@ import { OutputStorage } from '../kernel/output-storage.js';
 import { InteractionLogger } from '../kernel/interaction-logger.js';
 import { createStageSummarizer } from '../kernel/stage-summarizer.js';
 import { V2ConfigLoader } from '../config/v2-config-loader.js';
+import { createDefaultAgentManager } from '../bootstrap/index.js';
 
 const app = express();
 const server = createServer(app);
@@ -53,13 +54,15 @@ const sharedInteractionLogger = new InteractionLogger();
 const stageSummarizerOptions = {};
 
 
-// Initialize realtime router with shared session storage, output storage, interaction logger, stage summarizer options, and delay options
+// Initialize realtime router with shared session storage, output storage, interaction logger, stage summarizer options, and delay options.
+// Agent construction is wired through the composition root (src/bootstrap) so the kernel stays agnostic of concrete agents.
 const realtimeRouter = new YuiProtocolRouter(
   sharedSessionStorage,
   sharedOutputStorage,
   sharedInteractionLogger,
   stageSummarizerOptions,
-  30000
+  30000,
+  createDefaultAgentManager(sharedInteractionLogger)
 );
 
 // WebSocket connection management

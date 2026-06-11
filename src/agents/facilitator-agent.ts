@@ -5,6 +5,7 @@ import { InteractionLogger } from '../kernel/interaction-logger.js';
 import { FACILITATOR_ANALYSIS_PROMPT } from '../templates/v2-prompts.js';
 import { getV2ConsensusConfig, getV2FacilitatorConfig } from '../config/v2-config-loader.js';
 import { shuffleArray } from '../utils/random.js';
+import { DEFAULT_AGENT_IDS } from './registry.js';
 
 export class FacilitatorAgent {
   private readonly agentId = 'facilitator-001';
@@ -16,7 +17,8 @@ export class FacilitatorAgent {
   // Silent facilitator settings
   private readonly WORD_LIMIT_MIN = 150;
   private readonly WORD_LIMIT_MAX = 200;
-  private readonly AGENT_NAMES = ['eiro-001', 'yui-000', 'hekito-001', 'yoga-001', 'kanshi-001'];
+  // セッションの参加エージェントID。既定値は registry 由来（setKnownAgents で上書き）
+  private knownAgentIds: string[] = [...DEFAULT_AGENT_IDS];
   private agentParticipationCount: Record<string, number> = {};
   private currentTopicKeywords: string[] = [];
   private interactionLogger: InteractionLogger;
@@ -30,10 +32,16 @@ export class FacilitatorAgent {
 
   // 外部から発言数を同期するメソッド
   public updateParticipationCount(participationMap: Map<string, number>): void {
-    this.AGENT_NAMES.forEach(agentId => {
+    this.knownAgentIds.forEach(agentId => {
       this.agentParticipationCount[agentId] = participationMap.get(agentId) || 0;
     });
     console.log(`[Facilitator] Updated participation counts:`, this.agentParticipationCount);
+  }
+
+  // セッションの実参加エージェントを設定する（ルーターが対話開始時に呼ぶ）
+  public setKnownAgents(agentIds: string[]): void {
+    this.knownAgentIds = [...agentIds];
+    this.initializeAgentTracking();
   }
 
   // Initial Thoughtの発言順序を決定
@@ -97,7 +105,7 @@ No explanation needed - just the JSON array.`;
 
 
   private initializeAgentTracking() {
-    this.AGENT_NAMES.forEach(agentId => {
+    this.knownAgentIds.forEach(agentId => {
       this.agentParticipationCount[agentId] = 0;
     });
   }
@@ -347,7 +355,7 @@ No explanation needed - just the JSON array.`;
   public async performSilentAdjustments(messages: Message[], roundNumber: number, originalQuery?: string) {
     // 全エージェントの参加カウントを初期化
     const participationBalance: Record<string, number> = {};
-    this.AGENT_NAMES.forEach(agentId => {
+    this.knownAgentIds.forEach(agentId => {
       participationBalance[agentId] = 0;
     });
 
@@ -357,7 +365,7 @@ No explanation needed - just the JSON array.`;
       msg.agentId !== 'facilitator-001' &&
       msg.stage !== 'voting' && // 投票メッセージは除外
       msg.stage !== 'facilitator' && // ファシリテーターメッセージは除外
-      this.AGENT_NAMES.includes(msg.agentId) // 知られているエージェントのみ
+      this.knownAgentIds.includes(msg.agentId) // 知られているエージェントのみ
     );
 
     // エージェントごとの参加カウント
@@ -367,12 +375,12 @@ No explanation needed - just the JSON array.`;
     });
 
     // 参加カウントをparticipationBalanceに設定
-    this.AGENT_NAMES.forEach(agentId => {
+    this.knownAgentIds.forEach(agentId => {
       participationBalance[agentId] = agentParticipation[agentId] || 0;
     });
 
     // コンセンサス状態を作成（簡易版）
-    const mockConsensus: ConsensusIndicator[] = this.AGENT_NAMES.map(agentId => ({
+    const mockConsensus: ConsensusIndicator[] = this.knownAgentIds.map(agentId => ({
       agentId,
       satisfactionLevel: 7, // デフォルト値
       hasAdditionalPoints: participationBalance[agentId] < 2, // 参加が少ない場合は追加ポイントありと仮定
@@ -390,8 +398,8 @@ No explanation needed - just the JSON array.`;
     let wordCountAdjustments: string[] = [];
 
     // 参加の少ないエージェントを特定
-    const lessActiveAgents = this.AGENT_NAMES.filter(agentId =>
-      participationBalance[agentId] === 0 || participationBalance[agentId] < Math.max(1, Object.values(participationBalance).reduce((a, b) => a + b, 0) / this.AGENT_NAMES.length)
+    const lessActiveAgents = this.knownAgentIds.filter(agentId =>
+      participationBalance[agentId] === 0 || participationBalance[agentId] < Math.max(1, Object.values(participationBalance).reduce((a, b) => a + b, 0) / this.knownAgentIds.length)
     );
 
     if (lessActiveAgents.length > 0) {
@@ -401,7 +409,7 @@ No explanation needed - just the JSON array.`;
     }
 
     // サイレントエージェントは完全に参加していないエージェント
-    const silentAgents = this.AGENT_NAMES.filter(agentId =>
+    const silentAgents = this.knownAgentIds.filter(agentId =>
       participationBalance[agentId] === 0
     );
 
@@ -574,7 +582,7 @@ BALANCE GUIDANCE: If one agent is dominating (3+ recent messages), encourage oth
       .replace('{roundNumber}', roundNumber.toString())
       .replace('{consensusReport}', consensusReport)
       .replace('{recentMessages}', messages.slice(-3).map(m => `${m.agentId}: ${m.content.slice(0, 100)}...`).join('\n'))
-      .replace('{availableAgents}', this.AGENT_NAMES.join(', '));
+      .replace('{availableAgents}', this.knownAgentIds.join(', '));
 
     const decisionLog: FacilitatorLog = {
       sessionId: this.currentSessionId || 'unknown',
@@ -803,7 +811,7 @@ BALANCE GUIDANCE: If one agent is dominating (3+ recent messages), encourage oth
             // 発言が少ないエージェント
             const leastActive = consensus.filter(c => {
               const count = this.agentParticipationCount[c.agentId] || 0;
-              const avgCount = Object.values(this.agentParticipationCount).reduce((a, b) => a + b, 0) / this.AGENT_NAMES.length;
+              const avgCount = Object.values(this.agentParticipationCount).reduce((a, b) => a + b, 0) / this.knownAgentIds.length;
               return count <= Math.max(0, avgCount * 0.7);
             }).sort((a, b) => {
               const countA = this.agentParticipationCount[a.agentId] || 0;
@@ -832,7 +840,7 @@ BALANCE GUIDANCE: If one agent is dominating (3+ recent messages), encourage oth
 
     // どのアクションも生成できなかった場合のフォールバック
     if (actions.length === 0) {
-      const fallbackAgent = consensus[0] || { agentId: this.AGENT_NAMES[0] };
+      const fallbackAgent = consensus[0] || { agentId: this.knownAgentIds[0] };
       actions.push({
         type: 'perspective_shift',
         target: fallbackAgent.agentId,

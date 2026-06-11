@@ -1,6 +1,6 @@
-import { BaseAgent } from '../agents/base-agent.js';
 import { FacilitatorAgent } from '../agents/facilitator-agent.js';
-import { Message, Session, Agent, AgentResponse, SessionConsensusSnapshot, AgentConsensusData } from '../types/index.js';
+import type { DialogueAgent } from '../dialogue/contracts.js';
+import { Message, Session, Agent, AgentResponse, SessionConsensusSnapshot, AgentConsensusData, DialogueStage } from '../types/index.js';
 import { ConsensusIndicator, DialogueState, DynamicRound, FacilitatorAction, DynamicInstruction } from '../types/consensus.js';
 import { RAGRetriever } from './rag/rag-retriever.js';
 import { SessionStorage } from './session-storage.js';
@@ -21,6 +21,7 @@ export class DynamicDialogueRouter {
   private originalQuery: string = ''; // 初期クエリを保持
   private recentSpeakers: string[] = []; // 最近発言したエージェントを追跡
   private agentParticipationCount: Map<string, number> = new Map(); // エージェントの発言回数
+  private agentNamesById: Map<string, string> = new Map(); // 参加エージェントの ID→表示名
   private initialThoughts: Message[] = []; // Individual Thoughtの結果を保持
   private currentRound: number = 0; // 現在のラウンド番号
   private ragRetriever?: RAGRetriever; // v2.0: RAG不協和音検出用
@@ -43,7 +44,7 @@ export class DynamicDialogueRouter {
 
   async conductDynamicDialogue(
     initialQuery: string,
-    agents: Record<string, BaseAgent>,
+    agents: Record<string, DialogueAgent>,
     sessionId: string,
     language: Language = 'en'
   ): Promise<Session> {
@@ -61,9 +62,14 @@ export class DynamicDialogueRouter {
     this.agentParticipationCount.clear();
     this.initialThoughts = []; // Initial Thoughtをリセット
     this.currentRound = 0; // ラウンド番号をリセット
+    this.agentNamesById.clear();
     agentList.forEach(agent => {
       this.agentParticipationCount.set(agent.getAgent().id, 0);
+      this.agentNamesById.set(agent.getAgent().id, agent.getAgent().name);
     });
+
+    // ファシリテーターへ実参加エージェントを通知（ハードコードIDの排除）
+    this.facilitator.setKnownAgents(agentList.map(a => a.getAgent().id));
 
     // ファシリテーターをセッション用に初期化（存在する場合のみ）
     if (this.facilitator.initializeSession) {
@@ -332,7 +338,7 @@ export class DynamicDialogueRouter {
   private async initializeSession(
     sessionId: string,
     query: string,
-    agents: BaseAgent[],
+    agents: DialogueAgent[],
     language: Language
   ): Promise<Session> {
     const session: Session = {
@@ -355,7 +361,7 @@ export class DynamicDialogueRouter {
 
   private async getInitialResponses(
     query: string,
-    agents: BaseAgent[],
+    agents: DialogueAgent[],
     context: Message[],
     language: Language,
     sessionId: string
@@ -439,7 +445,7 @@ export class DynamicDialogueRouter {
   }
 
   private async gatherConsensus(
-    agents: BaseAgent[],
+    agents: DialogueAgent[],
     messages: Message[],
     language: Language,
     currentRound: number = 0
@@ -533,7 +539,7 @@ export class DynamicDialogueRouter {
   }
 
   private async askForConsensus(
-    agent: BaseAgent,
+    agent: DialogueAgent,
     messages: Message[],
     language: Language,
     currentRound: number = 0
@@ -560,13 +566,12 @@ export class DynamicDialogueRouter {
       .replace('{contextText}', contextText)
       .replace('{additionalGuidance}', additionalGuidance);
 
-    const personality = (agent as any).getPersonalityPrompt(language);
-    const response = await (agent as any).executeAIWithErrorHandling(
+    const response = await agent.executeWithPersonality(
       prompt,
-      personality,
-      agent.getSessionId() || 'dynamic-session',
-      'consensus-check' as any,
-      'consensus gathering'
+      'consensus-check' as DialogueStage,
+      'consensus gathering',
+      language,
+      'dynamic-session'
     );
 
     return this.parseConsensusResponse(response, agent.getAgent().id);
@@ -693,7 +698,7 @@ export class DynamicDialogueRouter {
 
   private async executeActions(
     actions: any[],
-    agents: BaseAgent[],
+    agents: DialogueAgent[],
     messages: Message[],
     language: Language,
     recommendedActionCount?: number
@@ -782,7 +787,7 @@ export class DynamicDialogueRouter {
 
   private async executeAction(
     action: FacilitatorAction,
-    agents: BaseAgent[],
+    agents: DialogueAgent[],
     messages: Message[],
     language: Language
   ): Promise<Message[]> {
@@ -812,7 +817,7 @@ export class DynamicDialogueRouter {
     try {
       switch (action.type) {
         case 'deep_dive':
-          let targetAgent: BaseAgent | undefined;
+          let targetAgent: DialogueAgent | undefined;
           if (action.target && action.target !== 'all' && action.target !== 'auto') {
             targetAgent = agents.find(a => a.getAgent().id === action.target);
             console.log(`[DynamicRouter] Deep dive target specified: ${action.target}, found: ${targetAgent ? 'yes' : 'no'}`);
@@ -831,7 +836,7 @@ export class DynamicDialogueRouter {
           break;
 
         case 'clarification':
-          let clarifyAgent: BaseAgent | undefined;
+          let clarifyAgent: DialogueAgent | undefined;
           if (action.target && action.target !== 'all' && action.target !== 'auto') {
             clarifyAgent = agents.find(a => a.getAgent().id === action.target);
           }
@@ -847,7 +852,7 @@ export class DynamicDialogueRouter {
           break;
 
         case 'perspective_shift':
-          let perspectiveAgent: BaseAgent | undefined;
+          let perspectiveAgent: DialogueAgent | undefined;
           if (action.target && action.target !== 'all' && action.target !== 'auto') {
             perspectiveAgent = agents.find(a => a.getAgent().id === action.target);
           }
@@ -898,7 +903,7 @@ export class DynamicDialogueRouter {
   }
 
   private async askForDeepDive(
-    agent: BaseAgent,
+    agent: DialogueAgent,
     reason: string,
     messages: Message[],
     language: Language,
@@ -954,14 +959,12 @@ ${instructionSection}
 Start your response naturally without formal greetings.
 `;
 
-    const personality = (agent as any).getPersonalityPrompt(language);
-
-    const response = await (agent as any).executeAIWithErrorHandling(
+    const response = await agent.executeWithPersonality(
       prompt,
-      personality,
-      agent.getSessionId() || 'dynamic-session',
-      'deep-dive' as any,
-      'deep dive exploration'
+      'deep-dive' as DialogueStage,
+      'deep dive exploration',
+      language,
+      'dynamic-session'
     );
 
     return {
@@ -982,7 +985,7 @@ Start your response naturally without formal greetings.
   }
 
   private async askForClarification(
-    agent: BaseAgent,
+    agent: DialogueAgent,
     reason: string,
     messages: Message[],
     language: Language,
@@ -1035,14 +1038,12 @@ ${instructionSection}
 Respond directly to help clarify the discussion.
 `;
 
-    const personality = (agent as any).getPersonalityPrompt(language);
-
-    const response = await (agent as any).executeAIWithErrorHandling(
+    const response = await agent.executeWithPersonality(
       prompt,
-      personality,
-      agent.getSessionId() || 'dynamic-session',
-      'clarification' as any,
-      'clarification request'
+      'clarification' as DialogueStage,
+      'clarification request',
+      language,
+      'dynamic-session'
     );
 
     return {
@@ -1060,7 +1061,7 @@ Respond directly to help clarify the discussion.
   }
 
   private async askForPerspectiveShift(
-    agent: BaseAgent,
+    agent: DialogueAgent,
     reason: string,
     messages: Message[],
     language: Language,
@@ -1105,14 +1106,12 @@ ${contextText}
 ${instructionSection}
 `;
 
-    const personality = (agent as any).getPersonalityPrompt(language);
-
-    const response = await (agent as any).executeAIWithErrorHandling(
+    const response = await agent.executeWithPersonality(
       prompt,
-      personality,
-      agent.getSessionId() || 'dynamic-session',
-      'perspective-shift' as any,
-      'perspective shift'
+      'perspective-shift' as DialogueStage,
+      'perspective shift',
+      language,
+      'dynamic-session'
     );
 
     return {
@@ -1130,7 +1129,7 @@ ${instructionSection}
   }
 
   private async askForSummary(
-    agent: BaseAgent,
+    agent: DialogueAgent,
     messages: Message[],
     language: Language,
     dynamicInstruction?: DynamicInstruction
@@ -1168,14 +1167,12 @@ We are discussing: "${this.originalQuery}"
 ${instructionSection}
 `;
 
-    const personality = (agent as any).getPersonalityPrompt(language);
-
-    const response = await (agent as any).executeAIWithErrorHandling(
+    const response = await agent.executeWithPersonality(
       prompt,
-      personality,
-      agent.getSessionId() || 'dynamic-session',
-      'summary' as any,
-      'discussion summary'
+      'summary' as DialogueStage,
+      'discussion summary',
+      language,
+      'dynamic-session'
     );
 
     return {
@@ -1193,7 +1190,7 @@ ${instructionSection}
   }
 
   private async askForRedirect(
-    agent: BaseAgent,
+    agent: DialogueAgent,
     reason: string,
     messages: Message[],
     language: Language,
@@ -1246,14 +1243,12 @@ ${instructionSection}
 Jump directly into your perspective on the original question.
 `;
 
-    const personality = (agent as any).getPersonalityPrompt(language);
-
-    const response = await (agent as any).executeAIWithErrorHandling(
+    const response = await agent.executeWithPersonality(
       prompt,
-      personality,
-      agent.getSessionId() || 'dynamic-session',
-      'redirect' as any,
-      'topic redirection'
+      'redirect' as DialogueStage,
+      'topic redirection',
+      language,
+      'dynamic-session'
     );
 
     return {
@@ -1272,7 +1267,7 @@ Jump directly into your perspective on the original question.
 
   private async generateFinalOutput(
     messages: Message[],
-    agents: BaseAgent[],
+    agents: DialogueAgent[],
     language: Language,
     sessionId: string,
     round: number
@@ -1314,14 +1309,13 @@ Remember: You are not just summarizing - you are synthesizing, integrating, and 
       } else {
         // 単一のファイナライザーの場合（従来通り）
         const finalizer = finalizers[0];
-        const personality = (finalizer as any).getPersonalityPrompt(language);
 
-        const response = await (finalizer as any).executeAIWithErrorHandling(
+        const response = await finalizer.executeWithPersonality(
           prompt,
-          personality,
-          finalizer.getSessionId() || 'dynamic-session',
-          'finalize' as any,
-          'final synthesis'
+          'finalize',
+          'final synthesis',
+          language,
+          'dynamic-session'
         );
 
         return {
@@ -1344,7 +1338,7 @@ Remember: You are not just summarizing - you are synthesizing, integrating, and 
 
   // 複数ファイナライザーの協力システム
   private async handleMultipleFinalizers(
-    finalizers: BaseAgent[],
+    finalizers: DialogueAgent[],
     messages: Message[],
     contextText: string,
     language: Language,
@@ -1405,7 +1399,7 @@ ${isFirst ? `🌱 **YOUR ROLE AS THE FOUNDATION BUILDER**:
 - Begin our collaborative synthesis with your ${finalizer.getAgent().style} perspective
 - Establish key analytical frameworks and foundational insights
 - Set the stage for others to build upon your analysis
-- Focus on ${this.getFinalizerFocus(finalizer.getAgent().id)}` :
+- Focus on ${this.getFinalizerFocus(finalizer.getAgent())}` :
           (isLast ? `🎆 **YOUR ROLE AS THE SYNTHESIS INTEGRATOR**:
 - Weave together all previous analyses into a unified conclusion
 - Build upon insights from ${finalizers.slice(0, -1).map(f => f.getAgent().name).join(' and ')}
@@ -1425,8 +1419,6 @@ ${this.getCollaborativeInstructions(finalizer.getAgent().id, isFirst, isLast, in
 
 **Remember**: This is a collaborative effort. Your contribution should clearly build on others while bringing your unique perspective to create something greater than the sum of its parts.
 `;
-
-      const personality = (finalizer as any).getPersonalityPrompt(language);
 
       // 進行状況メッセージを送信
       const role = isFirst ? 'foundation' : (isLast ? 'integrator' : 'enricher');
@@ -1452,13 +1444,13 @@ ${this.getCollaborativeInstructions(finalizer.getAgent().id, isFirst, isLast, in
 
       // ファイナライザー専用の高コストLLMを使用するため、agent idに'-finalizer'を追加
       const finalizerAgentId = `${finalizer.getAgent().id}-finalizer`;
-      const response = await (finalizer as any).executeAIWithFinalizerModel(
+      const response = await finalizer.executeWithFinalizerModel(
         collaborativePrompt,
-        personality,
         finalizerAgentId,
-        finalizer.getSessionId() || 'dynamic-session',
-        'finalize' as any,
-        `collaborative synthesis ${index + 1}/${finalizers.length}`
+        'finalize',
+        `collaborative synthesis ${index + 1}/${finalizers.length}`,
+        language,
+        'dynamic-session'
       );
 
       const finalizerMessage: Message = {
@@ -1534,16 +1526,9 @@ ${this.getCollaborativeInstructions(finalizer.getAgent().id, isFirst, isLast, in
     return null;
   }
 
-  // ファイナライザーのフォーカスエリアを取得
-  private getFinalizerFocus(agentId: string): string {
-    const focuses: Record<string, string> = {
-      'eiro-001': 'logical analysis and systematic reasoning',
-      'yui-000': 'emotional resonance and human connections',
-      'hekito-001': 'analytical depth and methodical examination',
-      'yoga-001': 'poetic insights and creative perspectives',
-      'kanshi-001': 'critical evaluation and balanced assessment'
-    };
-    return focuses[agentId] || 'comprehensive analysis';
+  // ファイナライザーのフォーカスエリアを取得（エージェント設定が単一情報源）
+  private getFinalizerFocus(agent: Agent): string {
+    return agent.finalizerFocus || 'comprehensive analysis';
   }
 
   // 協力的インストラクションを取得
@@ -1720,11 +1705,10 @@ ${actionLines}
   private getParticipationBalance(dialogueState: DialogueState): Record<string, number> {
     const balance: Record<string, number> = {};
 
-    // 全エージェントを初期化（0で開始）
-    const allAgents = ['eiro-001', 'yui-000', 'hekito-001', 'yoga-001', 'kanshi-001'];
-    allAgents.forEach(agentId => {
+    // セッション参加エージェントを初期化（0で開始、conductDynamicDialogue で登録済み）
+    for (const agentId of this.agentParticipationCount.keys()) {
       balance[agentId] = 0;
-    });
+    }
 
     // participantStatesから実際の参加カウントを設定
     dialogueState.participantStates.forEach(state => {
@@ -1737,11 +1721,11 @@ ${actionLines}
   // v1の投票システムを踏襲してFinalize担当を選出
   private async selectFinalizerByVoting(
     messages: Message[],
-    agents: BaseAgent[],
+    agents: DialogueAgent[],
     language: Language,
     sessionId: string,
     round: number
-  ): Promise<BaseAgent[]> {
+  ): Promise<DialogueAgent[]> {
     console.log('[DynamicRouter] Starting voting process for finalizer selection');
 
     // 投票開始メッセージを追加
@@ -1812,10 +1796,10 @@ ${actionLines}
 
   // 各エージェントから投票を取得
   private async askForVote(
-    agent: BaseAgent,
+    agent: DialogueAgent,
     messages: Message[],
     language: Language,
-    allAgents: BaseAgent[]
+    allAgents: DialogueAgent[]
   ): Promise<{ agentId: string; voteFor: string | undefined; voteReasoning?: string }> {
     const agentList = allAgents
       .filter(a => a.getAgent().id !== agent.getAgent().id)
@@ -1849,15 +1833,12 @@ Reason: [reason for selection]
 
 Note: You cannot vote for yourself. Vote for the agent you think can best synthesize our discussion.`;
 
-    const compressedContext = await agent['prepareContext'](messages);
-    const personality = agent['getPersonalityPrompt'](language);
-
-    const response = await agent['executeAIWithErrorHandling'](
+    const response = await agent.executeWithPersonality(
       prompt,
-      personality,
-      agent.getSessionId() || 'dynamic-vote',
-      'voting' as any,
-      'finalizer voting'
+      'voting',
+      'finalizer voting',
+      language,
+      'dynamic-vote'
     );
 
     return this.parseVoteResponse(response, agent.getAgent().id, agentList, allAgents);
@@ -1868,7 +1849,7 @@ Note: You cannot vote for yourself. Vote for the agent you think can best synthe
     response: string,
     voterId: string,
     validAgents: string[],
-    allAgents?: BaseAgent[]
+    allAgents?: DialogueAgent[]
   ): { agentId: string; voteFor: string | undefined; voteReasoning?: string } {
     let voteFor: string | undefined;
     let voteReasoning: string | undefined;
@@ -1981,7 +1962,7 @@ Note: You cannot vote for yourself. Vote for the agent you think can best synthe
   }
 
   // エージェント選択のヘルパーメソッド
-  private selectBalancedAgent(agents: BaseAgent[], preferredStyle?: string, excludeRecent: boolean = true): BaseAgent {
+  private selectBalancedAgent(agents: DialogueAgent[], preferredStyle?: string, excludeRecent: boolean = true): DialogueAgent {
     // 最近発言していないエージェントを優先
     let candidates = agents;
 
@@ -2040,16 +2021,9 @@ Note: You cannot vote for yourself. Vote for the agent you think can best synthe
     console.log(`[DynamicRouter] Agent participation: ${agentId} (${currentCount + 1} times)`);
   }
 
-  // Helper to get agent name
+  // Helper to get agent name（conductDynamicDialogue で参加エージェントから登録）
   private getAgentName(agentId: string): string {
-    const agentNames: Record<string, string> = {
-      'eiro-001': '慧露',
-      'kanshi-001': '観至',
-      'yoga-001': '陽雅',
-      'hekito-001': '碧統',
-      'yui-000': '結心'
-    };
-    return agentNames[agentId] || agentId;
+    return this.agentNamesById.get(agentId) || agentId;
   }
 
   // 統計情報の取得

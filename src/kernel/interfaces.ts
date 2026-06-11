@@ -1,4 +1,5 @@
 import { Agent, AgentInstance, Session, Language, Message, AgentResponse } from '../types/index.js';
+import type { SessionStorage } from './session-storage.js';
 
 export interface IAgentManager {
   getAgent(agentId: string): AgentInstance | undefined;
@@ -14,7 +15,7 @@ export interface ISessionManager {
   deleteSession(sessionId: string): Promise<boolean>;
   resetSession(sessionId: string): Promise<Session>;
   startNewSequence(sessionId: string, userPrompt?: string): Promise<Session>;
-  getSessionStorage(): any;
+  getSessionStorage(): SessionStorage;
   getPreviousSequenceInfo(session: Session): {
     previousUserInput: string;
     previousAgentConclusions: { [agentId: string]: string };
