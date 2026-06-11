@@ -6,8 +6,9 @@ import { FACILITATOR_ANALYSIS_PROMPT } from '../templates/v2-prompts.js';
 import { getV2ConsensusConfig, getV2FacilitatorConfig } from '../config/v2-config-loader.js';
 import { shuffleArray } from '../utils/random.js';
 import { DEFAULT_AGENT_IDS } from './registry.js';
+import type { FacilitatorPort } from '../dialogue/contracts.js';
 
-export class FacilitatorAgent {
+export class FacilitatorAgent implements FacilitatorPort {
   private readonly agentId = 'facilitator-001';
   private aiExecutor?: AIExecutor;
   private roundHistory: DynamicRound[] = [];

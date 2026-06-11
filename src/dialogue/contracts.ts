@@ -2,6 +2,7 @@
 // orchestration層（ルーター）はエージェント具象型ではなくここで定義されたポートに依存する。
 // composition root（src/bootstrap/）が具象実装を供給する。
 import type { Agent, AgentInstance, DialogueStage, IndividualThought, Language, Message } from '../types/index.js';
+import type { ConsensusIndicator, DialogueState, DynamicRound, FacilitatorAction, FacilitatorLog } from '../types/consensus.js';
 import type { AIExecutor, AIExecutorOptions } from '../kernel/ai-executor.js';
 import type { InteractionLogger } from '../kernel/interaction-logger.js';
 import type { RAGRetriever } from '../kernel/rag/rag-retriever.js';
@@ -57,4 +58,37 @@ export type TaskTier = 'reasoning' | 'mechanical' | 'summary';
 /** AIExecutor 生成の契約。(agentId, tier, model) 単位でキャッシュされる（M8） */
 export interface ExecutorFactory {
   getExecutor(agentId: string, options?: Partial<AIExecutorOptions>, tier?: TaskTier): Promise<AIExecutor>;
+}
+
+/** 対話イベントの送出先（WebSocket / SSE / テスト用 sink を差し替え可能にする） */
+export type DialogueEventSink = (event: string, data: unknown) => void;
+
+/**
+ * v2.0 ルーターがファシリテーターに要求する操作の契約。
+ * FacilitatorAgent がこれを実装する。
+ */
+export interface FacilitatorPort {
+  setKnownAgents(agentIds: string[]): void;
+  initializeSession(sessionId: string): void;
+  determineInitialSpeakingOrder(
+    query: string,
+    agents: { id: string; name: string; style: string; expertise: string[] }[]
+  ): Promise<string[]>;
+  analyzeDialogueState(
+    messages: Message[],
+    consensusData: ConsensusIndicator[],
+    roundNumber: number,
+    originalQuery?: string
+  ): Promise<DialogueState>;
+  updateParticipationCount(participationMap: Map<string, number>): void;
+  calculateOverallConsensus(indicators: ConsensusIndicator[]): number;
+  recordRound(round: DynamicRound): void;
+  logIntervention(action: FacilitatorAction, success: boolean, errorMessage?: string, agentResponses?: string[]): void;
+  analyzeFinalizeVotes(
+    votes: { agentId: string; voteFor: string | undefined; voteReasoning?: string }[],
+    allAgentIds: string[],
+    language?: 'ja' | 'en'
+  ): Promise<string[]>;
+  getAllLogs(): FacilitatorLog[];
+  getDialogueStats(): Record<string, unknown>;
 }

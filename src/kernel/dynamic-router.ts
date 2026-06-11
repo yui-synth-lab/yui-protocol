@@ -1,5 +1,5 @@
 import { FacilitatorAgent } from '../agents/facilitator-agent.js';
-import type { DialogueAgent } from '../dialogue/contracts.js';
+import type { DialogueAgent, DialogueEventSink, FacilitatorPort } from '../dialogue/contracts.js';
 import { Message, Session, Agent, AgentResponse, SessionConsensusSnapshot, AgentConsensusData, DialogueStage } from '../types/index.js';
 import { ConsensusIndicator, DialogueState, DynamicRound, FacilitatorAction, DynamicInstruction } from '../types/consensus.js';
 import { RAGRetriever } from './rag/rag-retriever.js';
@@ -13,7 +13,7 @@ import { getV2ConsensusConfig } from '../config/v2-config-loader.js';
 import { ConvergenceJudge } from '../dialogue/convergence-judge.js';
 
 export class DynamicDialogueRouter {
-  private facilitator: FacilitatorAgent;
+  private facilitator: FacilitatorPort;
   private maxRounds: number;
   private convergenceJudge: ConvergenceJudge;
   private llmCallEstimate: number = 0; // M7: セッション内のLLM呼び出し概数（バジェット判定用）
