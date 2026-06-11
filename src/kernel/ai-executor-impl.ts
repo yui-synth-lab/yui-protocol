@@ -136,11 +136,17 @@ export class GeminiExecutor extends AIExecutor {
       contents
     });
     let content = '';
+    let tokensUsed: number | undefined;
     for await (const chunk of response) {
       content += chunk?.text || '';
+      // usageMetadata はストリーム終端のチャンクに載るため、見つかる度に上書きする
+      if (chunk?.usageMetadata?.totalTokenCount) {
+        tokensUsed = chunk.usageMetadata.totalTokenCount;
+      }
     }
     return {
       content: this.sanitizeContent(content),
+      tokensUsed,
       model: this.model,
       duration: Date.now() - startTime,
       success: true
