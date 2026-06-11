@@ -6,11 +6,11 @@ import { RAGRetriever } from './rag/rag-retriever.js';
 import { SessionStorage } from './session-storage.js';
 import { Language } from '../templates/prompts.js';
 import { createFacilitatorMessage, createConsensusMessage } from '../utils/message-converters.js';
-import { createConvergenceMessage, createVotingStartMessage, createVotingResultMessage } from '../utils/convergence-messages.js';
-import { createCollaborationIntroMessage, createCollaborationProgressMessage, createCollaborationSummaryMessage } from '../utils/collaboration-messages.js';
+import { createConvergenceMessage } from '../utils/convergence-messages.js';
 import { getV2ConsensusConfig } from '../config/v2-config-loader.js';
 import { ConvergenceJudge } from '../dialogue/convergence-judge.js';
 import { ConsensusCollector } from '../orchestration/v2/consensus-collector.js';
+import { FinalizationService } from '../orchestration/v2/finalization-service.js';
 
 export class DynamicDialogueRouter {
   private facilitator: FacilitatorPort;
@@ -19,6 +19,7 @@ export class DynamicDialogueRouter {
   private llmCallEstimate: number = 0; // M7: セッション内のLLM呼び出し概数（バジェット判定用）
   private sessionStorage: SessionStorage;
   private consensusCollector = new ConsensusCollector();
+  private finalizationService: FinalizationService;
   private wsEmitter?: (event: string, data: any) => void; // WebSocket emitter
   private originalQuery: string = ''; // 初期クエリを保持
   private recentSpeakers: string[] = []; // 最近発言したエージェントを追跡
@@ -49,6 +50,15 @@ export class DynamicDialogueRouter {
       highSatisfactionThreshold: consensusConfig.highSatisfactionThreshold,
       minRoundsForSatisfactionConvergence: consensusConfig.minRoundsForSatisfactionConvergence,
       maxLlmCallsPerSession: consensusConfig.maxLlmCallsPerSession
+    });
+
+    // ファイナライズ（投票・協調finalize）は FinalizationService に抽出済み（Phase 3）
+    this.finalizationService = new FinalizationService({
+      getOriginalQuery: () => this.originalQuery,
+      getFacilitator: () => this.facilitator,
+      emitEvent: (event, data) => this.emitWebSocketEvent(event, data),
+      generateMessageId: () => this.generateMessageId(),
+      countLlmCall: () => { this.llmCallEstimate++; }
     });
   }
 
@@ -1050,6 +1060,7 @@ Jump directly into your perspective on the original question.
     };
   }
 
+  // ファイナライズ（投票選出・単独/協調finalize）は orchestration/v2/finalization-service.ts に抽出済み（Phase 3）
   private async generateFinalOutput(
     messages: Message[],
     agents: DialogueAgent[],
@@ -1057,286 +1068,12 @@ Jump directly into your perspective on the original question.
     sessionId: string,
     round: number
   ): Promise<Message | null> {
-    try {
-      // v1の投票システムを踏襲してFinalize担当を決定
-      const finalizers = await this.selectFinalizerByVoting(messages, agents, language, sessionId, round);
-
-      const recentMessages = messages.slice(-10);
-      const contextText = recentMessages.map(m => `${m.agentId}: ${m.content}`).join('\n\n');
-
-      const prompt = `
-We have been exploring: "${this.originalQuery}"
-
-As the selected finalizer, you have been chosen through democratic voting to provide the concluding synthesis of our rich dialogue. This is a significant responsibility - please provide a comprehensive and thoughtful conclusion that:
-
-1. **Deep Synthesis**: Weave together the key insights about "${this.originalQuery}" that emerged throughout our entire conversation, not just recent exchanges
-2. **Multi-Perspective Integration**: Acknowledge and integrate the diverse viewpoints, approaches, and wisdom that different participants brought to this exploration
-3. **Nuanced Understanding**: Capture both areas where we found convergence and the beautiful complexities or tensions that remain unresolved about this topic
-4. **Philosophical Depth**: Reflect on what this exploration revealed not just about "${this.originalQuery}" but about the nature of inquiry, understanding, and collaborative thinking itself
-5. **Future Directions**: Suggest what new questions or avenues of exploration this dialogue has opened up
-6. **Essence Distillation**: Articulate the core essence of what was discovered about "${this.originalQuery}" through this collective thinking process
-7. **Inquiry Spirit**: Honor the spirit of genuine inquiry rather than forcing premature closure or oversimplified answers
-
-RECENT DISCUSSION CONTEXT (for reference):
-${contextText}
-
-Please take your time to craft a substantial, nuanced, and insightful final reflection on our exploration of "${this.originalQuery}". This synthesis should be worthy of the depth of thinking that preceded it and serve as a meaningful conclusion to our collaborative inquiry.
-
-Remember: You are not just summarizing - you are synthesizing, integrating, and elevating the collective wisdom that emerged from our dialogue into a coherent and profound final statement.
-`;
-
-      // 複数のファイナライザーが選出された場合
-      if (finalizers.length > 1) {
-        console.log(`[DynamicRouter] Multiple finalizers selected: ${finalizers.map(f => f.getAgent().name).join(', ')}`);
-
-        return await this.handleMultipleFinalizers(finalizers, messages, contextText, language, sessionId, round);
-
-      } else {
-        // 単一のファイナライザーの場合（従来通り）
-        const finalizer = finalizers[0];
-
-        const response = await finalizer.executeWithPersonality(
-          prompt,
-          'finalize',
-          'final synthesis',
-          language,
-          'dynamic-session'
-        );
-        this.llmCallEstimate++;
-
-        return {
-          id: this.generateMessageId(),
-          agentId: finalizer.getAgent().id,
-          content: response,
-          timestamp: new Date(),
-          role: 'agent',
-          stage: 'finalize',
-          metadata: {
-            reasoning: 'Dynamic dialogue final synthesis'
-          }
-        };
-      }
-    } catch (error) {
-      console.error('[DynamicRouter] Error generating final output:', error);
-      return null;
-    }
-  }
-
-  // 複数ファイナライザーの協力システム
-  private async handleMultipleFinalizers(
-    finalizers: DialogueAgent[],
-    messages: Message[],
-    contextText: string,
-    language: Language,
-    sessionId: string,
-    round: number
-  ): Promise<null> {
-    console.log(`[DynamicRouter] Starting collaborative finalization with ${finalizers.length} finalizers`);
-
-    // Step 1: 協力紹介メッセージを作成・送信
-    const collaborationInfo = {
-      sessionId,
-      finalizers: finalizers.map((f, index) => ({
-        id: f.getAgent().id,
-        name: f.getAgent().name,
-        role: index === 0 ? 'foundation' : (index === finalizers.length - 1 ? 'integrator' : 'enricher')
-      })),
-      totalSteps: finalizers.length,
-      topic: this.originalQuery
-    };
-
-    const introMessage = createCollaborationIntroMessage(collaborationInfo, language);
-    messages.push(introMessage);
-
-    this.emitWebSocketEvent('v2-message', {
-      sessionId,
-      message: introMessage,
-      round,
-      collaborationPhase: 'introduction'
-    });
-
-    this.emitWebSocketEvent('v2-collaboration-start', {
-      sessionId,
-      type: 'multiple-finalizers',
-      finalizers: collaborationInfo.finalizers,
-      round
-    });
-
-    const collaborationMessages: Message[] = [];
-
-    // Step 2: 各ファイナライザーが順番に発言
-    for (const [index, finalizer] of finalizers.entries()) {
-      const isFirst = index === 0;
-      const isLast = index === finalizers.length - 1;
-
-      // 前のファイナライザーの発言を参考に含める
-      const previousAnalyses = collaborationMessages.length > 0
-        ? `\n\nPREVIOUS FINALIZER ANALYSES:\n${collaborationMessages.map((msg, i) => `${i + 1}. **${msg.agentId}**: ${msg.content.slice(0, 300)}...`).join('\n\n')}`
-        : '';
-
-      const collaborativePrompt = `
-We have been exploring: "${this.originalQuery}"
-
-🎆 **COLLABORATIVE FINALIZATION - ${index + 1}/${finalizers.length}**
-
-You are ${finalizer.getAgent().name}, working with ${finalizers.filter(f => f !== finalizer).map(f => f.getAgent().name).join(' and ')} to create a comprehensive final synthesis.
-
-${isFirst ? `🌱 **YOUR ROLE AS THE FOUNDATION BUILDER**:
-- Begin our collaborative synthesis with your ${finalizer.getAgent().style} perspective
-- Establish key analytical frameworks and foundational insights
-- Set the stage for others to build upon your analysis
-- Focus on ${this.getFinalizerFocus(finalizer.getAgent())}` :
-          (isLast ? `🎆 **YOUR ROLE AS THE SYNTHESIS INTEGRATOR**:
-- Weave together all previous analyses into a unified conclusion
-- Build upon insights from ${finalizers.slice(0, -1).map(f => f.getAgent().name).join(' and ')}
-- Provide the culminating understanding that honors all perspectives
-- Create the definitive conclusion about "${this.originalQuery}"` :
-            `🌿 **YOUR ROLE AS THE PERSPECTIVE ENRICHER**:
-- Build meaningfully on what ${finalizers.slice(0, index).map(f => f.getAgent().name).join(' and ')} established
-- Add your unique ${finalizer.getAgent().style} insights to deepen understanding
-- Bridge different analytical approaches and fill important gaps
-- Prepare the foundation for the final integrative analysis`)}
-
-**DISCUSSION CONTEXT:**
-${contextText}${previousAnalyses}
-
-**YOUR SPECIFIC CONTRIBUTION:**
-${this.getCollaborativeInstructions(finalizer.getAgent().id, isFirst, isLast, index + 1, finalizers.length)}
-
-**Remember**: This is a collaborative effort. Your contribution should clearly build on others while bringing your unique perspective to create something greater than the sum of its parts.
-`;
-
-      // 進行状況メッセージを送信
-      const role = isFirst ? 'foundation' : (isLast ? 'integrator' : 'enricher');
-      const progressMessage = createCollaborationProgressMessage(
-        finalizer.getAgent().name,
-        index + 1,
-        finalizers.length,
-        role,
-        sessionId,
-        language
-      );
-
-      messages.push(progressMessage);
-      this.emitWebSocketEvent('v2-message', {
-        sessionId,
-        message: progressMessage,
-        round,
-        collaborationPhase: 'progress',
-        stepInfo: { current: index + 1, total: finalizers.length, role }
-      });
-
-      console.log(`[DynamicRouter] Finalizer ${index + 1}/${finalizers.length} (${finalizer.getAgent().name}) starting...`);
-
-      // ファイナライザー専用の高コストLLMを使用するため、agent idに'-finalizer'を追加
-      const finalizerAgentId = `${finalizer.getAgent().id}-finalizer`;
-      const response = await finalizer.executeWithFinalizerModel(
-        collaborativePrompt,
-        finalizerAgentId,
-        'finalize',
-        `collaborative synthesis ${index + 1}/${finalizers.length}`,
-        language,
-        'dynamic-session'
-      );
-      this.llmCallEstimate++;
-
-      const finalizerMessage: Message = {
-        id: this.generateMessageId(),
-        agentId: finalizer.getAgent().id,
-        content: response,
-        timestamp: new Date(),
-        role: 'agent',
-        stage: 'finalize',
-        metadata: {
-          collaborativeFinalize: true,
-          finalizerIndex: index + 1,
-          totalFinalizers: finalizers.length,
-          finalizerRole: isFirst ? 'foundation' : (isLast ? 'integrator' : 'enricher'),
-          coFinalizers: finalizers.filter(f => f !== finalizer).map(f => f.getAgent().name),
-          reasoning: `Collaborative finalizer ${index + 1}/${finalizers.length}: ${isFirst ? 'Foundation Builder' : (isLast ? 'Synthesis Integrator' : 'Perspective Enricher')}`
-        }
-      };
-
-      collaborationMessages.push(finalizerMessage);
-      messages.push(finalizerMessage);
-
-      // 各ファイナライザーのメッセージをWebSocketで送信
-      this.emitWebSocketEvent('v2-message', {
-        sessionId,
-        message: finalizerMessage,
-        round,
-        collaborationStep: {
-          current: index + 1,
-          total: finalizers.length,
-          role: finalizerMessage.metadata?.finalizerRole,
-          agentName: finalizer.getAgent().name
-        }
-      });
-
-      console.log(`[DynamicRouter] Finalizer ${index + 1}/${finalizers.length} (${finalizer.getAgent().name}) completed`);
-
-      // 間に少し間をあける（最後以外）
-      if (!isLast) {
-        await new Promise(resolve => setTimeout(resolve, 1500));
-      }
-    }
-
-    // Step 3: 協力完了メッセージを作成・送信
-    const summaryMessage = createCollaborationSummaryMessage(
-      finalizers.map(f => f.getAgent().name),
-      collaborationMessages.length,
-      sessionId,
-      this.originalQuery,
-      language
+    return this.finalizationService.generateFinalOutput(
+      messages, agents, language, sessionId, round,
+      (agent, msgs, lang, all) => this.askForVote(agent, msgs, lang, all)
     );
-
-    messages.push(summaryMessage);
-
-    this.emitWebSocketEvent('v2-message', {
-      sessionId,
-      message: summaryMessage,
-      round,
-      collaborationPhase: 'summary'
-    });
-
-    this.emitWebSocketEvent('v2-collaboration-complete', {
-      sessionId,
-      type: 'multiple-finalizers',
-      totalMessages: collaborationMessages.length,
-      finalizers: finalizers.map(f => f.getAgent().name),
-      round
-    });
-
-    console.log(`[DynamicRouter] Collaborative finalization completed with ${collaborationMessages.length} contributions`);
-
-    // messages への push は内部で完了済みのため null を返す（呼び出し側の二重 push を防ぐ）
-    return null;
   }
 
-  // ファイナライザーのフォーカスエリアを取得（エージェント設定が単一情報源）
-  private getFinalizerFocus(agent: Agent): string {
-    return agent.finalizerFocus || 'comprehensive analysis';
-  }
-
-  // 協力的インストラクションを取得
-  private getCollaborativeInstructions(agentId: string, isFirst: boolean, isLast: boolean, position: number, total: number): string {
-    if (isFirst) {
-      return `As the foundation builder, provide:
-1. **Core Framework**: Establish the main analytical structure
-2. **Key Insights**: Identify the most important discoveries from our dialogue
-3. **Thematic Organization**: Create clear thematic threads for others to develop`;
-    } else if (isLast) {
-      return `As the synthesis integrator, provide:
-1. **Comprehensive Weaving**: Unite all previous analyses into a coherent whole
-2. **Elevated Understanding**: Transform individual insights into collective wisdom
-3. **Future Vision**: Articulate what this exploration opens up for continued inquiry`;
-    } else {
-      return `As perspective enricher ${position}/${total}, provide:
-1. **Complementary Analysis**: Add dimensions not fully explored by previous finalizers
-2. **Connective Insights**: Link different aspects of the previous analyses
-3. **Depth Enhancement**: Deepen understanding through your unique analytical lens`;
-    }
-  }
 
   private async updateSession(session: Session, messages: Message[]): Promise<Session> {
     session.messages = messages;
@@ -1506,6 +1243,7 @@ ${actionLines}
   }
 
   // v1の投票システムを踏襲してFinalize担当を選出
+  // v1の投票システムを踏襲してFinalize担当を選出（実体は FinalizationService）
   private async selectFinalizerByVoting(
     messages: Message[],
     agents: DialogueAgent[],
@@ -1513,72 +1251,10 @@ ${actionLines}
     sessionId: string,
     round: number
   ): Promise<DialogueAgent[]> {
-    console.log('[DynamicRouter] Starting voting process for finalizer selection');
-
-    // 投票開始メッセージを追加
-    const votingStartMessage = createVotingStartMessage(sessionId, round);
-    messages.push(votingStartMessage);
-
-    try {
-      // 全エージェントから投票を収集
-      const votes: { agentId: string; voteFor: string | undefined; voteReasoning?: string }[] = [];
-
-      for (const agent of agents) {
-        try {
-          const vote = await this.askForVote(agent, messages, language, agents);
-          if (vote.voteFor) {
-            votes.push(vote);
-            console.log(`[DynamicRouter] Vote from ${vote.agentId}: ${vote.voteFor} (${vote.voteReasoning})`);
-          }
-        } catch (error) {
-          console.error(`[DynamicRouter] Error getting vote from ${agent.getAgent().id}:`, error);
-        }
-      }
-
-      // ファシリテーターに投票結果の分析と最終判断を委ねる
-      if (votes.length > 0) {
-        const selectedAgentIds = await this.facilitator.analyzeFinalizeVotes(votes, agents.map(a => a.getAgent().id));
-        const selectedAgents = agents.filter(a => selectedAgentIds.includes(a.getAgent().id));
-
-        if (selectedAgents.length > 0) {
-          console.log(`[DynamicRouter] Finalizers selected by facilitator analysis: ${selectedAgentIds.join(', ')}`);
-
-          // 投票結果メッセージを作成（複数選出の場合は最初のエージェントをプライマリとして表示）
-          const votingResults = votes.map(vote => ({
-            voter: vote.agentId,
-            voterName: agents.find(a => a.getAgent().id === vote.agentId)?.getAgent().name || vote.agentId,
-            votedFor: vote.voteFor!,
-            votedForName: agents.find(a => a.getAgent().id === vote.voteFor)?.getAgent().name || vote.voteFor!,
-            reasoning: vote.voteReasoning || 'No reasoning provided'
-          }));
-
-          // 複数選出の場合はすべてのファイナライザーを表示用文字列として処理
-          const finalizerNames = selectedAgents.map(a => a.getAgent().name).join(' & ');
-          const finalizerIds = selectedAgentIds.join(' & ');
-
-          const votingResultMessage = createVotingResultMessage(
-            votingResults,
-            finalizerIds,
-            finalizerNames,
-            sessionId,
-            round
-          );
-          messages.push(votingResultMessage);
-
-          return selectedAgents;
-        }
-      }
-
-      console.log('[DynamicRouter] No votes or voting failed, falling back to style-based selection');
-    } catch (error) {
-      console.error('[DynamicRouter] Error in voting process:', error);
-    }
-
-    // フォールバック: 従来のstyle-based選択
-    const fallbackAgent = agents.find(a =>
-      a.getAgent().style === 'logical' || a.getAgent().style === 'meta'
-    ) || agents[0];
-    return [fallbackAgent];
+    return this.finalizationService.selectFinalizerByVoting(
+      messages, agents, language, sessionId, round,
+      (agent, msgs, lang, all) => this.askForVote(agent, msgs, lang, all)
+    );
   }
 
   // 各エージェントから投票を取得
@@ -1588,37 +1264,10 @@ ${actionLines}
     language: Language,
     allAgents: DialogueAgent[]
   ): Promise<{ agentId: string; voteFor: string | undefined; voteReasoning?: string }> {
-    const agentList = allAgents
+    const prompt = this.finalizationService.buildVotePrompt(agent, messages, language, allAgents);
+    const validAgents = allAgents
       .filter(a => a.getAgent().id !== agent.getAgent().id)
       .map(a => a.getAgent().id);
-    const recentMessages = messages.slice(-5);
-    const contextText = recentMessages.map(m => `${m.agentId}: ${m.content.slice(0, 100)}...`).join('\n\n');
-
-    const prompt = language === 'ja'
-      ? `議論の総括を担当するエージェントを選んでください。
-
-最近の議論の流れ:
-${contextText}
-
-選択肢: ${agentList.join(', ')}
-
-以下の形式で回答してください：
-投票: [エージェントID]
-理由: [選択理由]
-
-注意: 自分自身には投票できません。最も議論を的確に総括できると思うエージェントに投票してください。`
-      : `Please select an agent to provide the final synthesis of our discussion.
-
-Recent discussion flow:
-${contextText}
-
-Available agents: ${agentList.join(', ')}
-
-Please respond in this format:
-Vote: [agent-id]
-Reason: [reason for selection]
-
-Note: You cannot vote for yourself. Vote for the agent you think can best synthesize our discussion.`;
 
     // 投票は様式化タスクのため mechanical tier で実行可能（M2、config オプトイン）
     const response = await agent.executeWithPersonality(
@@ -1631,51 +1280,19 @@ Note: You cannot vote for yourself. Vote for the agent you think can best synthe
     );
     this.llmCallEstimate++;
 
-    return this.parseVoteResponse(response, agent.getAgent().id, agentList, allAgents);
+    return this.parseVoteResponse(response, agent.getAgent().id, validAgents, allAgents);
   }
 
-  // 投票レスポンスを解析
+  // 投票レスポンスを解析（実体は FinalizationService）
   private parseVoteResponse(
     response: string,
     voterId: string,
     validAgents: string[],
     allAgents?: DialogueAgent[]
   ): { agentId: string; voteFor: string | undefined; voteReasoning?: string } {
-    let voteFor: string | undefined;
-    let voteReasoning: string | undefined;
-
-    // 日本語パターン
-    const jaVoteMatch = response.match(/投票:\s*([^\n]+)/);
-    const jaReasonMatch = response.match(/理由:\s*([^\n]+)/);
-
-    // 英語パターン
-    const enVoteMatch = response.match(/Vote:\s*([^\n]+)/);
-    const enReasonMatch = response.match(/Reason:\s*([^\n]+)/);
-
-    const voteText = (jaVoteMatch?.[1] || enVoteMatch?.[1] || '').trim();
-    voteReasoning = (jaReasonMatch?.[1] || enReasonMatch?.[1] || '').trim();
-
-    // まず有効なエージェントIDかチェック
-    if (voteText && validAgents.includes(voteText)) {
-      voteFor = voteText;
-    } else if (voteText && allAgents) {
-      // IDで見つからない場合、名前で検索
-      const agentByName = allAgents.find(a =>
-        a.getAgent().name === voteText &&
-        validAgents.includes(a.getAgent().id)
-      );
-      if (agentByName) {
-        voteFor = agentByName.getAgent().id;
-        console.log(`[DynamicRouter] Vote converted from name "${voteText}" to ID "${voteFor}"`);
-      }
-    }
-
-    return {
-      agentId: voterId,
-      voteFor,
-      voteReasoning
-    };
+    return this.finalizationService.parseVoteResponse(response, voterId, validAgents, allAgents);
   }
+
 
   // Save consensus snapshot to session
   private async saveConsensusSnapshot(
