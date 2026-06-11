@@ -32,7 +32,6 @@ import { createStageSummarizer } from './stage-summarizer.js';
 import { AgentManager } from './services/agent-manager.js';
 import { SessionManager } from './services/session-manager.js';
 import { extractVoteDetails, getStagePrompt } from '../templates/prompts.js';
-import { DynamicDialogueRouter } from './dynamic-router.js';
 import { shuffleArray } from '../utils/random.js';
 import { analyzeVotesByRegex, formatVoteAnalysisMarkdown } from '../dialogue/voting/vote-parser.js';
 import { getV2CostOptimizationConfig } from '../config/v2-config-loader.js';
@@ -115,9 +114,6 @@ export class YuiProtocolRouter implements IRealtimeRouter {
   private stageSummarizer: ReturnType<typeof createStageSummarizer>;
   private defaultLanguage: Language = 'en';
   private delay: number;
-
-  // Phase 4: v2.0 Dynamic Dialogue Support
-  private dynamicRouter: DynamicDialogueRouter;
   private sessionStorage: SessionStorage;
 
   constructor(
@@ -145,9 +141,6 @@ export class YuiProtocolRouter implements IRealtimeRouter {
     this.agentManager.initializeAgents().catch((error) => {
       console.error('[YuiProtocolRouter] Failed to initialize agents:', error);
     });
-
-    // 新しいダイナミックルーターを初期化
-    this.dynamicRouter = new DynamicDialogueRouter(sessionStorage);
   }
 
   // IRealtimeRouter インターフェースの実装
@@ -946,87 +939,8 @@ export class YuiProtocolRouter implements IRealtimeRouter {
     return this.sessionManager;
   }
 
-  // 新メソッド: v2.0エントリーポイント
-  async startDynamicSession(
-    prompt: string,
-    sessionId: string,
-    language: Language = 'en'
-  ): Promise<Session> {
-    console.log(`[YuiProtocolRouter] Starting dynamic session ${sessionId} with prompt: "${prompt}"`);
-
-    // すべてのエージェントにセッションIDを設定
-    const availableAgents = this.agentManager.getAvailableAgents();
-    const agents: Record<string, any> = {};
-
-    availableAgents.forEach(agentConfig => {
-      const agentInstance = this.agentManager.getAgent(agentConfig.id);
-      if (agentInstance) {
-        agentInstance.setSessionId(sessionId);
-        agents[agentConfig.id] = agentInstance;
-      }
-    });
-
-    try {
-      const session = await this.dynamicRouter.conductDynamicDialogue(
-        prompt,
-        agents,
-        sessionId,
-        language
-      );
-
-      console.log(`[YuiProtocolRouter] Dynamic session completed with ${session.messages?.length || 0} messages`);
-      return session;
-    } catch (error) {
-      console.error(`[YuiProtocolRouter] Error in dynamic session:`, error);
-      throw error;
-    }
-  }
-
-  // WebSocket付きv2.0エントリーポイント
-  async startDynamicSessionWithWebSocket(
-    prompt: string,
-    sessionId: string,
-    language: Language = 'en',
-    wsEmitter: (event: string, data: any) => void
-  ): Promise<Session> {
-    console.log(`[YuiProtocolRouter] Starting dynamic session with WebSocket ${sessionId}`);
-
-    // WebSocket付きルーターを一時的に作成
-    const sessionStorage = this.sessionManager.getSessionStorage();
-    const dynamicRouterWithWS = new DynamicDialogueRouter(sessionStorage, wsEmitter);
-
-    // すべてのエージェントにセッションIDを設定
-    const availableAgents = this.agentManager.getAvailableAgents();
-    const agents: Record<string, any> = {};
-
-    availableAgents.forEach(agentConfig => {
-      const agentInstance = this.agentManager.getAgent(agentConfig.id);
-      if (agentInstance) {
-        agentInstance.setSessionId(sessionId);
-        agents[agentConfig.id] = agentInstance;
-      }
-    });
-
-    try {
-      const session = await dynamicRouterWithWS.conductDynamicDialogue(
-        prompt,
-        agents,
-        sessionId,
-        language
-      );
-
-      console.log(`[YuiProtocolRouter] Dynamic session with WebSocket completed`);
-      return session;
-    } catch (error) {
-      console.error(`[YuiProtocolRouter] Error in dynamic session with WebSocket:`, error);
-      throw error;
-    }
-  }
-
-  // 統計情報の取得
-  getDynamicDialogueStats() {
-    return this.dynamicRouter.getDialogueStats();
-  }
+  // v2.0 のエントリーポイントは server + bootstrap（createDynamicRouter / collectDialogueAgents）に移動した。
+  // v1 ルーターは v2 を一切参照しない（設計原則1: v1.0 must never break）。
 
   // SessionStorageアクセサ（v2.0 API用）
   getSessionStorage(): SessionStorage {

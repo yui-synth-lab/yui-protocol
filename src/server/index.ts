@@ -12,7 +12,7 @@ import { OutputStorage } from '../kernel/output-storage.js';
 import { InteractionLogger } from '../kernel/interaction-logger.js';
 import { createStageSummarizer } from '../kernel/stage-summarizer.js';
 import { V2ConfigLoader } from '../config/v2-config-loader.js';
-import { createDefaultAgentManager } from '../bootstrap/index.js';
+import { createDefaultAgentManager, createDynamicRouter, collectDialogueAgents } from '../bootstrap/index.js';
 
 const app = express();
 const server = createServer(app);
@@ -54,16 +54,22 @@ const sharedInteractionLogger = new InteractionLogger();
 const stageSummarizerOptions = {};
 
 
-// Initialize realtime router with shared session storage, output storage, interaction logger, stage summarizer options, and delay options.
 // Agent construction is wired through the composition root (src/bootstrap) so the kernel stays agnostic of concrete agents.
+// The agent manager is shared between the v1 router and v2 dynamic sessions.
+const sharedAgentManager = createDefaultAgentManager(sharedInteractionLogger);
+
+// Initialize realtime router (v1) with shared session storage, output storage, interaction logger, stage summarizer options, and delay options.
 const realtimeRouter = new YuiProtocolRouter(
   sharedSessionStorage,
   sharedOutputStorage,
   sharedInteractionLogger,
   stageSummarizerOptions,
   30000,
-  createDefaultAgentManager(sharedInteractionLogger)
+  sharedAgentManager
 );
+
+// v2.0 dynamic dialogue router for stats/diagnostics (per-session routers are created per run with their wsEmitter)
+const v2StatsRouter = createDynamicRouter(sharedSessionStorage, undefined, undefined, sharedInteractionLogger);
 
 // WebSocket connection management
 const connectedClients = new Map<string, Set<string>>(); // sessionId -> Set of socketIds
@@ -713,7 +719,10 @@ async function executeV2SessionWithWebSocket(sessionId: string, prompt: string, 
       io.to(sessionId).emit(event, data);
     };
 
-    const session = await realtimeRouter.startDynamicSessionWithWebSocket(prompt, sessionId, language, wsEmitter);
+    // v2 ルーターは bootstrap 経由で構築する（v1 ルーターは v2 を参照しない）
+    const dynamicRouter = createDynamicRouter(sharedSessionStorage, wsEmitter, undefined, sharedInteractionLogger);
+    const agents = collectDialogueAgents(sharedAgentManager, sessionId);
+    const session = await dynamicRouter.conductDynamicDialogue(prompt, agents, sessionId, language);
     return session;
   } catch (error) {
     console.error(`[V2SessionExecutor] Error:`, error);
@@ -724,7 +733,7 @@ async function executeV2SessionWithWebSocket(sessionId: string, prompt: string, 
 // v2.0 統計情報エンドポイント
 app.get('/api/v2/stats', (async (req: Request, res: Response) => {
   try {
-    const stats = realtimeRouter.getDynamicDialogueStats();
+    const stats = v2StatsRouter.getDialogueStats();
     res.json({
       success: true,
       stats,

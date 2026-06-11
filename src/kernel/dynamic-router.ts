@@ -30,10 +30,11 @@ export class DynamicDialogueRouter {
 
   constructor(
     sessionStorage: SessionStorage,
-    wsEmitter?: (event: string, data: any) => void,
-    ragRetriever?: RAGRetriever // v2.0: RAG不協和音検出用（オプショナル）
+    wsEmitter?: DialogueEventSink,
+    ragRetriever?: RAGRetriever, // v2.0: RAG不協和音検出用（オプショナル）
+    facilitator?: FacilitatorPort // 通常は bootstrap から注入される（未指定時は既定のファシリテーター）
   ) {
-    this.facilitator = new FacilitatorAgent();
+    this.facilitator = facilitator ?? new FacilitatorAgent();
     this.sessionStorage = sessionStorage;
     this.wsEmitter = wsEmitter;
     this.ragRetriever = ragRetriever;

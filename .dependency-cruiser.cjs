@@ -27,9 +27,19 @@ module.exports = {
       comment:
         'orchestration(kernel) はエージェント具象に依存しない（Phase 2）。' +
         '具象生成は src/agents/registry.ts + src/bootstrap/ に集約。' +
-        'facilitator-agent.ts への依存のみ Phase 3 の分解まで暫定許容。',
+        'facilitator-agent.ts への依存のみ（デフォルト構築のため）暫定許容 — ' +
+        'FacilitatorPort 経由の注入が標準経路（bootstrap/createDynamicRouter）。',
       from: { path: '^src/kernel' },
       to: { path: '^src/agents', pathNot: '^src/agents/facilitator-agent\\.ts$' }
+    },
+    {
+      name: 'v1-router-must-not-depend-on-v2',
+      severity: 'error',
+      comment:
+        'v1（router.ts）は v2（dynamic-router.ts）を参照しない（Phase 4 / 設計原則1: v1.0 must never break）。' +
+        '両ルーターは server + bootstrap が対等に保持する。',
+      from: { path: '^src/kernel/router\\.ts$' },
+      to: { path: '^src/kernel/dynamic-router\\.ts$' }
     }
   ],
   options: {
