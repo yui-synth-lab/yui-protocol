@@ -10,7 +10,8 @@
     "minSatisfactionLevel": 6.5,
     "minRoundsForConvergence": 3,
     "highSatisfactionThreshold": 8.0,
-    "minRoundsForSatisfactionConvergence": 2
+    "minRoundsForSatisfactionConvergence": 2,
+    "maxLlmCallsPerSession": 60
   },
   "facilitator": {
     "actionPriority": {

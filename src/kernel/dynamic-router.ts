@@ -189,7 +189,7 @@ export class DynamicDialogueRouter {
           consensusData.length,
           sessionId,
           language,
-          `平均満足度: ${decision.averageSatisfaction.toFixed(1)}/10`
+          `平均満足度: ${decision.averageSatisfaction.toFixed(1)}/10${decision.budgetExceeded ? ' ※LLM呼び出しバジェット上限（M7）到達による収束' : ''}`
         );
         messages.push(convergenceMessage);
 
