@@ -48,6 +48,94 @@ export interface Agent {
   finalizerFocus?: string; // Focus area description when acting as a collaborative finalizer (v2.0)
 }
 
+/** エージェント応答の基本メタ情報 */
+export interface ResponseMetadata {
+  reasoning?: string;
+  confidence?: number;
+  references?: string[];
+  stageData?: StageData;
+}
+
+/** 投票関連（v1 output-generation / v2 ファイナライザ投票） */
+export interface VoteMetadata {
+  voteFor?: string;
+  voteReasoning?: string;
+  voteSection?: string;
+  votingType?: string;
+  votingResults?: any[];
+  selectedFinalizer?: string;
+  selectedFinalizerName?: string;
+}
+
+/** ファシリテーター関連（v2.0） */
+export interface FacilitatorMetadata {
+  facilitatorAction?: string;
+  facilitatorReasoning?: string;
+  isFacilitatorAction?: boolean;
+  consensusLevel?: number;
+  roundNumber?: number;
+  participationBalance?: Record<string, number>;
+  priority?: number;
+  wordCountTarget?: string;
+  endingGuidance?: string;
+  topic_shift?: boolean;
+  recommendedActionCount?: number;
+  totalSuggestedActions?: number;
+  hasDynamicInstruction?: boolean;
+}
+
+/** 収束・ラウンド進行（v2.0） */
+export interface ConvergenceMetadata {
+  convergenceReason?: 'natural_consensus' | 'max_rounds' | 'facilitator_decision' | 'high_satisfaction';
+  isFinalOutput?: boolean;
+  round?: number;
+  agentsReady?: number;
+  totalAgents?: number;
+}
+
+/** 協調ファイナライズ（v2.0） */
+export interface CollaborationMetadata {
+  collaborativeFinalize?: boolean;
+  finalizerIndex?: number;
+  totalFinalizers?: number;
+  finalizerRole?: string;
+  coFinalizers?: string[];
+  messageType?: string;
+  collaborationType?: string;
+  expectedSteps?: number;
+  currentStep?: number;
+  totalSteps?: number;
+  contributorName?: string;
+  contributorRole?: string;
+  participantCount?: number;
+  participants?: string[];
+  totalContributions?: number;
+}
+
+/** Initial Thought の発言順 */
+export interface SpeakingOrderMetadata {
+  speakingOrder?: number;
+  totalSpeakers?: number;
+  previousSpeakers?: string[];
+}
+
+/** 出力ファイル */
+export interface OutputFileMetadata {
+  outputFileName?: string;
+  sequenceOutputFiles?: { [sequenceNumber: number]: string };
+}
+
+/** Message.metadata の合成型。グループ分けは型整理のためで、実行時形状は従来と同一 */
+export type MessageMetadata = ResponseMetadata &
+  VoteMetadata &
+  FacilitatorMetadata &
+  ConvergenceMetadata &
+  CollaborationMetadata &
+  SpeakingOrderMetadata &
+  OutputFileMetadata & {
+    additionalInfo?: string;
+  };
+
 export interface Message {
   id: string;
   agentId: string;
@@ -56,62 +144,7 @@ export interface Message {
   role: 'user' | 'agent' | 'system' | 'facilitator' | 'consensus' | 'assistant';
   stage?: DialogueStage;
   sequenceNumber?: number;
-  metadata?: {
-    reasoning?: string;
-    confidence?: number;
-    references?: string[];
-    stageData?: StageData;
-    voteFor?: string;
-    voteReasoning?: string;
-    voteSection?: string;
-    outputFileName?: string;
-    sequenceOutputFiles?: { [sequenceNumber: number]: string };
-    facilitatorAction?: string;
-    facilitatorReasoning?: string;
-    isFacilitatorAction?: boolean;
-    isFinalOutput?: boolean;
-    consensusLevel?: number;
-    roundNumber?: number;
-    participationBalance?: Record<string, number>;
-    priority?: number;
-    wordCountTarget?: string;
-    endingGuidance?: string;
-    topic_shift?: boolean;
-    convergenceReason?: 'natural_consensus' | 'max_rounds' | 'facilitator_decision' | 'high_satisfaction';
-    votingType?: string;
-    votingResults?: any[];
-    selectedFinalizer?: string;
-    selectedFinalizerName?: string;
-    round?: number;
-    agentsReady?: number;
-    totalAgents?: number;
-    additionalInfo?: string;
-    // v2.0 collaboration properties
-    collaborativeFinalize?: boolean;
-    finalizerIndex?: number;
-    totalFinalizers?: number;
-    finalizerRole?: string;
-    coFinalizers?: string[];
-    messageType?: string;
-    collaborationType?: string;
-    expectedSteps?: number;
-    currentStep?: number;
-    totalSteps?: number;
-    contributorName?: string;
-    contributorRole?: string;
-    participantCount?: number;
-    // Speaking order metadata for Initial Thought
-    speakingOrder?: number;
-    totalSpeakers?: number;
-    previousSpeakers?: string[];
-    participants?: string[];
-    totalContributions?: number;
-    // v2.0 facilitator action count metadata
-    recommendedActionCount?: number;
-    totalSuggestedActions?: number;
-    // v2.0 dynamic instruction metadata
-    hasDynamicInstruction?: boolean;
-  };
+  metadata?: MessageMetadata;
 }
 
 export interface Session {
@@ -149,11 +182,7 @@ export interface AgentResponse {
   references?: string[];
   stage?: DialogueStage;
   stageData?: StageData;
-  metadata?: {
-    voteFor?: string;
-    voteReasoning?: string;
-    voteSection?: string;
-  };
+  metadata?: VoteMetadata;
 }
 
 export interface CollaborationResult {
