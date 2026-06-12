@@ -11,6 +11,7 @@ import { getV2ConsensusConfig } from '../config/v2-config-loader.js';
 import { ConvergenceJudge } from '../dialogue/convergence-judge.js';
 import { ConsensusCollector } from '../orchestration/v2/consensus-collector.js';
 import { FinalizationService } from '../orchestration/v2/finalization-service.js';
+import { FacilitatorActionExecutor } from '../orchestration/v2/action-executor.js';
 
 export class DynamicDialogueRouter {
   private facilitator: FacilitatorPort;
@@ -20,6 +21,7 @@ export class DynamicDialogueRouter {
   private sessionStorage: SessionStorage;
   private consensusCollector = new ConsensusCollector();
   private finalizationService: FinalizationService;
+  private actionExecutor: FacilitatorActionExecutor;
   private wsEmitter?: (event: string, data: any) => void; // WebSocket emitter
   private originalQuery: string = ''; // 初期クエリを保持
   private recentSpeakers: string[] = []; // 最近発言したエージェントを追跡
@@ -59,6 +61,19 @@ export class DynamicDialogueRouter {
       emitEvent: (event, data) => this.emitWebSocketEvent(event, data),
       generateMessageId: () => this.generateMessageId(),
       countLlmCall: () => { this.llmCallEstimate++; }
+    });
+
+    // ファシリテーターアクション実行は FacilitatorActionExecutor に抽出済み（Phase 3）
+    this.actionExecutor = new FacilitatorActionExecutor({
+      getOriginalQuery: () => this.originalQuery,
+      getFacilitator: () => this.facilitator,
+      getRagRetriever: () => this.ragRetriever,
+      generateMessageId: () => this.generateMessageId(),
+      buildFullContext: (recent, exclude) => this.buildFullContext(recent, exclude),
+      selectBalancedAgent: (agents, style, excludeRecent) => this.selectBalancedAgent(agents, style, excludeRecent),
+      trackAgentParticipation: (id) => this.trackAgentParticipation(id),
+      getParticipationCount: (id) => this.agentParticipationCount.get(id),
+      getCurrentRound: () => this.currentRound
     });
   }
 
@@ -491,6 +506,9 @@ export class DynamicDialogueRouter {
   }
 
 
+  // ファシリテーターアクション実行（dispatch・5種プロンプト）は
+  // orchestration/v2/action-executor.ts に抽出済み（Phase 3）。
+  // conductDynamicDialogue から呼ばれるため薄い委譲を残す。
   private async executeActions(
     actions: any[],
     agents: DialogueAgent[],
@@ -498,566 +516,17 @@ export class DynamicDialogueRouter {
     language: Language,
     recommendedActionCount?: number
   ): Promise<Message[]> {
-    const newMessages: Message[] = [];
-
-    // アクションを優先度順にソート
-    const sortedActions = actions.sort((a, b) => (b.priority || 0) - (a.priority || 0));
-
-    // 実行するアクション数を決定（推奨値またはデフォルト2）
-    const actionCount = recommendedActionCount || 2;
-    const actionsToExecute = sortedActions.slice(0, actionCount);
-
-    console.log(`[DynamicRouter] Executing ${actionsToExecute.length} actions (recommended: ${recommendedActionCount || 'default'})`);
-
-    // アクションを逐次実行し、各アクションの結果を次のアクションのコンテキストに含める
-    for (let i = 0; i < actionsToExecute.length; i++) {
-      const action = actionsToExecute[i];
-      try {
-        console.log(`[DynamicRouter] Executing action ${i + 1}/${actionsToExecute.length}: ${action.type} (target: ${action.target || 'auto'})`);
-
-        // 現在までのメッセージ配列（元のmessages + このラウンドで既に生成されたメッセージ）
-        const currentContext = [...messages, ...newMessages];
-
-        const actionMessages = await this.executeAction(action, agents, currentContext, language);
-        newMessages.push(...actionMessages);
-
-        console.log(`[DynamicRouter] Action ${i + 1} completed, generated ${actionMessages.length} message(s)`);
-      } catch (error) {
-        console.error(`[DynamicRouter] Error executing action ${action.type}:`, error);
-      }
-    }
-
-    console.log(`[DynamicRouter] Total messages generated in this round: ${newMessages.length}`);
-    return newMessages;
+    return this.actionExecutor.executeActions(actions, agents, messages, language, recommendedActionCount);
   }
 
-  /**
-   * RAGで類似の過去結論を検索し、「不協和音」として注入する指示を生成
-   * v2.0: 過去の結論を「正解」ではなく、現在の議論を揺さぶる素材として使用
-   */
+  // RAG不協和音検出は FacilitatorActionExecutor に抽出済み（Phase 3）。
+  // tests/rag-dissonance.test.ts がルーター経由でアクセスするため委譲を残す。
   private async detectRAGDissonance(
     currentTopic: string,
     messages: Message[],
     minSimilarityThreshold: number = 0.75
   ): Promise<DynamicInstruction['ragDissonance'] | null> {
-    if (!this.ragRetriever) {
-      return null;
-    }
-
-    try {
-      const recentContent = messages.slice(-5).map(m => m.content).join(' ');
-      const queryText = `${currentTopic} ${recentContent.substring(0, 500)}`;
-
-      const ragContext = await this.ragRetriever.retrieveEnhancedContext(queryText, {
-        sourceType: ['session-history']
-      });
-
-      if (!ragContext || ragContext.retrievedKnowledge.length === 0) {
-        return null;
-      }
-
-      const topResult = ragContext.retrievedKnowledge[0];
-
-      if (topResult.score >= minSimilarityThreshold) {
-        const pastConclusion = topResult.chunk.content.substring(0, 200);
-        console.log(`[DynamicRouter] RAG dissonance found: similarity=${topResult.score.toFixed(2)}, source=${topResult.chunk.metadata.sessionId || 'unknown'}`);
-
-        return {
-          sourceSessionId: topResult.chunk.metadata.sessionId || 'unknown',
-          sourceConclusionSummary: pastConclusion,
-          similarityScore: topResult.score,
-          deconstructionHint: `かつて「${pastConclusion}...」と結論づけられました。
-しかし今の文脈で、この結論は不完全だったかもしれません。
-何が変わったか？どんな新しい視点がこの理解に挑戦するか？
-可能性Bを考慮してください。`
-        };
-      }
-
-      return null;
-    } catch (error) {
-      console.error('[DynamicRouter] RAG dissonance detection failed:', error);
-      return null;
-    }
-  }
-
-  private async executeAction(
-    action: FacilitatorAction,
-    agents: DialogueAgent[],
-    messages: Message[],
-    language: Language
-  ): Promise<Message[]> {
-    const newMessages: Message[] = [];
-    let success = false;
-    let errorMessage: string | undefined;
-    const agentResponses: string[] = [];
-
-    // v2.0: RAG不協和音チェック（動的指示がない場合のみ）
-    if (!action.dynamicInstruction && this.ragRetriever) {
-      const ragDissonance = await this.detectRAGDissonance(this.originalQuery, messages);
-
-      if (ragDissonance) {
-        action.dynamicInstruction = {
-          content: ragDissonance.deconstructionHint,
-          tone: 'deconstructive',
-          ragDissonance,
-          metadata: {
-            triggerReason: 'rag_similarity',
-            generatedAt: new Date()
-          }
-        };
-        console.log(`[DynamicRouter] RAG dissonance detected (similarity: ${ragDissonance.similarityScore.toFixed(2)}), adding deconstructive instruction`);
-      }
-    }
-
-    try {
-      switch (action.type) {
-        case 'deep_dive':
-          let targetAgent: DialogueAgent | undefined;
-          if (action.target && action.target !== 'all' && action.target !== 'auto') {
-            targetAgent = agents.find(a => a.getAgent().id === action.target);
-            console.log(`[DynamicRouter] Deep dive target specified: ${action.target}, found: ${targetAgent ? 'yes' : 'no'}`);
-          }
-          if (!targetAgent) {
-            // ターゲットが指定されていない、または見つからない場合はバランス良く選択
-            targetAgent = this.selectBalancedAgent(agents);
-            console.log(`[DynamicRouter] Deep dive target auto-selected: ${targetAgent.getAgent().id}`);
-          }
-          const deepDiveResponse = await this.askForDeepDive(targetAgent, action.reason, messages, language, action.dynamicInstruction);
-          newMessages.push(deepDiveResponse);
-          agentResponses.push(`${targetAgent.getAgent().name}: ${deepDiveResponse.content.slice(0, 100)}...`);
-          this.trackAgentParticipation(targetAgent.getAgent().id);
-          console.log(`[DynamicRouter] Deep dive executed by ${targetAgent.getAgent().id}, new participation count: ${this.agentParticipationCount.get(targetAgent.getAgent().id)}`);
-          success = true;
-          break;
-
-        case 'clarification':
-          let clarifyAgent: DialogueAgent | undefined;
-          if (action.target && action.target !== 'all' && action.target !== 'auto') {
-            clarifyAgent = agents.find(a => a.getAgent().id === action.target);
-          }
-          if (!clarifyAgent) {
-            // ターゲットが指定されていない、または見つからない場合はバランス良く選択
-            clarifyAgent = this.selectBalancedAgent(agents);
-          }
-          const clarificationResponse = await this.askForClarification(clarifyAgent, action.reason, messages, language, action.dynamicInstruction);
-          newMessages.push(clarificationResponse);
-          agentResponses.push(`${clarifyAgent.getAgent().name}: ${clarificationResponse.content.slice(0, 100)}...`);
-          this.trackAgentParticipation(clarifyAgent.getAgent().id);
-          success = true;
-          break;
-
-        case 'perspective_shift':
-          let perspectiveAgent: DialogueAgent | undefined;
-          if (action.target && action.target !== 'all' && action.target !== 'auto') {
-            perspectiveAgent = agents.find(a => a.getAgent().id === action.target);
-          }
-          if (!perspectiveAgent) {
-            // ターゲットが指定されていない、または見つからない場合はバランス良く選択
-            perspectiveAgent = this.selectBalancedAgent(agents, undefined, true);
-          }
-          const perspectiveResponse = await this.askForPerspectiveShift(perspectiveAgent, action.reason, messages, language, action.dynamicInstruction);
-          newMessages.push(perspectiveResponse);
-          agentResponses.push(`${perspectiveAgent.getAgent().name}: ${perspectiveResponse.content.slice(0, 100)}...`);
-          this.trackAgentParticipation(perspectiveAgent.getAgent().id);
-          success = true;
-          break;
-
-        case 'summarize':
-          // 論理的スタイルを優先するが、発言バランスも考慮
-          const summaryAgent = this.selectBalancedAgent(agents, 'logical', true);
-          const summary = await this.askForSummary(summaryAgent, messages, language, action.dynamicInstruction);
-          newMessages.push(summary);
-          agentResponses.push(`${summaryAgent.getAgent().name}: ${summary.content.slice(0, 100)}...`);
-          this.trackAgentParticipation(summaryAgent.getAgent().id);
-          success = true;
-          break;
-
-        case 'redirect':
-          // 発言バランスを考慮してエージェントを選んで元のトピックに戻す
-          const redirectAgent = this.selectBalancedAgent(agents, undefined, true);
-          const redirect = await this.askForRedirect(redirectAgent, action.reason, messages, language, action.dynamicInstruction);
-          newMessages.push(redirect);
-          agentResponses.push(`${redirectAgent.getAgent().name}: ${redirect.content.slice(0, 100)}...`);
-          this.trackAgentParticipation(redirectAgent.getAgent().id);
-          success = true;
-          break;
-
-        default:
-          errorMessage = `Unknown action type: ${action.type}`;
-      }
-    } catch (error) {
-      success = false;
-      errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      console.error(`[DynamicRouter] Error executing action ${action.type}:`, error);
-    }
-
-    // Log the intervention
-    this.facilitator.logIntervention(action, success, errorMessage, agentResponses);
-
-    return newMessages;
-  }
-
-  private async askForDeepDive(
-    agent: DialogueAgent,
-    reason: string,
-    messages: Message[],
-    language: Language,
-    dynamicInstruction?: DynamicInstruction
-  ): Promise<Message> {
-    // 完全なコンテキストを構築（Round 1-2: Initial Thoughts + 最近の議論、Round 3+: 最近の議論のみ）
-    const recentMessages = messages.slice(-5);
-    const contextText = this.buildFullContext(recentMessages, agent.getAgent().id);
-    const contextNote = this.currentRound <= 2
-      ? "including all agents' initial thoughts and recent discussion"
-      : "from recent discussion";
-
-    // v2.0: 動的指示がある場合はプロンプトをオーバーライド
-    let instructionSection: string;
-
-    if (dynamicInstruction) {
-      instructionSection = `
-ファシリテーター メタ指示 (オーバーライド):
-${dynamicInstruction.content}
-
-${dynamicInstruction.ragDissonance ? `
-過去の視点への挑戦:
-${dynamicInstruction.ragDissonance.deconstructionHint}
-` : ''}
-
-あなた固有の${agent.getAgent().style}スタイルでこのメタ指示を適用してください。
-会話は自然に、150-200語で。問いや比喩で締めくくってください。
-`;
-    } else {
-      instructionSection = `
-FACILITATOR REQUEST: ${reason}
-
-Based on the above context, please contribute your unique perspective to "${this.originalQuery}".
-
-IMPORTANT GUIDELINES:
-- Build directly on or respond to specific points made by other agents in the discussion
-- Avoid generic openings like "皆さま" or "これまでの議論で"
-- Reference specific ideas or arguments from the context when relevant
-- Bring your unique ${agent.getAgent().style} perspective to advance the discussion
-- Keep it conversational and engaging (150-200 words)
-- End with a thought-provoking question or meaningful metaphor
-`;
-    }
-
-    const prompt = `
-CURRENT DISCUSSION: "${this.originalQuery}"
-
-CONTEXT (${contextNote}):
-${contextText}
-
-${instructionSection}
-
-Start your response naturally without formal greetings.
-`;
-
-    const response = await agent.executeWithPersonality(
-      prompt,
-      'deep-dive' as DialogueStage,
-      'deep dive exploration',
-      language,
-      'dynamic-session'
-    );
-
-    return {
-      id: this.generateMessageId(),
-      agentId: agent.getAgent().id,
-      content: response,
-      timestamp: new Date(),
-      role: 'agent',
-      stage: 'deep-dive' as any,
-      metadata: {
-        facilitatorAction: 'deep_dive',
-        reasoning: reason,
-        hasDynamicInstruction: !!dynamicInstruction,
-        wordCountTarget: '150-200 words',
-        endingGuidance: 'End with question or metaphor'
-      }
-    };
-  }
-
-  private async askForClarification(
-    agent: DialogueAgent,
-    reason: string,
-    messages: Message[],
-    language: Language,
-    dynamicInstruction?: DynamicInstruction
-  ): Promise<Message> {
-    // 完全なコンテキストを構築（Round 1-2: Initial Thoughts + 最近の議論、Round 3+: 最近の議論のみ）
-    const recentMessages = messages.slice(-5);
-    const contextText = this.buildFullContext(recentMessages, agent.getAgent().id);
-
-    // v2.0: 動的指示がある場合はプロンプトをオーバーライド
-    let instructionSection: string;
-
-    if (dynamicInstruction) {
-      instructionSection = `
-ファシリテーター メタ指示 (オーバーライド):
-${dynamicInstruction.content}
-
-${dynamicInstruction.ragDissonance ? `
-過去の視点への挑戦:
-${dynamicInstruction.ragDissonance.deconstructionHint}
-` : ''}
-
-あなた固有の${agent.getAgent().style}スタイルでこのメタ指示を適用してください。
-会話は自然に、150-200語で。問いで締めくくってください。
-`;
-    } else {
-      instructionSection = `
-CLARIFICATION NEEDED: ${reason}
-
-Based on the context above, please provide clarification to help advance our understanding of "${this.originalQuery}".
-
-GUIDELINES:
-- Address specific unclear points from the discussion
-- Avoid starting with "皆さま" - respond naturally to the conversation
-- Use concrete examples or analogies to clarify complex concepts
-- Connect your clarification back to the main question
-- Keep response focused and engaging (150-200 words)
-- End with a question that deepens the inquiry
-`;
-    }
-
-    const prompt = `
-CURRENT DISCUSSION: "${this.originalQuery}"
-
-CONTEXT:
-${contextText}
-
-${instructionSection}
-
-Respond directly to help clarify the discussion.
-`;
-
-    const response = await agent.executeWithPersonality(
-      prompt,
-      'clarification' as DialogueStage,
-      'clarification request',
-      language,
-      'dynamic-session'
-    );
-
-    return {
-      id: this.generateMessageId(),
-      agentId: agent.getAgent().id,
-      content: response,
-      timestamp: new Date(),
-      role: 'agent',
-      stage: 'clarification' as any,
-      metadata: {
-        reasoning: `Facilitator clarification: ${reason}`,
-        hasDynamicInstruction: !!dynamicInstruction
-      }
-    };
-  }
-
-  private async askForPerspectiveShift(
-    agent: DialogueAgent,
-    reason: string,
-    messages: Message[],
-    language: Language,
-    dynamicInstruction?: DynamicInstruction
-  ): Promise<Message> {
-    // 完全なコンテキストを構築（Round 1-2: Initial Thoughts + 最近の議論、Round 3+: 最近の議論のみ）
-    const recentMessages = messages.slice(-5);
-    const contextText = this.buildFullContext(recentMessages, agent.getAgent().id);
-
-    // v2.0: 動的指示がある場合はプロンプトをオーバーライド
-    let instructionSection: string;
-
-    if (dynamicInstruction) {
-      instructionSection = `
-ファシリテーター メタ指示 (オーバーライド):
-${dynamicInstruction.content}
-
-${dynamicInstruction.ragDissonance ? `
-過去の視点への挑戦:
-${dynamicInstruction.ragDissonance.deconstructionHint}
-` : ''}
-
-あなた固有の${agent.getAgent().style}スタイルで、既存の前提に挑戦するか、
-まだ探求されていない視点を導入してください。
-`;
-    } else {
-      instructionSection = `
-The facilitator suggests introducing a different perspective to enrich the discussion about this topic.
-
-Reason: ${reason}
-
-Based on the context above, please consider "${this.originalQuery}" from an alternative angle, challenge existing assumptions about this topic, or introduce a viewpoint that hasn't been fully explored yet.
-`;
-    }
-
-    const prompt = `
-We are discussing: "${this.originalQuery}"
-
-CONTEXT:
-${contextText}
-
-${instructionSection}
-`;
-
-    const response = await agent.executeWithPersonality(
-      prompt,
-      'perspective-shift' as DialogueStage,
-      'perspective shift',
-      language,
-      'dynamic-session'
-    );
-
-    return {
-      id: this.generateMessageId(),
-      agentId: agent.getAgent().id,
-      content: response,
-      timestamp: new Date(),
-      role: 'agent',
-      stage: 'perspective-shift' as any,
-      metadata: {
-        reasoning: `Facilitator perspective shift: ${reason}`,
-        hasDynamicInstruction: !!dynamicInstruction
-      }
-    };
-  }
-
-  private async askForSummary(
-    agent: DialogueAgent,
-    messages: Message[],
-    language: Language,
-    dynamicInstruction?: DynamicInstruction
-  ): Promise<Message> {
-    // v2.0: 動的指示がある場合はプロンプトをオーバーライド
-    let instructionSection: string;
-
-    if (dynamicInstruction) {
-      instructionSection = `
-ファシリテーター メタ指示 (オーバーライド):
-${dynamicInstruction.content}
-
-${dynamicInstruction.ragDissonance ? `
-過去の視点への挑戦:
-${dynamicInstruction.ragDissonance.deconstructionHint}
-` : ''}
-
-要約しつつも、このメタ指示に沿って未解決の緊張や開かれた問いを強調してください。
-`;
-    } else {
-      instructionSection = `
-Please provide a summary of our discussion about this topic, highlighting:
-1. Key insights about "${this.originalQuery}" that have been established
-2. Areas of agreement among participants regarding this topic
-3. Remaining questions or disagreements about "${this.originalQuery}"
-4. The overall direction of our exploration of this topic
-
-Keep the summary focused on "${this.originalQuery}" and be both concise and comprehensive.
-`;
-    }
-
-    const prompt = `
-We are discussing: "${this.originalQuery}"
-
-${instructionSection}
-`;
-
-    const response = await agent.executeWithPersonality(
-      prompt,
-      'summary' as DialogueStage,
-      'discussion summary',
-      language,
-      'dynamic-session'
-    );
-
-    return {
-      id: this.generateMessageId(),
-      agentId: agent.getAgent().id,
-      content: response,
-      timestamp: new Date(),
-      role: 'agent',
-      stage: 'summary' as any,
-      metadata: {
-        reasoning: 'Facilitator-requested summary',
-        hasDynamicInstruction: !!dynamicInstruction
-      }
-    };
-  }
-
-  private async askForRedirect(
-    agent: DialogueAgent,
-    reason: string,
-    messages: Message[],
-    language: Language,
-    dynamicInstruction?: DynamicInstruction
-  ): Promise<Message> {
-    // 完全なコンテキストを構築（Round 1-2: Initial Thoughts + 最近の議論、Round 3+: 最近の議論のみ）
-    const recentMessages = messages.slice(-5);
-    const contextText = this.buildFullContext(recentMessages, agent.getAgent().id);
-
-    // v2.0: 動的指示がある場合はプロンプトをオーバーライド
-    let instructionSection: string;
-
-    if (dynamicInstruction) {
-      instructionSection = `
-ファシリテーター メタ指示 (オーバーライド):
-${dynamicInstruction.content}
-
-${dynamicInstruction.ragDissonance ? `
-過去の視点への挑戦:
-${dynamicInstruction.ragDissonance.deconstructionHint}
-` : ''}
-
-議論を元の問いに戻しつつ、このメタ指示に沿った新しい角度を提供してください。
-150-200語で、焦点を絞った問いで締めくくってください。
-`;
-    } else {
-      instructionSection = `
-REDIRECTION NEEDED: ${reason}
-
-Looking at the context above, please help refocus on "${this.originalQuery}" by providing a specific new angle or insight.
-
-GUIDELINES:
-- Don't start with generic acknowledgments like "皆さま" or "これまでの議論で"
-- Reference specific points from the conversation
-- Identify what specific aspect of the drift needs addressing
-- Bring a fresh perspective that connects back to the core question
-- Be direct and engaging (150-200 words)
-- End with a focused question that brings us back on track
-`;
-    }
-
-    const prompt = `
-ORIGINAL DISCUSSION: "${this.originalQuery}"
-
-CONTEXT:
-${contextText}
-
-${instructionSection}
-
-Jump directly into your perspective on the original question.
-`;
-
-    const response = await agent.executeWithPersonality(
-      prompt,
-      'redirect' as DialogueStage,
-      'topic redirection',
-      language,
-      'dynamic-session'
-    );
-
-    return {
-      id: this.generateMessageId(),
-      agentId: agent.getAgent().id,
-      content: response,
-      timestamp: new Date(),
-      role: 'agent',
-      stage: 'redirect' as any,
-      metadata: {
-        reasoning: `Facilitator redirect: ${reason}`,
-        hasDynamicInstruction: !!dynamicInstruction
-      }
-    };
+    return this.actionExecutor.detectRAGDissonance(currentTopic, messages, minSimilarityThreshold);
   }
 
   // ファイナライズ（投票選出・単独/協調finalize）は orchestration/v2/finalization-service.ts に抽出済み（Phase 3）
