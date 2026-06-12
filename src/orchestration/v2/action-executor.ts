@@ -1,5 +1,6 @@
 // ファシリテーターアクションの実行（deep_dive / clarification / perspective_shift / summarize / redirect）。
 // dynamic-router から抽出（Phase 3 残課題）。ロジックは抽出前と同一。
+import { createLogger } from '../../utils/logger.js';
 import type { DialogueAgent, FacilitatorPort } from '../../dialogue/contracts.js';
 import type { DynamicInstruction, FacilitatorAction } from '../../types/consensus.js';
 import type { DialogueStage, Language, Message } from '../../types/index.js';
@@ -21,6 +22,8 @@ export interface ActionExecutorRuntime {
   getCurrentRound(): number;
 }
 
+const log = createLogger('DynamicRouter');
+
 export class FacilitatorActionExecutor {
   constructor(private runtime: ActionExecutorRuntime) {}
 
@@ -40,13 +43,13 @@ export class FacilitatorActionExecutor {
     const actionCount = recommendedActionCount || 2;
     const actionsToExecute = sortedActions.slice(0, actionCount);
 
-    console.log(`[DynamicRouter] Executing ${actionsToExecute.length} actions (recommended: ${recommendedActionCount || 'default'})`);
+    log.info(`Executing ${actionsToExecute.length} actions (recommended: ${recommendedActionCount || 'default'})`);
 
     // アクションを逐次実行し、各アクションの結果を次のアクションのコンテキストに含める
     for (let i = 0; i < actionsToExecute.length; i++) {
       const action = actionsToExecute[i];
       try {
-        console.log(`[DynamicRouter] Executing action ${i + 1}/${actionsToExecute.length}: ${action.type} (target: ${action.target || 'auto'})`);
+        log.info(`Executing action ${i + 1}/${actionsToExecute.length}: ${action.type} (target: ${action.target || 'auto'})`);
 
         // 現在までのメッセージ配列（元のmessages + このラウンドで既に生成されたメッセージ）
         const currentContext = [...messages, ...newMessages];
@@ -54,13 +57,13 @@ export class FacilitatorActionExecutor {
         const actionMessages = await this.executeAction(action, agents, currentContext, language);
         newMessages.push(...actionMessages);
 
-        console.log(`[DynamicRouter] Action ${i + 1} completed, generated ${actionMessages.length} message(s)`);
+        log.info(`Action ${i + 1} completed, generated ${actionMessages.length} message(s)`);
       } catch (error) {
-        console.error(`[DynamicRouter] Error executing action ${action.type}:`, error);
+        log.error(`Error executing action ${action.type}:`, error);
       }
     }
 
-    console.log(`[DynamicRouter] Total messages generated in this round: ${newMessages.length}`);
+    log.info(`Total messages generated in this round: ${newMessages.length}`);
     return newMessages;
   }
 
@@ -94,7 +97,7 @@ export class FacilitatorActionExecutor {
 
       if (topResult.score >= minSimilarityThreshold) {
         const pastConclusion = topResult.chunk.content.substring(0, 200);
-        console.log(`[DynamicRouter] RAG dissonance found: similarity=${topResult.score.toFixed(2)}, source=${topResult.chunk.metadata.sessionId || 'unknown'}`);
+        log.info(`RAG dissonance found: similarity=${topResult.score.toFixed(2)}, source=${topResult.chunk.metadata.sessionId || 'unknown'}`);
 
         return {
           sourceSessionId: topResult.chunk.metadata.sessionId || 'unknown',
@@ -109,7 +112,7 @@ export class FacilitatorActionExecutor {
 
       return null;
     } catch (error) {
-      console.error('[DynamicRouter] RAG dissonance detection failed:', error);
+      log.error('RAG dissonance detection failed:', error);
       return null;
     }
   }
@@ -139,7 +142,7 @@ export class FacilitatorActionExecutor {
             generatedAt: new Date()
           }
         };
-        console.log(`[DynamicRouter] RAG dissonance detected (similarity: ${ragDissonance.similarityScore.toFixed(2)}), adding deconstructive instruction`);
+        log.info(`RAG dissonance detected (similarity: ${ragDissonance.similarityScore.toFixed(2)}), adding deconstructive instruction`);
       }
     }
 
@@ -149,18 +152,18 @@ export class FacilitatorActionExecutor {
           let targetAgent: DialogueAgent | undefined;
           if (action.target && action.target !== 'all' && action.target !== 'auto') {
             targetAgent = agents.find(a => a.getAgent().id === action.target);
-            console.log(`[DynamicRouter] Deep dive target specified: ${action.target}, found: ${targetAgent ? 'yes' : 'no'}`);
+            log.info(`Deep dive target specified: ${action.target}, found: ${targetAgent ? 'yes' : 'no'}`);
           }
           if (!targetAgent) {
             // ターゲットが指定されていない、または見つからない場合はバランス良く選択
             targetAgent = this.runtime.selectBalancedAgent(agents);
-            console.log(`[DynamicRouter] Deep dive target auto-selected: ${targetAgent.getAgent().id}`);
+            log.info(`Deep dive target auto-selected: ${targetAgent.getAgent().id}`);
           }
           const deepDiveResponse = await this.askForDeepDive(targetAgent, action.reason, messages, language, action.dynamicInstruction);
           newMessages.push(deepDiveResponse);
           agentResponses.push(`${targetAgent.getAgent().name}: ${deepDiveResponse.content.slice(0, 100)}...`);
           this.runtime.trackAgentParticipation(targetAgent.getAgent().id);
-          console.log(`[DynamicRouter] Deep dive executed by ${targetAgent.getAgent().id}, new participation count: ${this.runtime.getParticipationCount(targetAgent.getAgent().id)}`);
+          log.info(`Deep dive executed by ${targetAgent.getAgent().id}, new participation count: ${this.runtime.getParticipationCount(targetAgent.getAgent().id)}`);
           success = true;
           break;
 
@@ -222,7 +225,7 @@ export class FacilitatorActionExecutor {
     } catch (error) {
       success = false;
       errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      console.error(`[DynamicRouter] Error executing action ${action.type}:`, error);
+      log.error(`Error executing action ${action.type}:`, error);
     }
 
     // Log the intervention

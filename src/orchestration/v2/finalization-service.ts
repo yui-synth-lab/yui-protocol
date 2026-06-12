@@ -1,6 +1,7 @@
 // v2.0 ファイナライズ（投票によるファイナライザ選出・単独/協調 finalize）。
 // dynamic-router から抽出（Phase 3 残課題）。ロジックは抽出前と同一だが、
 // config/v2-settings.json の finalization セクション（従来未配線）をここで接続する。
+import { createLogger } from '../../utils/logger.js';
 import { createVotingStartMessage, createVotingResultMessage } from '../../utils/convergence-messages.js';
 import {
   createCollaborationIntroMessage,
@@ -34,6 +35,8 @@ export interface FinalizationRuntime {
   countLlmCall(): void;
 }
 
+const log = createLogger('DynamicRouter');
+
 export class FinalizationService {
   constructor(private runtime: FinalizationRuntime) {}
 
@@ -54,12 +57,12 @@ export class FinalizationService {
 
       // finalization config の適用（従来 json に存在したが未配線だった設定）
       if (finalizationConfig.enableCollaborativeFinalization === false && finalizers.length > 1) {
-        console.log('[DynamicRouter] Collaborative finalization disabled by config — using primary finalizer only');
+        log.info('Collaborative finalization disabled by config — using primary finalizer only');
         finalizers = [finalizers[0]];
       }
       const maxFinalizers = finalizationConfig.maxCollaborativeFinalizers ?? 3;
       if (finalizers.length > maxFinalizers) {
-        console.log(`[DynamicRouter] Capping finalizers to maxCollaborativeFinalizers=${maxFinalizers}`);
+        log.info(`Capping finalizers to maxCollaborativeFinalizers=${maxFinalizers}`);
         finalizers = finalizers.slice(0, maxFinalizers);
       }
 
@@ -89,7 +92,7 @@ Remember: You are not just summarizing - you are synthesizing, integrating, and 
 
       // 複数のファイナライザーが選出された場合
       if (finalizers.length > 1) {
-        console.log(`[DynamicRouter] Multiple finalizers selected: ${finalizers.map(f => f.getAgent().name).join(', ')}`);
+        log.info(`Multiple finalizers selected: ${finalizers.map(f => f.getAgent().name).join(', ')}`);
 
         return await this.handleMultipleFinalizers(finalizers, messages, contextText, language, sessionId, round);
 
@@ -119,7 +122,7 @@ Remember: You are not just summarizing - you are synthesizing, integrating, and 
         };
       }
     } catch (error) {
-      console.error('[DynamicRouter] Error generating final output:', error);
+      log.error('Error generating final output:', error);
       return null;
     }
   }
@@ -137,7 +140,7 @@ Remember: You are not just summarizing - you are synthesizing, integrating, and 
     const finalizationConfig = getV2FinalizationConfig();
     const stepDelay = finalizationConfig.collaborationStepDelay ?? 1500;
     const showProgress = finalizationConfig.showProgressMessages !== false;
-    console.log(`[DynamicRouter] Starting collaborative finalization with ${finalizers.length} finalizers`);
+    log.info(`Starting collaborative finalization with ${finalizers.length} finalizers`);
 
     // Step 1: 協力紹介メッセージを作成・送信
     const collaborationInfo = {
@@ -234,7 +237,7 @@ ${this.getCollaborativeInstructions(isFirst, isLast, index + 1, finalizers.lengt
         });
       }
 
-      console.log(`[DynamicRouter] Finalizer ${index + 1}/${finalizers.length} (${finalizer.getAgent().name}) starting...`);
+      log.info(`Finalizer ${index + 1}/${finalizers.length} (${finalizer.getAgent().name}) starting...`);
 
       // ファイナライザー専用の高コストLLMを使用するため、agent idに'-finalizer'を追加
       const finalizerAgentId = `${finalizer.getAgent().id}-finalizer`;
@@ -281,7 +284,7 @@ ${this.getCollaborativeInstructions(isFirst, isLast, index + 1, finalizers.lengt
         }
       });
 
-      console.log(`[DynamicRouter] Finalizer ${index + 1}/${finalizers.length} (${finalizer.getAgent().name}) completed`);
+      log.info(`Finalizer ${index + 1}/${finalizers.length} (${finalizer.getAgent().name}) completed`);
 
       // 間に少し間をあける（最後以外）。間隔は finalization.collaborationStepDelay
       if (!isLast) {
@@ -315,7 +318,7 @@ ${this.getCollaborativeInstructions(isFirst, isLast, index + 1, finalizers.lengt
       round
     });
 
-    console.log(`[DynamicRouter] Collaborative finalization completed with ${collaborationMessages.length} contributions`);
+    log.info(`Collaborative finalization completed with ${collaborationMessages.length} contributions`);
 
     // messages への push は内部で完了済みのため null を返す（呼び出し側の二重 push を防ぐ）
     return null;
@@ -355,7 +358,7 @@ ${this.getCollaborativeInstructions(isFirst, isLast, index + 1, finalizers.lengt
     round: number,
     askVote: VoteAsker
   ): Promise<DialogueAgent[]> {
-    console.log('[DynamicRouter] Starting voting process for finalizer selection');
+    log.info('Starting voting process for finalizer selection');
 
     // 投票開始メッセージを追加
     const votingStartMessage = createVotingStartMessage(sessionId, round);
@@ -370,10 +373,10 @@ ${this.getCollaborativeInstructions(isFirst, isLast, index + 1, finalizers.lengt
           const vote = await askVote(agent, messages, language, agents);
           if (vote.voteFor) {
             votes.push(vote);
-            console.log(`[DynamicRouter] Vote from ${vote.agentId}: ${vote.voteFor} (${vote.voteReasoning})`);
+            log.info(`Vote from ${vote.agentId}: ${vote.voteFor} (${vote.voteReasoning})`);
           }
         } catch (error) {
-          console.error(`[DynamicRouter] Error getting vote from ${agent.getAgent().id}:`, error);
+          log.error(`Error getting vote from ${agent.getAgent().id}:`, error);
         }
       }
 
@@ -383,7 +386,7 @@ ${this.getCollaborativeInstructions(isFirst, isLast, index + 1, finalizers.lengt
         const selectedAgents = agents.filter(a => selectedAgentIds.includes(a.getAgent().id));
 
         if (selectedAgents.length > 0) {
-          console.log(`[DynamicRouter] Finalizers selected by facilitator analysis: ${selectedAgentIds.join(', ')}`);
+          log.info(`Finalizers selected by facilitator analysis: ${selectedAgentIds.join(', ')}`);
 
           // 投票結果メッセージを作成（複数選出の場合は最初のエージェントをプライマリとして表示）
           const votingResults = votes.map(vote => ({
@@ -411,9 +414,9 @@ ${this.getCollaborativeInstructions(isFirst, isLast, index + 1, finalizers.lengt
         }
       }
 
-      console.log('[DynamicRouter] No votes or voting failed, falling back to style-based selection');
+      log.info('No votes or voting failed, falling back to style-based selection');
     } catch (error) {
-      console.error('[DynamicRouter] Error in voting process:', error);
+      log.error('Error in voting process:', error);
     }
 
     // フォールバック: 従来のstyle-based選択
@@ -490,7 +493,7 @@ Note: You cannot vote for yourself. Vote for the agent you think can best synthe
       );
       if (agentByName) {
         voteFor = agentByName.getAgent().id;
-        console.log(`[DynamicRouter] Vote converted from name "${voteText}" to ID "${voteFor}"`);
+        log.info(`Vote converted from name "${voteText}" to ID "${voteFor}"`);
       }
     }
 

@@ -1,5 +1,6 @@
 // composition root: 具象クラスの生成と配線をここに集約する。
 // kernel（orchestration）はエージェント具象を知らず、server はここを経由して構築する。
+import { createLogger } from '../utils/logger.js';
 import { InteractionLogger } from '../kernel/interaction-logger.js';
 import { AgentManager } from '../kernel/services/agent-manager.js';
 import { DynamicDialogueRouter } from '../kernel/dynamic-router.js';
@@ -44,6 +45,8 @@ export function collectDialogueAgents(agentManager: AgentManager, sessionId: str
   return agents;
 }
 
+const log = createLogger('Bootstrap/RAG');
+
 /**
  * 出力保存後の RAG 自動インデックス（旧 OutputStorage 内蔵ロジック）。
  * ストレージ層は RAG を知らず、composition root がこのリスナーで配線する。
@@ -64,11 +67,11 @@ export async function ragAutoIndexListener(event: OutputSavedEvent): Promise<voi
     const retriever = ragManager.getRetriever();
     if (retriever) {
       try {
-        console.log(`[Bootstrap/RAG] 🔍 Auto-indexing to RAG: ${event.filepath}`);
+        log.info(`🔍 Auto-indexing to RAG: ${event.filepath}`);
         const chunksIndexed = await retriever.indexLocalDocuments([event.filepath]);
-        console.log(`[Bootstrap/RAG] ✓ Auto-indexed ${chunksIndexed} chunks to RAG`);
+        log.info(`✓ Auto-indexed ${chunksIndexed} chunks to RAG`);
       } catch (error) {
-        console.warn('[Bootstrap/RAG] ⚠️  Failed to auto-index output to RAG:', error);
+        log.warn('⚠️  Failed to auto-index output to RAG:', error);
       }
     }
   } else {

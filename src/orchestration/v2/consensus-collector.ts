@@ -2,6 +2,7 @@
 // 早期終了最適化・応答パースのロジックは抽出前と同一。
 // 実際のエージェント呼び出しは ConsensusAsker コールバックで注入される
 // （ルーター上の askForConsensus をテストがスタブできるようにするため）。
+import { createLogger } from '../../utils/logger.js';
 import type { ConsensusIndicator } from '../../types/consensus.js';
 import type { DialogueAgent } from '../../dialogue/contracts.js';
 import type { Language, Message } from '../../types/index.js';
@@ -13,6 +14,8 @@ export type ConsensusAsker = (
   language: Language,
   currentRound: number
 ) => Promise<ConsensusIndicator>;
+
+const log = createLogger('DynamicRouter');
 
 export class ConsensusCollector {
   private activeChecks = new Set<string>(); // 重複実行防止
@@ -36,7 +39,7 @@ export class ConsensusCollector {
     const totalAgents = shuffledAgents.length;
     const majorityThreshold = Math.ceil(totalAgents / 2); // 過半数
 
-    console.log(`[DynamicRouter] Starting optimized consensus gathering - checking up to ${totalAgents} agents, early exit at ${majorityThreshold} continuing votes`);
+    log.info(`Starting optimized consensus gathering - checking up to ${totalAgents} agents, early exit at ${majorityThreshold} continuing votes`);
 
     let continuingVotes = 0;
     let checkedAgents = 0;
@@ -46,7 +49,7 @@ export class ConsensusCollector {
 
       // 重複実行チェック
       if (this.activeChecks.has(agentKey)) {
-        console.warn(`[DynamicRouter] Skipping duplicate consensus check for ${agent.getAgent().name}`);
+        log.warn(`Skipping duplicate consensus check for ${agent.getAgent().name}`);
         continue;
       }
 
@@ -61,14 +64,14 @@ export class ConsensusCollector {
         // 継続したいエージェントをカウント (readyToMove が false または hasAdditionalPoints が true)
         if (!consensus.readyToMove || consensus.hasAdditionalPoints) {
           continuingVotes++;
-          console.log(`[DynamicRouter] ${agent.getAgent().name} wants to continue (ready:${consensus.readyToMove}, critical:${consensus.hasAdditionalPoints}) (${continuingVotes}/${checkedAgents})`);
+          log.info(`${agent.getAgent().name} wants to continue (ready:${consensus.readyToMove}, critical:${consensus.hasAdditionalPoints}) (${continuingVotes}/${checkedAgents})`);
         } else {
-          console.log(`[DynamicRouter] ${agent.getAgent().name} ready to conclude (ready:${consensus.readyToMove}, critical:${consensus.hasAdditionalPoints}) (${continuingVotes}/${checkedAgents})`);
+          log.info(`${agent.getAgent().name} ready to conclude (ready:${consensus.readyToMove}, critical:${consensus.hasAdditionalPoints}) (${continuingVotes}/${checkedAgents})`);
         }
 
         // 早期終了条件: 継続票が過半数を超えた時点で次ラウンドへ
         if (continuingVotes >= majorityThreshold) {
-          console.log(`[DynamicRouter] Early exit: ${continuingVotes}/${checkedAgents} agents want to continue (majority reached)`);
+          log.info(`Early exit: ${continuingVotes}/${checkedAgents} agents want to continue (majority reached)`);
 
           // 既に回答したエージェントの平均満足度を計算
           const actualResponses = consensusData.filter(c => !c.reasoning?.includes('Error occurred'));
@@ -80,7 +83,7 @@ export class ConsensusCollector {
             ? actualResponses.filter(c => c.hasAdditionalPoints).length / actualResponses.length
             : 0.5;
 
-          console.log(`[DynamicRouter] Early exit estimation: avgSatisfaction=${avgSatisfaction.toFixed(1)}, avgHasAdditionalPoints=${(avgHasAdditionalPoints * 100).toFixed(0)}%`);
+          log.info(`Early exit estimation: avgSatisfaction=${avgSatisfaction.toFixed(1)}, avgHasAdditionalPoints=${(avgHasAdditionalPoints * 100).toFixed(0)}%`);
 
           // 残りのエージェントには推定値を追加（既存の平均値に基づく）
           for (let i = checkedAgents; i < totalAgents; i++) {
@@ -98,7 +101,7 @@ export class ConsensusCollector {
         }
 
       } catch (error) {
-        console.error(`[DynamicRouter] Error gathering consensus from ${agent.getAgent().name}:`, error);
+        log.error(`Error gathering consensus from ${agent.getAgent().name}:`, error);
         // フォールバック値
         consensusData.push({
           agentId: agent.getAgent().id,
@@ -114,7 +117,7 @@ export class ConsensusCollector {
       }
     }
 
-    console.log(`[DynamicRouter] Consensus gathering completed: checked ${checkedAgents}/${totalAgents} agents, ${continuingVotes} want to continue`);
+    log.info(`Consensus gathering completed: checked ${checkedAgents}/${totalAgents} agents, ${continuingVotes} want to continue`);
     return consensusData;
   }
 
@@ -183,7 +186,7 @@ export class ConsensusCollector {
             reasoning
           };
         } catch (e) {
-          console.warn(`[DynamicRouter] JSON parsing failed for ${agentId}, falling back to text parsing`, e);
+          log.warn(`JSON parsing failed for ${agentId}, falling back to text parsing`, e);
         }
       }
 
@@ -245,11 +248,11 @@ export class ConsensusCollector {
       // 満足度ベースの自動判定ロジック強化
       if (satisfactionLevel >= 7 && hasAdditionalPoints && !readyToMove) {
         // 高満足度でも継続希望の場合、満足度を基準に判断を調整
-        console.log(`[DynamicRouter] ${agentId}: High satisfaction (${satisfactionLevel}) detected, considering readiness adjustment`);
+        log.info(`${agentId}: High satisfaction (${satisfactionLevel}) detected, considering readiness adjustment`);
       }
 
     } catch (error) {
-      console.warn(`[DynamicRouter] Error parsing consensus response from ${agentId}:`, error);
+      log.warn(`Error parsing consensus response from ${agentId}:`, error);
     }
 
     return {
