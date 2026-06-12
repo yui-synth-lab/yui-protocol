@@ -2,67 +2,50 @@ import * as fs from 'fs';
 import path from 'path';
 import { Session } from '../types/index.js';
 
-// Shared utility function to remove circular references
+// Shared utility function to remove circular references.
+// Uses backtracking (delete from `seen` after recursion) so that objects
+// referenced from multiple places are serialized correctly — only true cycles
+// (an object that is an ancestor of itself) become '[Circular Reference]'.
 export function removeCircularReferences(obj: any, seen = new WeakSet()): any {
     if (obj === null || typeof obj !== 'object') {
-        // Handle primitive types including Symbol
         if (typeof obj === 'symbol') {
             return obj.toString();
         }
         return obj;
     }
-    
-    // Handle Date objects
+
     if (obj instanceof Date) {
-        // Check if the date is valid before calling toISOString()
         if (isNaN(obj.getTime())) {
-            return null; // Return null for invalid dates
+            return null;
         }
         return obj.toISOString();
     }
-    
-    // Handle functions
-    if (typeof obj === 'function') {
-        return '[Function]';
-    }
-    
-    // Handle RegExp
-    if (obj instanceof RegExp) {
-        return '[RegExp]';
-    }
-    
-    // Handle Error
-    if (obj instanceof Error) {
-        return '[Error]';
-    }
-    
-    // Handle Map
-    if (obj instanceof Map) {
-        return '[Map]';
-    }
-    
-    // Handle Set
-    if (obj instanceof Set) {
-        return '[Set]';
-    }
-    
+
+    if (typeof obj === 'function') return '[Function]';
+    if (obj instanceof RegExp) return '[RegExp]';
+    if (obj instanceof Error) return '[Error]';
+    if (obj instanceof Map) return '[Map]';
+    if (obj instanceof Set) return '[Set]';
+
     if (seen.has(obj)) {
         return '[Circular Reference]';
     }
-    
+
     seen.add(obj);
-    
+
+    let result: any;
     if (Array.isArray(obj)) {
-        return obj.map(item => removeCircularReferences(item, seen));
-    }
-    
-    const result: any = {};
-    for (const key in obj) {
-        if (obj.hasOwnProperty(key)) {
-            result[key] = removeCircularReferences(obj[key], seen);
+        result = obj.map(item => removeCircularReferences(item, seen));
+    } else {
+        result = {};
+        for (const key in obj) {
+            if (Object.prototype.hasOwnProperty.call(obj, key)) {
+                result[key] = removeCircularReferences(obj[key], seen);
+            }
         }
     }
-    
+
+    seen.delete(obj);
     return result;
 }
 

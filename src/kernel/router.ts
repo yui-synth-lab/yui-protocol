@@ -25,51 +25,20 @@ import {
   IAgentManager,
   ISessionManager
 } from './interfaces.js';
-import { SessionStorage } from './session-storage.js';
+import { SessionStorage, removeCircularReferences } from './session-storage.js';
 import { OutputStorage } from './output-storage.js';
 import { InteractionLogger } from './interaction-logger.js';
 import { createStageSummarizer } from './stage-summarizer.js';
 import { AgentManager } from './services/agent-manager.js';
 import { SessionManager } from './services/session-manager.js';
 import { extractVoteDetails, getStagePrompt } from '../templates/prompts.js';
-import { DynamicDialogueRouter } from './dynamic-router.js';
+import { shuffleArray } from '../utils/random.js';
+import { analyzeVotesByRegex, formatVoteAnalysisMarkdown } from '../dialogue/voting/vote-parser.js';
+import { getV2CostOptimizationConfig } from '../config/v2-config-loader.js';
 
 // ユーティリティ関数
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function shuffleArray<T>(array: T[]): T[] {
-  const arr = array.slice();
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
-}
-
-// Helper function to remove circular references
-function removeCircularReferences(obj: unknown, seen: WeakSet<object> = new WeakSet()): unknown {
-  if (obj === null || typeof obj !== 'object') {
-    return obj;
-  }
-  if (obj instanceof Date) {
-    return obj.toISOString();
-  }
-  if (seen.has(obj)) {
-    return '[Circular Reference]';
-  }
-  seen.add(obj);
-  if (Array.isArray(obj)) {
-    return obj.map((item: unknown) => removeCircularReferences(item, seen));
-  }
-  const result: Record<string, unknown> = {};
-  for (const key in obj) {
-    if (obj.hasOwnProperty(key)) {
-      result[key] = removeCircularReferences((obj as Record<string, unknown>)[key], seen);
-    }
-  }
-  return result;
 }
 
 /**
@@ -145,9 +114,6 @@ export class YuiProtocolRouter implements IRealtimeRouter {
   private stageSummarizer: ReturnType<typeof createStageSummarizer>;
   private defaultLanguage: Language = 'en';
   private delay: number;
-
-  // Phase 4: v2.0 Dynamic Dialogue Support
-  private dynamicRouter: DynamicDialogueRouter;
   private sessionStorage: SessionStorage;
 
   constructor(
@@ -175,9 +141,6 @@ export class YuiProtocolRouter implements IRealtimeRouter {
     this.agentManager.initializeAgents().catch((error) => {
       console.error('[YuiProtocolRouter] Failed to initialize agents:', error);
     });
-
-    // 新しいダイナミックルーターを初期化
-    this.dynamicRouter = new DynamicDialogueRouter(sessionStorage);
   }
 
   // IRealtimeRouter インターフェースの実装
@@ -282,7 +245,7 @@ export class YuiProtocolRouter implements IRealtimeRouter {
         await sleep(this.delay);
         console.log(`[Router] AI-based vote analysis delay: ${this.delay}ms`);
         console.log(`[Router] Starting AI-based vote analysis for ${responses.length} agents`);
-        voteAnalysis = await this.stageSummarizer.analyzeVotes(
+        voteAnalysis = await this.analyzeVotesCostAware(
           responses,
           session.agents,
           sessionId,
@@ -939,6 +902,34 @@ export class YuiProtocolRouter implements IRealtimeRouter {
     };
   }
 
+  /**
+   * M4: regex-first / AI-fallback の投票解析（config オプトイン）。
+   * costOptimization.regexFirstVoteAnalysis が true かつ正規表現で全票が確定した場合、
+   * AI 解析（stage-summarizer.analyzeVotes）の呼び出しをスキップしてコストを削減する。
+   */
+  private async analyzeVotesCostAware(
+    responses: AgentResponse[],
+    agents: Agent[],
+    sessionId: string,
+    language: Language
+  ) {
+    if (getV2CostOptimizationConfig().regexFirstVoteAnalysis) {
+      const regexResult = analyzeVotesByRegex(
+        responses.map(r => ({ agentId: r.agentId, content: r.content })),
+        agents
+      );
+      if (regexResult.resolvedAll) {
+        console.log(`[Router] Vote analysis resolved by regex for all ${regexResult.analyses.length} agents — skipping AI analysis (M4)`);
+        return {
+          voteAnalysis: regexResult.analyses,
+          content: formatVoteAnalysisMarkdown(regexResult.analyses, agents)
+        };
+      }
+      console.log(`[Router] Regex vote analysis incomplete — falling back to AI analysis`);
+    }
+    return this.stageSummarizer.analyzeVotes(responses, agents, sessionId, language);
+  }
+
   // テスト用のメソッド
   getAgentManager(): IAgentManager {
     return this.agentManager;
@@ -948,87 +939,8 @@ export class YuiProtocolRouter implements IRealtimeRouter {
     return this.sessionManager;
   }
 
-  // 新メソッド: v2.0エントリーポイント
-  async startDynamicSession(
-    prompt: string,
-    sessionId: string,
-    language: Language = 'en'
-  ): Promise<Session> {
-    console.log(`[YuiProtocolRouter] Starting dynamic session ${sessionId} with prompt: "${prompt}"`);
-
-    // すべてのエージェントにセッションIDを設定
-    const availableAgents = this.agentManager.getAvailableAgents();
-    const agents: Record<string, any> = {};
-
-    availableAgents.forEach(agentConfig => {
-      const agentInstance = this.agentManager.getAgent(agentConfig.id);
-      if (agentInstance) {
-        agentInstance.setSessionId(sessionId);
-        agents[agentConfig.id] = agentInstance;
-      }
-    });
-
-    try {
-      const session = await this.dynamicRouter.conductDynamicDialogue(
-        prompt,
-        agents,
-        sessionId,
-        language
-      );
-
-      console.log(`[YuiProtocolRouter] Dynamic session completed with ${session.messages?.length || 0} messages`);
-      return session;
-    } catch (error) {
-      console.error(`[YuiProtocolRouter] Error in dynamic session:`, error);
-      throw error;
-    }
-  }
-
-  // WebSocket付きv2.0エントリーポイント
-  async startDynamicSessionWithWebSocket(
-    prompt: string,
-    sessionId: string,
-    language: Language = 'en',
-    wsEmitter: (event: string, data: any) => void
-  ): Promise<Session> {
-    console.log(`[YuiProtocolRouter] Starting dynamic session with WebSocket ${sessionId}`);
-
-    // WebSocket付きルーターを一時的に作成
-    const sessionStorage = this.sessionManager.getSessionStorage();
-    const dynamicRouterWithWS = new DynamicDialogueRouter(sessionStorage, wsEmitter);
-
-    // すべてのエージェントにセッションIDを設定
-    const availableAgents = this.agentManager.getAvailableAgents();
-    const agents: Record<string, any> = {};
-
-    availableAgents.forEach(agentConfig => {
-      const agentInstance = this.agentManager.getAgent(agentConfig.id);
-      if (agentInstance) {
-        agentInstance.setSessionId(sessionId);
-        agents[agentConfig.id] = agentInstance;
-      }
-    });
-
-    try {
-      const session = await dynamicRouterWithWS.conductDynamicDialogue(
-        prompt,
-        agents,
-        sessionId,
-        language
-      );
-
-      console.log(`[YuiProtocolRouter] Dynamic session with WebSocket completed`);
-      return session;
-    } catch (error) {
-      console.error(`[YuiProtocolRouter] Error in dynamic session with WebSocket:`, error);
-      throw error;
-    }
-  }
-
-  // 統計情報の取得
-  getDynamicDialogueStats() {
-    return this.dynamicRouter.getDialogueStats();
-  }
+  // v2.0 のエントリーポイントは server + bootstrap（createDynamicRouter / collectDialogueAgents）に移動した。
+  // v1 ルーターは v2 を一切参照しない（設計原則1: v1.0 must never break）。
 
   // SessionStorageアクセサ（v2.0 API用）
   getSessionStorage(): SessionStorage {

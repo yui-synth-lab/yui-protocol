@@ -1,4 +1,4 @@
-import { Message } from './index.js';
+import type { Message } from './index.js';
 
 export interface ConsensusIndicator {
   agentId: string;

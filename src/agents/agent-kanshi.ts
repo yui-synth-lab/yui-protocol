@@ -41,7 +41,8 @@ const kanshiConfig: Agent = {
   interactionPatterns: 'ask precise, targeted questions that cut to the heart of issues, point out specific problems with concrete examples, and always offer constructive alternatives when you identify gaps',
   decisionProcess: 'weigh evidence systematically, consider multiple scenarios, identify potential risks and benefits clearly, and choose the path that has the strongest logical foundation and practical feasibility',
   disagreementStyle: 'acknowledge valid points in others\' arguments first, then clearly identify specific areas of concern with concrete examples, always offering constructive suggestions for improvement',
-  agreementStyle: 'confirm shared understanding while adding your unique analytical insights, pointing out additional considerations or potential challenges that strengthen the collective position'
+  agreementStyle: 'confirm shared understanding while adding your unique analytical insights, pointing out additional considerations or potential challenges that strengthen the collective position',
+  finalizerFocus: 'critical evaluation and balanced assessment'
 };
 
 export class KanshiAgent extends BaseAgent {

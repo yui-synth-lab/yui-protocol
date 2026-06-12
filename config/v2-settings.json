@@ -5,9 +5,13 @@
     "compressionRatio": 0.3
   },
   "consensus": {
-    "convergenceThreshold": 7.5,
+    "convergenceThreshold": 7.0,
     "maxRounds": 20,
-    "minSatisfactionLevel": 6.5
+    "minSatisfactionLevel": 6.5,
+    "minRoundsForConvergence": 3,
+    "highSatisfactionThreshold": 8.0,
+    "minRoundsForSatisfactionConvergence": 2,
+    "maxLlmCallsPerSession": 60
   },
   "facilitator": {
     "actionPriority": {
@@ -23,7 +27,13 @@
     "enableCollaborativeFinalization": true,
     "maxCollaborativeFinalizers": 3,
     "collaborationStepDelay": 1500,
-    "showProgressMessages": true,
-    "detailedCollaborationPrompts": true
+    "showProgressMessages": true
+  },
+  "modelTiers": {
+    "mechanical": { "provider": "gemini", "model": "gemini-3-flash-preview", "maxTokens": 500 },
+    "summary": { "provider": "gemini", "model": "gemini-3-flash-preview", "maxTokens": 800 }
+  },
+  "costOptimization": {
+    "regexFirstVoteAnalysis": true
   }
 }

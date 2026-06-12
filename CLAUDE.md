@@ -39,13 +39,15 @@ Both routers share a `SessionStorage` instance and emit progress via WebSocket (
 
 Each agent in [src/agents/](src/agents/) extends `BaseAgent` ([src/agents/base-agent.ts](src/agents/base-agent.ts)) and declares a static config (`Agent` type) with personality, model config, and style. Agent model/provider can be overridden per-agent via env vars: `AGENT_YUI_000_PROVIDER`, `AGENT_YUI_000_MODEL`, `AGENT_YUI_000_FINALIZER_MODEL`.
 
-Agents: **Yui** (emotive/breadth), **Eiro** (logical), **Kanshi** (critical), **Yoga** (intuitive), **Hekito** (analytical), **Facilitator** (meta, v2.0 only).
+Agents: **Yui** (emotive/breadth), **Eiro** (logical), **Kanshi** (critical), **Yoga** (intuitive), **Hekito** (analytical), **Facilitator** (meta, v2.0 only). The agent roster lives in [src/agents/registry.ts](src/agents/registry.ts) (single source of truth); construction is wired through [src/bootstrap/](src/bootstrap/index.ts).
 
-`BaseAgent` manages:
+`BaseAgent` implements the `DialogueAgent` port ([src/dialogue/contracts.ts](src/dialogue/contracts.ts)) and manages:
 
-- `ConversationMemoryManager` — hierarchical memory compression (recent messages kept verbatim, older messages compressed)
+- `MemoryManager` — hierarchical memory compression, triggered above `memory.tokenThreshold` (recent messages kept verbatim, older messages compressed via the `summary` model tier)
 - `RAGRetriever` — optional RAG context injection per agent turn
-- Two `AIExecutor` instances: one for normal turns, one for finalization (may use a different model)
+- `AIExecutor` instances obtained from a cached `ExecutorFactory`: normal turns, finalization (optionally a different model), and optional cheap-model task tiers (`modelTiers.mechanical` / `modelTiers.summary` in `config/v2-settings.json`)
+
+Generation parameters are derived from personality by pure functions in [src/agents/generation-parameters.ts](src/agents/generation-parameters.ts); response-text parsing lives in [src/dialogue/parsing/response-parsers.ts](src/dialogue/parsing/response-parsers.ts); vote parsing in [src/dialogue/voting/vote-parser.ts](src/dialogue/voting/vote-parser.ts).
 
 ### AI Execution
 

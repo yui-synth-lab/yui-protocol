@@ -1,16 +1,23 @@
 import { config } from 'dotenv';
 import OpenAI from 'openai';
+import { createHash } from 'crypto';
 import { VectorStoreConfig } from '../../types/rag.js';
 
 // Load environment variables
 config();
 
 /**
- * Generates embeddings for text using OpenAI or local models
+ * Generates embeddings for text using OpenAI or local models.
+ * M9: 同一テキストの埋め込みはコンテンツハッシュでメモ化し、
+ * クエリの再埋め込み・再インデックス時の再課金を抑える（プロセス内 LRU）。
  */
 export class EmbeddingGenerator {
   private openai?: OpenAI;
   private config: VectorStoreConfig;
+  private cache: Map<string, number[]> = new Map(); // sha256(model+text) -> embedding
+  private static readonly MAX_CACHE_ENTRIES = 2000;
+  private cacheHits = 0;
+  private cacheMisses = 0;
 
   constructor(config: VectorStoreConfig) {
     this.config = config;
@@ -24,30 +31,91 @@ export class EmbeddingGenerator {
     }
   }
 
+  private cacheKey(text: string): string {
+    const model = this.config.embeddingModel || 'text-embedding-3-small';
+    return createHash('sha256').update(`${model}:${text}`).digest('hex');
+  }
+
+  private getCached(text: string): number[] | undefined {
+    const key = this.cacheKey(text);
+    const hit = this.cache.get(key);
+    if (hit) {
+      // LRU: アクセスされたエントリを末尾に移動
+      this.cache.delete(key);
+      this.cache.set(key, hit);
+      this.cacheHits++;
+    }
+    return hit;
+  }
+
+  private putCached(text: string, embedding: number[]): void {
+    const key = this.cacheKey(text);
+    if (this.cache.size >= EmbeddingGenerator.MAX_CACHE_ENTRIES) {
+      // Map は挿入順を保持するため先頭が最も古い
+      const oldest = this.cache.keys().next().value;
+      if (oldest !== undefined) this.cache.delete(oldest);
+    }
+    this.cache.set(key, embedding);
+  }
+
+  /** キャッシュ統計（コスト計測用） */
+  getCacheStats(): { hits: number; misses: number; size: number } {
+    return { hits: this.cacheHits, misses: this.cacheMisses, size: this.cache.size };
+  }
+
   /**
    * Generate embedding for a single text
    */
   async generateEmbedding(text: string): Promise<number[]> {
+    const cached = this.getCached(text);
+    if (cached) {
+      return cached;
+    }
+    this.cacheMisses++;
+
     if (this.config.embeddingProvider === 'openai') {
-      return this.generateOpenAIEmbedding(text);
+      const embedding = await this.generateOpenAIEmbedding(text);
+      this.putCached(text, embedding);
+      return embedding;
     } else {
       throw new Error(`Embedding provider '${this.config.embeddingProvider}' not yet implemented`);
     }
   }
 
   /**
-   * Generate embeddings for multiple texts in batch
+   * Generate embeddings for multiple texts in batch.
+   * キャッシュ済みテキストは API 呼び出しから除外し、未キャッシュ分のみバッチ実行する（M9）。
    */
   async generateEmbeddings(texts: string[]): Promise<number[][]> {
     if (texts.length === 0) {
       return [];
     }
 
-    if (this.config.embeddingProvider === 'openai') {
-      return this.generateOpenAIEmbeddings(texts);
-    } else {
+    if (this.config.embeddingProvider !== 'openai') {
       throw new Error(`Embedding provider '${this.config.embeddingProvider}' not yet implemented`);
     }
+
+    const results: (number[] | undefined)[] = texts.map(text => this.getCached(text));
+    const uncachedIndices = results
+      .map((r, i) => (r === undefined ? i : -1))
+      .filter(i => i >= 0);
+
+    if (uncachedIndices.length > 0) {
+      this.cacheMisses += uncachedIndices.length;
+      const uncachedTexts = uncachedIndices.map(i => texts[i]);
+      const embeddings = await this.generateOpenAIEmbeddings(uncachedTexts);
+      uncachedIndices.forEach((textIndex, j) => {
+        results[textIndex] = embeddings[j];
+        this.putCached(texts[textIndex], embeddings[j]);
+      });
+      if (uncachedIndices.length < texts.length) {
+        console.log(`[EmbeddingGenerator] M9 cache: ${texts.length - uncachedIndices.length}/${texts.length} embeddings served from cache`);
+      }
+    } else {
+      console.log(`[EmbeddingGenerator] M9 cache: all ${texts.length} embeddings served from cache`);
+    }
+
+    return results as number[][];
   }
 
   /**

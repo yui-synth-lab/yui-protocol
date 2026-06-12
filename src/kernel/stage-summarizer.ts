@@ -5,22 +5,15 @@ import {
   DialogueStage,
   Agent,
   AgentResponse,
-  Language
+  Language,
+  StageSummary
 } from '../types/index.js';
 import { AIExecutor, createAIExecutor } from './ai-executor.js';
 import { STAGE_SUMMARY_PROMPT, VOTE_ANALYSIS_PROMPT, formatPrompt } from '../templates/prompts.js';
 import { InteractionLogger, SimplifiedInteractionLog } from './interaction-logger.js';
 
-export interface StageSummary {
-  stage: DialogueStage;
-  summary: {
-    speaker: string;
-    position: string;
-  }[];
-  timestamp: Date;
-  stageNumber: number;
-  sequenceNumber?: number; // シーケンス番号
-}
+// StageSummary is defined in types/index.ts (single source of truth); re-exported for compatibility
+export type { StageSummary };
 
 export interface VoteAnalysis {
   agentId: string;
@@ -187,7 +180,9 @@ export class StageSummarizer {
           prompt,
           result.content,
           Date.now() - startTime,
-          'success'
+          'success',
+          undefined,
+          result.tokensUsed
         );
       }
 
@@ -275,7 +270,9 @@ export class StageSummarizer {
           `Vote analysis for ${agentResponses.length} agents`,
           result.content,
           Date.now() - startTime,
-          'success'
+          'success',
+          undefined,
+          result.tokensUsed
         );
       }
       const voteAnalysisResult: VoteAnalysisResult = {
@@ -624,7 +621,8 @@ export class StageSummarizer {
     output: string,
     duration: number,
     status: 'success' | 'error' | 'timeout' = 'success',
-    error?: string
+    error?: string,
+    tokensUsed?: number
   ): Promise<void> {
     const log: SimplifiedInteractionLog = {
       id: `${sessionId}_${stage}_summarizer_${Date.now()}`,
@@ -637,7 +635,10 @@ export class StageSummarizer {
       output,
       duration,
       status,
-      error
+      error,
+      provider: this.options.provider,
+      model: this.options.model,
+      tokensUsed
     };
 
     await this.interactionLogger.saveInteractionLog(log);

@@ -1,7 +1,6 @@
 import { writeFile, readFile, readdir, unlink } from 'fs/promises';
 import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
-import { getRAGManager } from './rag/rag-manager.js';
 import { Message } from '../types/index.js';
 
 export interface SavedOutput {
@@ -16,11 +15,22 @@ export interface SavedOutput {
   sequenceNumber: number;
 }
 
+/** 出力保存完了イベント。RAG インデックス等の後処理は購読側（bootstrap）が担う */
+export interface OutputSavedEvent {
+  filepath: string;
+  sessionId: string;
+  sessionMessages?: Message[];
+}
+
+export type OutputSavedListener = (event: OutputSavedEvent) => void | Promise<void>;
+
 export class OutputStorage {
   private outputDir: string;
+  private onOutputSaved?: OutputSavedListener;
 
-  constructor(outputDir: string = 'outputs') {
+  constructor(outputDir: string = 'outputs', onOutputSaved?: OutputSavedListener) {
     this.outputDir = outputDir;
+    this.onOutputSaved = onOutputSaved;
     this.ensureOutputDirectory();
   }
 
@@ -64,12 +74,13 @@ export class OutputStorage {
     await writeFile(filepath, markdownContent, 'utf-8');
     console.log(`[OutputStorage] Saved output to ${filepath}`);
 
-    // RAG自動インデックス化（outputs）
-    await this.autoIndexToRAG(filepath);
-
-    // RAG自動インデックス化（sessions）
-    if (sessionMessages && sessionMessages.length > 0) {
-      await this.autoIndexSessionToRAG(sessionId, sessionMessages);
+    // 後処理（RAG自動インデックス等）はリスナーへ委譲。失敗しても保存自体は成功扱い
+    if (this.onOutputSaved) {
+      try {
+        await this.onOutputSaved({ filepath, sessionId, sessionMessages });
+      } catch (error) {
+        console.warn('[OutputStorage] onOutputSaved listener failed:', error);
+      }
     }
 
     return output;
@@ -195,71 +206,4 @@ ${content}
     }
   }
 
-  /**
-   * RAG自動インデックス化（セッションメッセージ）
-   * セッションのメッセージを自動的にRAGシステムにインデックス化
-   */
-  private async autoIndexSessionToRAG(sessionId: string, messages: Message[]): Promise<void> {
-    try {
-      const ragManager = getRAGManager();
-
-      // RAGが有効でない場合はスキップ
-      if (!ragManager.isReady()) {
-        return;
-      }
-
-      // 設定で自動インデックスが無効の場合はスキップ
-      const stats = await ragManager.getStats();
-      if (!stats.config.indexing.autoIndexSessions) {
-        return;
-      }
-
-      // セッションメッセージをインデックス化
-      console.log(`[OutputStorage] 🔍 Auto-indexing session ${sessionId} to RAG`);
-      const chunksIndexed = await ragManager.indexSessionMessages(sessionId, messages);
-
-      if (chunksIndexed > 0) {
-        console.log(`[OutputStorage] ✓ Auto-indexed ${chunksIndexed} chunks from session ${sessionId}`);
-      }
-    } catch (error) {
-      console.warn('[OutputStorage] ⚠️  Failed to auto-index session to RAG:', error);
-    }
-  }
-
-  /**
-   * RAG自動インデックス化
-   * 新しく保存されたMarkdownファイルを自動的にRAGシステムにインデックス化
-   */
-  private async autoIndexToRAG(filepath: string): Promise<void> {
-    try {
-      const ragManager = getRAGManager();
-
-      // RAGが有効でない場合はスキップ
-      if (!ragManager.isReady()) {
-        return; // Silently skip if RAG is not ready
-      }
-
-      // 設定で自動インデックスが無効の場合はスキップ
-      const stats = await ragManager.getStats();
-      if (!stats.config.indexing.autoIndexOutputs) {
-        console.log('[OutputStorage] Auto-indexing outputs is disabled in config');
-        return;
-      }
-
-      const retriever = ragManager.getRetriever();
-      if (!retriever) {
-        return;
-      }
-
-      // ファイルをインデックス化
-      console.log(`[OutputStorage] 🔍 Auto-indexing to RAG: ${filepath}`);
-      const chunksIndexed = await retriever.indexLocalDocuments([filepath]);
-
-      console.log(`[OutputStorage] ✓ Auto-indexed ${chunksIndexed} chunks to RAG`);
-    } catch (error) {
-      // RAGインデックス化が失敗してもファイル保存は成功させる
-      console.warn('[OutputStorage] ⚠️  Failed to auto-index to RAG:', error);
-      console.warn('[OutputStorage] Output file saved, but not indexed. You can manually index it later.');
-    }
-  }
 } 
