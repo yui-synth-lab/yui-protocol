@@ -387,6 +387,35 @@ graph TD
 
 ---
 
+## 実施状況（2026-06-12 時点）
+
+本計画はブランチ `feature/ai-thread` 上で実施済み。各フェーズの結果:
+
+| フェーズ | 状態 | 主なコミット |
+|---|---|---|
+| Phase 1（型循環・死蔵コード・M1会計） | ✅ 完了 | `dc7007e` |
+| Phase 2（kernel⇄agents切断・composition root・M8） | ✅ 完了 | `10573df` |
+| Phase 3（God Object分解・M2-M7） | ✅ 完了 | `b7e917d` `e1e081a` `73b479a` `5877f16` `283b1b7` `304d362` |
+| Phase 4（server分割・v1/v2対等化・UIクライアント層） | ✅ 完了 | `f6dc1ba` `1f50648` `d4e5b8c` `0fc424f` |
+| Phase 5（metadata型分解・プロバイダ分割・M9・ロガー） | ✅ 主要項目完了 | `3c5b7f0` `a0ac694` `b947978` `3207368` `698d1de` |
+
+**実機検証**: v1（session 233）・v2（session 234）で全段完走を確認。M1トークン会計は実セッションで稼働（Gemini の usageMetadata 欠落も発見・修正済み: `79ddcaf`）。M7バジェットは session 234 で実際に発火し、自然収束がほぼ不可能な収束式の構造問題を可視化した（下記残課題4）。
+
+**主な構造変化**:
+- `dynamic-router.ts`: 2,083行 → 825行（ConsensusCollector / FinalizationService / FacilitatorActionExecutor を `src/orchestration/v2/` へ抽出）
+- `base-agent.ts`: 1,676行 → 約1,200行（生成パラメータ・応答パーサを純関数化、MemoryManager配線）
+- `ai-executor-impl.ts`: 1,171行 → 13行（`src/llm/providers/` へ7プロバイダ分割）
+- `server/index.ts`: 845行 → 約150行（routes/ws/context へ分割）
+- 依存ルール5本（循環禁止・types隔離・kernel↛agents・storage↛RAG・v1↛v2）が `npm run build` で機械的に強制される
+
+**残課題（フォローアップ）**:
+1. facilitator-agent.ts（約1,400行）の3分割（DialogueAnalyzer / InterventionPlanner / FacilitatorLogger）— FacilitatorPort 型付けは完了済み。kernel→agents の depcruise 例外解消はこの分解とセット
+2. M5（プロンプトキャッシュ親和の組み立て）— プロンプト出力が変わるため A/B 検証とセットで実施
+3. M10（リトライ/フォールバック方針統一・失敗の型伝搬）— フォールバック文字列が下流に流れる問題は挙動変更を伴うため未着手
+4. **収束式の設計判断** — `overallConsensus = 0.8×満足度 + 0.2×ready率×10` のため自然収束がほぼ不可能（session 234 で実証）。閾値引き下げ / 重み変更 / バジェット制御のいずれかを作者が選択する
+5. console.* の全面ロガー移行（パターンは `src/utils/logger.ts` で確立済み、orchestration/bootstrap は移行済み）
+6. M2 有効化後のコスト実測（session 234 の351kトークンがベースライン。modelTiers は config で有効化済み）
+
 ## 付録: リスクと進め方の注意
 
 - **テストが先**: Phase 3 の分割対象(dynamic-router/base-agent)は現状テストが入出力レベル(投票・収束・パース)に偏っている。分割前に「対話ループ1周のシナリオテスト」(AIExecutor を Mock 注入)を追加してから着手すると安全。
